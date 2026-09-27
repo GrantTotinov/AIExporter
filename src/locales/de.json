@@ -63,6 +63,8 @@
   "options.headings.none": "Keine Überschrift",
   "options.downloads.legend": "Downloads",
   "options.downloads.askWhereToSave": "Bei jedem Export nach dem Speicherort fragen",
+  "options.downloads.bundleImages": "Heruntergeladene Bilder mit Exporten als ZIP bündeln",
+  "options.downloads.bundleImagesHint": "Wenn aktiviert, enthalten Exporte mit Bildern einen Bilderordner. Andernfalls werden Anhänge wie beim ursprünglichen Textexport ausgelassen.",
   "options.downloads.settingsLink": "Download-Speicherort-Einstellungen des Browsers öffnen",
   "options.timestamp.legend": "Zeitstempel",
   "options.timestamp.include": "Export-Datum/-Uhrzeit oben in der Datei einfügen",

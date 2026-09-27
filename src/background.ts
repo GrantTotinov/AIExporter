@@ -147,6 +147,7 @@ const REPO_FULL_NAME_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const SAFE_FILENAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 const MAX_EXPORT_CONTENT_LENGTH = 10_000_000;
+const MAX_BINARY_EXPORT_CONTENT_LENGTH = 45_000_000;
 
 function isValidRepoFullName(value: unknown): value is string {
   return typeof value === "string" && REPO_FULL_NAME_PATTERN.test(value);
@@ -167,6 +168,18 @@ function isValidExportContent(value: unknown): value is string {
     typeof value === "string" &&
     value.length > 0 &&
     value.length <= MAX_EXPORT_CONTENT_LENGTH
+  );
+}
+
+function isValidBinaryExportContent(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_BINARY_EXPORT_CONTENT_LENGTH &&
+    value.length % 4 === 0 &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
   );
 }
 
@@ -467,7 +480,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (
     !isValidRepoFullName(message.fullName) ||
     !isValidExportFilename(message.filename) ||
-    !isValidExportContent(message.content)
+    (message.binary === true
+      ? !isValidBinaryExportContent(message.content)
+      : !isValidExportContent(message.content)) ||
+    (message.binary !== undefined && typeof message.binary !== "boolean")
   ) {
     sendResponse({
       success: false,
@@ -483,6 +499,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         message.fullName,
         message.filename,
         message.content,
+        message.binary === true,
       );
 
       sendResponse({ success: true, data: result });

@@ -63,6 +63,8 @@
   "options.headings.none": "无标题",
   "options.downloads.legend": "下载",
   "options.downloads.askWhereToSave": "每次导出时询问保存位置",
+  "options.downloads.bundleImages": "将图片下载到本地并把导出内容打包为 ZIP",
+  "options.downloads.bundleImagesHint": "开启后，含图片的导出会包含 images 文件夹；关闭时与原版一致，不把图片写入 Markdown。",
   "options.downloads.settingsLink": "打开浏览器下载位置设置",
   "options.timestamp.legend": "时间戳",
   "options.timestamp.include": "在文件顶部包含导出日期/时间",

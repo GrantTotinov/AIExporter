@@ -26,6 +26,7 @@ void initI18n().then(() => {
 });
 
 import { stripMarkdown } from "./markdown-strip.ts";
+import { createZipBlob, decodeBase64, encodeBlobBase64 } from "./zip.ts";
 
 const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
@@ -53,9 +54,18 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   order: number;
+  imagePaths?: string[];
+}
+
+interface ExportImageFile {
+  path: string;
+  mimeType: string;
+  base64: string;
+  sizeBytes: number;
 }
 
 type ExportFormat = "md" | "txt" | "json" | "csv";
+type FilenameExtension = ExportFormat | "zip";
 
 /*
  * ---------------------------------------------------------
@@ -292,7 +302,7 @@ chrome.runtime.onMessage.addListener((message) => {
  */
 function buildFilename(
   tabTitle: string | undefined,
-  extension: ExportFormat,
+  extension: FilenameExtension,
 ): string {
   const date = new Date();
 
@@ -399,7 +409,16 @@ function buildContentForFormat(
 ): { content: string; mimeType: string } {
   switch (format) {
     case "txt":
-      return { content: stripMarkdown(markdown), mimeType: "text/plain" };
+      return {
+        content: stripMarkdown(
+          markdown.replace(
+            /!\[([^\]]*)\]\(([^)]+)\)/g,
+            (_match, altText: string, imagePath: string) =>
+              `${altText}: ${imagePath}`,
+          ),
+        ),
+        mimeType: "text/plain",
+      };
     case "json":
       return { content: buildJson(messages), mimeType: "application/json" };
     case "csv":
@@ -420,8 +439,11 @@ function buildContentForFormat(
  * full duration so the person can't click anything else in
  * the popup mid-fetch.
  */
-async function loadConversationMessages(): Promise<{
+async function loadConversationMessages(
+  downloadImagesLocally: boolean,
+): Promise<{
   messages: Message[];
+  images: ExportImageFile[];
   tabTitle: string | undefined;
 }> {
   showLoadingOverlay(t("popup.loading.default"));
@@ -447,6 +469,7 @@ async function loadConversationMessages(): Promise<{
     try {
       response = await chrome.tabs.sendMessage(tab.id, {
         type: "LOAD_CONVERSATION",
+        downloadImagesLocally,
       });
     } catch (sendError) {
       devWarn(
@@ -464,6 +487,7 @@ async function loadConversationMessages(): Promise<{
 
       response = await chrome.tabs.sendMessage(tab.id, {
         type: "LOAD_CONVERSATION",
+        downloadImagesLocally,
       });
     }
 
@@ -473,7 +497,12 @@ async function loadConversationMessages(): Promise<{
       );
     }
 
-    const messages = response.data as Message[];
+    const loadResult = response.data as {
+      messages: Message[];
+      images: ExportImageFile[];
+    };
+    const messages = loadResult.messages;
+    const images = loadResult.images ?? [];
 
     devLog(`AI Exporter: received ${messages.length} messages`);
 
@@ -483,7 +512,7 @@ async function loadConversationMessages(): Promise<{
 
     const sortedMessages = [...messages].sort((a, b) => a.order - b.order);
 
-    return { messages: sortedMessages, tabTitle: tab.title };
+    return { messages: sortedMessages, images, tabTitle: tab.title };
   } finally {
     hideLoadingOverlay();
   }
@@ -503,7 +532,7 @@ copyButton.addEventListener("click", async () => {
   devLog("AI Exporter: copy clicked");
 
   try {
-    const { messages } = await loadConversationMessages();
+    const { messages } = await loadConversationMessages(false);
 
     const markdown = await buildMarkdownFromMessages(messages);
 
@@ -546,6 +575,7 @@ copyButton.addEventListener("click", async () => {
  * a Markdown save.
  */
 let currentMessages: Message[] = [];
+let currentImages: ExportImageFile[] = [];
 let currentTabTitle: string | undefined;
 let lastShiftAnchorIndex: number | null = null;
 
@@ -715,6 +745,40 @@ selectorFilterInvertButton.addEventListener("click", () => {
   updateSelectorCount();
 });
 
+function getSelectedImageFiles(messages: Message[]): ExportImageFile[] {
+  const selectedPaths = new Set(
+    messages.flatMap((message) => message.imagePaths ?? []),
+  );
+  const filesByPath = new Map(currentImages.map((image) => [image.path, image]));
+
+  return [...selectedPaths]
+    .map((path) => filesByPath.get(path))
+    .filter((image): image is ExportImageFile => Boolean(image));
+}
+
+function createExportZipBlob(
+  content: string,
+  documentFilename: string,
+  images: ExportImageFile[],
+): Blob {
+  const rootFolder = documentFilename.replace(/\.[^.]+$/, "");
+  const encoder = new TextEncoder();
+  const entries = [
+    { path: `${rootFolder}/`, bytes: new Uint8Array() },
+    {
+      path: `${rootFolder}/${documentFilename}`,
+      bytes: encoder.encode(content),
+    },
+    { path: `${rootFolder}/images/`, bytes: new Uint8Array() },
+    ...images.map((image) => ({
+      path: `${rootFolder}/${image.path}`,
+      bytes: decodeBase64(image.base64),
+    })),
+  ];
+
+  return createZipBlob(entries);
+}
+
 selectorCancelButton.addEventListener("click", () => {
   closeSelectorOverlay();
 });
@@ -727,9 +791,13 @@ exportButton.addEventListener("click", async () => {
   devLog("AI Exporter: export clicked, opening selector");
 
   try {
-    const { messages, tabTitle } = await loadConversationMessages();
+    const settings = await loadSettings();
+    const { messages, images, tabTitle } = await loadConversationMessages(
+      settings.downloadImagesLocally,
+    );
 
     currentMessages = messages;
+    currentImages = images;
     currentTabTitle = tabTitle;
 
     selectorPanelMessage.textContent = t("popup.selector.subtitle");
@@ -780,8 +848,16 @@ selectorExportButton.addEventListener("click", async () => {
     );
 
     const filename = buildFilename(currentTabTitle, format);
+    const selectedImages = getSelectedImageFiles(chosen);
+    let downloadFilename = filename;
+    let blob: Blob;
 
-    const blob = new Blob([content], { type: mimeType });
+    if (selectedImages.length > 0) {
+      downloadFilename = buildFilename(currentTabTitle, "zip");
+      blob = createExportZipBlob(content, filename, selectedImages);
+    } else {
+      blob = new Blob([content], { type: mimeType });
+    }
 
     objectUrl = URL.createObjectURL(blob);
 
@@ -789,7 +865,7 @@ selectorExportButton.addEventListener("click", async () => {
 
     const downloadId = await chrome.downloads.download({
       url: objectUrl,
-      filename,
+      filename: downloadFilename,
       saveAs: settings.askWhereToSave,
     });
 
@@ -831,8 +907,9 @@ selectorExportButton.addEventListener("click", async () => {
  * SAVE TO GITHUB (from selector)
  * ---------------------------------------------------------
  *
- * Opens the existing repo-picker panel. Always saves as
- * Markdown, matching the repo's exports/ convention.
+ * Opens the existing repo-picker panel. Saves Markdown for
+ * text-only conversations and a ZIP when selected messages
+ * include image files.
  */
 async function openGithubPanel(): Promise<void> {
   closeSelectorOverlay();
@@ -953,14 +1030,29 @@ async function saveToGitHub(): Promise<void> {
 
   try {
     const markdown = await buildMarkdownFromMessages(chosen);
+    const markdownFilename = buildFilename(currentTabTitle, "md");
+    const selectedImages = getSelectedImageFiles(chosen);
+    let filename = markdownFilename;
+    let content = markdown;
+    let binary = false;
 
-    const filename = buildFilename(currentTabTitle, "md");
+    if (selectedImages.length > 0) {
+      filename = buildFilename(currentTabTitle, "zip");
+      const archive = createExportZipBlob(
+        markdown,
+        markdownFilename,
+        selectedImages,
+      );
+      content = await encodeBlobBase64(archive);
+      binary = true;
+    }
 
     const saveResponse = await chrome.runtime.sendMessage({
       type: "GITHUB_SAVE_FILE",
       fullName,
       filename,
-      content: markdown,
+      content,
+      binary,
     });
 
     if (!saveResponse?.success) {

@@ -45,8 +45,9 @@
     /^\/backend-api\/conversation\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/messages)?$/i;
   const MAX_CURSOR_LENGTH = 2048;
   const MAX_REQUEST_ID_LENGTH = 100;
+  const FILE_ID_PATTERN = /^file[_-][A-Za-z0-9_-]{1,255}$/i;
   const RATE_LIMIT_WINDOW_MS = 10_000;
-  const MAX_REQUESTS_PER_WINDOW = 20;
+  const MAX_REQUESTS_PER_WINDOW = 50;
 
   let requestWindowStartedAt = Date.now();
   let requestsInWindow = 0;
@@ -92,6 +93,10 @@
     );
   }
 
+  function isValidFileId(value: unknown): value is string {
+    return typeof value === "string" && FILE_ID_PATTERN.test(value);
+  }
+
   function allowRequest(): boolean {
     const now = Date.now();
 
@@ -128,28 +133,296 @@
     return `${endpoint}?${params.toString()}`;
   }
 
-  function isApiRequestMessage(
-    value: unknown,
-  ): value is {
+  type ApiRequestMessage = {
     source: "AIExporter";
     type: "AIExporter_API_REQUEST";
     requestId: string;
     conversationId: string;
     cursor: string | null;
-  } {
+  };
+
+  type FileDownloadRequestMessage = {
+    source: "AIExporter";
+    type: "AIExporter_FILE_DOWNLOAD_REQUEST";
+    requestId: string;
+    conversationId: string;
+    fileId?: string;
+    scheme?: "file-service" | "sediment";
+    imageUrl?: string;
+  };
+
+  type BridgeRequestMessage = ApiRequestMessage | FileDownloadRequestMessage;
+
+  function isApiRequestMessage(
+    value: unknown,
+  ): value is BridgeRequestMessage {
     if (!value || typeof value !== "object") {
       return false;
     }
 
     const message = value as Record<string, unknown>;
-
-    return (
+    const hasValidCommonFields =
       message.source === "AIExporter" &&
-      message.type === "AIExporter_API_REQUEST" &&
       isValidRequestId(message.requestId) &&
-      isValidConversationId(message.conversationId) &&
-      isValidCursor(message.cursor)
+      isValidConversationId(message.conversationId);
+
+    if (!hasValidCommonFields) {
+      return false;
+    }
+
+    if (message.type === "AIExporter_API_REQUEST") {
+      return isValidCursor(message.cursor);
+    }
+
+    if (message.type !== "AIExporter_FILE_DOWNLOAD_REQUEST") {
+      return false;
+    }
+
+    const hasFileReference =
+      isValidFileId(message.fileId) &&
+      (message.scheme === "file-service" || message.scheme === "sediment");
+    const hasSafeImageUrl = Boolean(getSafeHostedDownloadUrl(message.imageUrl));
+
+    return hasFileReference || hasSafeImageUrl;
+  }
+
+  function buildFileDownloadUrls(
+    message: {
+      conversationId: string;
+      fileId: string;
+      scheme: "file-service" | "sediment";
+    },
+  ): string[] {
+    const fileId = encodeURIComponent(message.fileId);
+    const conversationId = encodeURIComponent(message.conversationId);
+    const resolverParams = new URLSearchParams({
+      conversation_id: message.conversationId,
+      download_intent: "false",
+      inline: "true",
+    });
+    const byFilesDownload =
+      `/backend-api/files/download/${fileId}?${resolverParams.toString()}`;
+    const byFileId = `/backend-api/files/${fileId}/download`;
+    const byConversationAttachment =
+      `/backend-api/conversation/${conversationId}/attachment/${fileId}/download`;
+
+    return message.scheme === "file-service"
+      ? [byFileId, byFilesDownload]
+      : [byFilesDownload, byConversationAttachment, byFileId];
+  }
+
+  function getSafeHostedDownloadUrl(value: unknown): string | null {
+    if (typeof value !== "string" || value.length === 0) {
+      return null;
+    }
+
+    try {
+      const url = new URL(value);
+      const hostname = url.hostname.toLowerCase();
+      const isChatGptImagePath =
+        /^\/backend-api\/estuary\/content$/i.test(url.pathname) ||
+        /^\/backend-api\/files\/(?:download\/)?file[-_][a-z0-9_-]+(?:\/download)?$/i.test(
+          url.pathname,
+        ) ||
+        /^\/backend-api\/conversation\/[0-9a-f-]{36}\/attachment\/file[-_][a-z0-9_-]+\/download$/i.test(
+          url.pathname,
+        );
+      const isChatGptHost =
+        url.origin === window.location.origin && isChatGptImagePath;
+      const isOpenAiFileHost =
+        hostname === "oaiusercontent.com" ||
+        hostname.endsWith(".oaiusercontent.com") ||
+        hostname === "oaistatic.com" ||
+        hostname.endsWith(".oaistatic.com");
+
+      return (
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        (isChatGptHost || isOpenAiFileHost)
+      )
+        ? url.toString()
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function bytesToBase64(bytes: Uint8Array): string {
+    const chunkSize = 0x8000;
+    let binary = "";
+
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(
+        ...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)),
+      );
+    }
+
+    return btoa(binary);
+  }
+
+  function getImageFilename(
+    response: Response,
+    url: string,
+    preferredFileName?: string,
+  ): string {
+    if (preferredFileName) {
+      return preferredFileName;
+    }
+
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const regularName = disposition.match(/filename=["']?([^"';]+)["']?/i)?.[1];
+
+    if (encodedName || regularName) {
+      const value = encodedName ?? regularName ?? "";
+
+      try {
+        return decodeURIComponent(value.replace(/^"|"$/g, ""));
+      } catch {
+        return value.replace(/^"|"$/g, "");
+      }
+    }
+
+    try {
+      return decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "image");
+    } catch {
+      return "image";
+    }
+  }
+
+  async function downloadImage(
+    url: string,
+    headers: Headers,
+    preferredFileName?: string,
+  ): Promise<{
+    base64: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+  }> {
+    const parsedUrl = new URL(url);
+    const sameOrigin = parsedUrl.origin === window.location.origin;
+    const imageHeaders = sameOrigin ? new Headers(headers) : new Headers();
+    const response = await originalFetch(parsedUrl.toString(), {
+      method: "GET",
+      credentials: sameOrigin ? "include" : "omit",
+      headers: imageHeaders,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `ChatGPT image download failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const declaredMimeType = (response.headers.get("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    const fileName = getImageFilename(
+      response,
+      response.url || url,
+      preferredFileName,
     );
+    const extension = fileName.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+    const extensionToMime: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      avif: "image/avif",
+      heic: "image/heic",
+      heif: "image/heif",
+      bmp: "image/bmp",
+      tif: "image/tiff",
+      tiff: "image/tiff",
+    };
+    const mimeIsSupported =
+      /^image\/(?:png|jpe?g|gif|webp|avif|heic|heif|bmp|tiff?)$/i.test(
+        declaredMimeType,
+      );
+    const mimeCanUseFilename =
+      !declaredMimeType ||
+      declaredMimeType === "application/octet-stream" ||
+      declaredMimeType === "application/binary";
+
+    if (!mimeIsSupported && !mimeCanUseFilename) {
+      throw new Error("ChatGPT returned a non-image attachment.");
+    }
+
+    const mimeType = mimeIsSupported
+      ? declaredMimeType === "image/jpg"
+        ? "image/jpeg"
+        : declaredMimeType
+      : extension
+        ? extensionToMime[extension]
+        : undefined;
+
+    if (!mimeType) {
+      throw new Error("ChatGPT returned an unsupported image type.");
+    }
+
+    const declaredLength = Number(response.headers.get("content-length") ?? 0);
+
+    if (declaredLength > 8 * 1024 * 1024) {
+      throw new Error("The image is larger than the 8 MB export limit.");
+    }
+
+    const maxBytes = 8 * 1024 * 1024;
+    const chunks: Uint8Array[] = [];
+    let sizeBytes = 0;
+
+    if (response.body) {
+      const reader = response.body.getReader();
+
+      while (true) {
+        const result = await reader.read();
+
+        if (result.done) {
+          break;
+        }
+
+        sizeBytes += result.value.byteLength;
+
+        if (sizeBytes > maxBytes) {
+          void reader.cancel();
+          throw new Error("The image is larger than the 8 MB export limit.");
+        }
+
+        chunks.push(result.value);
+      }
+    } else {
+      const buffer = await response.arrayBuffer();
+
+      sizeBytes = buffer.byteLength;
+
+      if (sizeBytes > maxBytes) {
+        throw new Error("The image is larger than the 8 MB export limit.");
+      }
+
+      chunks.push(new Uint8Array(buffer));
+    }
+
+    if (sizeBytes === 0 || sizeBytes > maxBytes) {
+      throw new Error("The image is empty or larger than the 8 MB export limit.");
+    }
+
+    const bytes = new Uint8Array(sizeBytes);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    return {
+      base64: bytesToBase64(bytes),
+      fileName,
+      mimeType,
+      sizeBytes,
+    };
   }
 
   /*
@@ -280,11 +553,8 @@
       return;
     }
 
-    const requestId = event.data.requestId;
-    const url = buildConversationUrl(
-      event.data.conversationId,
-      event.data.cursor,
-    );
+    const request = event.data;
+    const requestId = request.requestId;
 
     /*
      * -------------------------------------------------
@@ -317,36 +587,137 @@
          * the authenticated ChatGPT request observed
          * above.
          */
-        const response = await originalFetch(url, {
-          method: "GET",
-          credentials: "include",
-          headers,
-        });
-
-        devLog("AI Exporter bridge: API response", response.status);
-
-        if (!response.ok) {
-          throw new Error(
-            `ChatGPT API request failed: ${response.status} ${response.statusText}`,
+        if (request.type === "AIExporter_API_REQUEST") {
+          const response = await originalFetch(
+            buildConversationUrl(request.conversationId, request.cursor),
+            {
+              method: "GET",
+              credentials: "include",
+              headers,
+            },
           );
+
+          devLog(
+            "AI Exporter bridge: conversation API response",
+            response.status,
+          );
+
+          if (!response.ok) {
+            throw new Error(
+              `ChatGPT API request failed: ${response.status} ${response.statusText}`,
+            );
+          }
+
+          const data = await response.json();
+
+          window.postMessage(
+            {
+              source: "AIExporter",
+              type: "AIExporter_API_RESPONSE",
+              requestId,
+              data,
+            },
+            "*",
+          );
+
+          return;
         }
 
-        const data = await response.json();
+        let downloadedImage:
+          | {
+              base64: string;
+              fileName: string;
+              mimeType: string;
+              sizeBytes: number;
+            }
+          | null = null;
+        let lastDownloadError: unknown;
+        const directImageUrl = getSafeHostedDownloadUrl(request.imageUrl);
 
-        /*
-         * Send JSON back to content.ts.
-         */
+        if (directImageUrl) {
+          try {
+            downloadedImage = await downloadImage(directImageUrl, headers);
+          } catch (error) {
+            lastDownloadError = error;
+            devWarn("AI Exporter bridge: direct image download failed");
+          }
+        }
+
+        if (
+          !downloadedImage &&
+          isValidFileId(request.fileId) &&
+          (request.scheme === "file-service" || request.scheme === "sediment")
+        ) {
+          const fileRequest = request as FileDownloadRequestMessage & {
+            fileId: string;
+            scheme: "file-service" | "sediment";
+          };
+
+          for (const url of buildFileDownloadUrls(fileRequest)) {
+            const response = await originalFetch(url, {
+              method: "GET",
+              credentials: "include",
+              headers: new Headers(headers),
+            });
+
+            devLog("AI Exporter bridge: image resolver response", response.status);
+
+            if (!response.ok) {
+              if (
+                response.status === 400 ||
+                response.status === 404 ||
+                response.status === 405 ||
+                response.status === 422
+              ) {
+                continue;
+              }
+
+              lastDownloadError = new Error(
+                `ChatGPT image request failed: ${response.status} ${response.statusText}`,
+              );
+              break;
+            }
+
+            try {
+              const data = (await response.json()) as Record<string, unknown>;
+              const downloadUrl = getSafeHostedDownloadUrl(
+                data.download_url ?? data.url,
+              );
+
+              if (!downloadUrl) {
+                continue;
+              }
+
+              downloadedImage = await downloadImage(
+                downloadUrl,
+                headers,
+                typeof data.file_name === "string" ? data.file_name : undefined,
+              );
+
+              break;
+            } catch (error) {
+              lastDownloadError = error;
+            }
+          }
+        }
+
+        if (!downloadedImage) {
+          throw lastDownloadError instanceof Error
+            ? lastDownloadError
+            : new Error("ChatGPT did not return a usable image file.");
+        }
+
         window.postMessage(
           {
             source: "AIExporter",
-            type: "AIExporter_API_RESPONSE",
+            type: "AIExporter_FILE_DOWNLOAD_RESPONSE",
             requestId,
-            data,
+            imageFile: downloadedImage,
           },
           "*",
         );
       } catch (error) {
-        devError("AI Exporter bridge: API request failed");
+        devError("AI Exporter bridge: request failed");
 
         window.postMessage(
           {

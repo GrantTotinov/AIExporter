@@ -34,6 +34,22 @@ export function stripMarkdown(markdown: string): string {
   text = text.replace(/\*([^*]+)\*/g, "$1");
 
   /*
+   * Images: ![alt](url) -> alt (url). Handle the angle-
+   * bracket form used for hosted image URLs before generic
+   * links so the leading exclamation mark is removed too.
+   */
+  text = text.replace(
+    /!\[([^\]]*)\]\((?:<([^>]+)>|([^)]+))\)/g,
+    (
+      _match,
+      alt: string,
+      bracketedUrl: string | undefined,
+      url: string | undefined,
+    ) =>
+      `${alt} (${bracketedUrl ?? url ?? ""})`,
+  );
+
+  /*
    * Links: [text](url) -> text (url)
    */
   text = text.replace(/\[([^\]]*)\]\(([^)]+)\)/g, "$1 ($2)");

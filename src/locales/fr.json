@@ -63,6 +63,8 @@
   "options.headings.none": "Aucun titre",
   "options.downloads.legend": "Téléchargements",
   "options.downloads.askWhereToSave": "Demander où enregistrer chaque export",
+  "options.downloads.bundleImages": "Inclure les images téléchargées dans un ZIP",
+  "options.downloads.bundleImagesHint": "Activé, les exports avec images incluent un dossier d’images. Sinon, les pièces jointes sont ignorées, comme dans l’export texte d’origine.",
   "options.downloads.settingsLink": "Ouvrir les paramètres de téléchargement du navigateur",
   "options.timestamp.legend": "Horodatage",
   "options.timestamp.include": "Inclure la date/heure d'export en haut du fichier",

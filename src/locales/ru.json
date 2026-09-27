@@ -63,6 +63,8 @@
   "options.headings.none": "Без заголовка",
   "options.downloads.legend": "Загрузки",
   "options.downloads.askWhereToSave": "Спрашивать, куда сохранять каждый экспорт",
+  "options.downloads.bundleImages": "Добавлять скачанные изображения в ZIP-архив экспорта",
+  "options.downloads.bundleImagesHint": "Если включено, экспорт с изображениями содержит папку images. Иначе вложения пропускаются, как в исходном текстовом экспорте.",
   "options.downloads.settingsLink": "Открыть настройки загрузок браузера",
   "options.timestamp.legend": "Отметка времени",
   "options.timestamp.include": "Добавлять дату/время экспорта в начало файла",

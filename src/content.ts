@@ -224,6 +224,19 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   order: number;
+  imagePaths?: string[];
+}
+
+interface ExportImageFile {
+  path: string;
+  mimeType: string;
+  base64: string;
+  sizeBytes: number;
+}
+
+interface ConversationLoadResult {
+  messages: Message[];
+  images: ExportImageFile[];
 }
 
 /*
@@ -272,6 +285,18 @@ interface ApiMessage {
     turn_exchange_id?: string | null;
     [key: string]: unknown;
   };
+}
+
+interface ApiImagePart {
+  content_type?: string;
+  asset_pointer?: string;
+  image_url?: unknown;
+  url?: unknown;
+}
+
+interface ApiImageReference {
+  fileId: string;
+  scheme: "file-service" | "sediment";
 }
 
 interface ApiMappingNode {
@@ -381,6 +406,7 @@ function resolveActiveMessages(
   rawById: Map<string, ApiMessage>,
   collected: Map<string, ApiMessage>,
   currentNode: string | null,
+  downloadImagesLocally: boolean,
 ): ApiMessage[] {
   const exportable = Array.from(collected.values());
   const turnGroups = new Map<
@@ -535,7 +561,7 @@ function resolveActiveMessages(
       assistant &&
       assistant.id &&
       !usedAssistants.has(assistant.id) &&
-      isExportableApiMessage(assistant)
+      isExportableApiMessage(assistant, downloadImagesLocally)
         ? assistant
         : undefined;
 
@@ -578,14 +604,18 @@ function mergeApiMessages(
   };
 }
 
-function isExportableApiMessage(message: ApiMessage): boolean {
+function isExportableApiMessage(
+  message: ApiMessage,
+  downloadImagesLocally: boolean,
+): boolean {
   const role = message.author?.role;
 
   return (
     (role === "user" || role === "assistant") &&
     !message.metadata?.is_visually_hidden_from_conversation &&
     (role === "user" || message.end_turn === true) &&
-    Boolean(extractApiMessageText(message))
+    (Boolean(extractApiMessageText(message)) ||
+      (downloadImagesLocally && getApiMessageImageParts(message).length > 0))
   );
 }
 
@@ -618,6 +648,301 @@ function extractApiMessageText(message: ApiMessage): string {
     .filter((part): part is string => typeof part === "string")
     .join("\n")
     .trim();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getApiMessageImageParts(message: ApiMessage): ApiImagePart[] {
+  const parts = message.content?.parts;
+
+  if (!Array.isArray(parts)) {
+    return [];
+  }
+
+  return parts.filter((part): part is ApiImagePart => {
+    if (!isRecord(part)) {
+      return false;
+    }
+
+    const assetPointer = part.asset_pointer;
+
+    return (
+      part.content_type === "image_asset_pointer" ||
+      typeof part.image_url === "string" ||
+      isRecord(part.image_url) ||
+      (typeof part.url === "string" &&
+        Boolean(getSafeHostedImageUrl(part.url))) ||
+      (typeof assetPointer === "string" &&
+        /^(?:file-service|sediment):\/\//i.test(assetPointer))
+    );
+  });
+}
+
+function getSafeHostedImageUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const isChatGptImagePath =
+      /^\/backend-api\/estuary\/content$/i.test(url.pathname) ||
+      /^\/backend-api\/files\/(?:download\/)?file[-_][a-z0-9_-]+(?:\/download)?$/i.test(
+        url.pathname,
+      ) ||
+      /^\/backend-api\/conversation\/[0-9a-f-]{36}\/attachment\/file[-_][a-z0-9_-]+\/download$/i.test(
+        url.pathname,
+      );
+    const isChatGptHost =
+      url.origin === window.location.origin && isChatGptImagePath;
+    const isOpenAiFileHost =
+      hostname === "oaiusercontent.com" ||
+      hostname.endsWith(".oaiusercontent.com") ||
+      hostname === "oaistatic.com" ||
+      hostname.endsWith(".oaistatic.com");
+
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      (isChatGptHost || isOpenAiFileHost)
+    )
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getImageUrlFromPart(part: ApiImagePart): string | null {
+  if (typeof part.image_url === "string") {
+    return getSafeHostedImageUrl(part.image_url);
+  }
+
+  if (isRecord(part.image_url)) {
+    const nestedUrl = getSafeHostedImageUrl(part.image_url.url);
+
+    if (nestedUrl) {
+      return nestedUrl;
+    }
+  }
+
+  return getSafeHostedImageUrl(part.url);
+}
+
+function getImageReferenceFromPart(part: ApiImagePart): ApiImageReference | null {
+  const pointer = part.asset_pointer;
+
+  if (typeof pointer !== "string") {
+    return null;
+  }
+
+  const match = pointer.match(/^(file-service|sediment):\/\/(.+)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const scheme = match[1].toLowerCase() as ApiImageReference["scheme"];
+  const referencedIds = match[2].match(/file[-_][A-Za-z0-9_-]+/gi);
+  const fileId = referencedIds?.at(-1);
+
+  return fileId
+    ? {
+        fileId,
+        scheme,
+      }
+    : null;
+}
+
+function createRequestLimiter(maxConcurrent: number): <T>(
+  action: () => Promise<T>,
+) => Promise<T> {
+  let activeRequests = 0;
+  const queue: Array<() => void> = [];
+
+  return async <T>(action: () => Promise<T>): Promise<T> => {
+    if (activeRequests >= maxConcurrent) {
+      await new Promise<void>((resolve) => queue.push(resolve));
+    }
+
+    activeRequests++;
+
+    try {
+      return await action();
+    } finally {
+      activeRequests--;
+      queue.shift()?.();
+    }
+  };
+}
+
+const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
+
+function getImageFileType(
+  fileName: string,
+  mimeType: string,
+): { extension: string; mimeType: string } | null {
+  const mimeToExtension: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/avif": "avif",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/bmp": "bmp",
+    "image/tiff": "tif",
+  };
+  const extensionToMime: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    bmp: "image/bmp",
+    tif: "image/tiff",
+    tiff: "image/tiff",
+  };
+  const normalizedMimeType = mimeType.split(";", 1)[0].trim().toLowerCase();
+  const mimeExtension = mimeToExtension[normalizedMimeType];
+  const filenameExtension = fileName.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+
+  if (normalizedMimeType.startsWith("image/") && !mimeExtension) {
+    return null;
+  }
+
+  const extension = mimeExtension ?? filenameExtension;
+  const normalizedExtension = extension === "jpeg" ? "jpg" : extension;
+  const safeMimeType = normalizedExtension
+    ? extensionToMime[normalizedExtension]
+    : undefined;
+
+  if (
+    !normalizedExtension ||
+    !safeMimeType ||
+    !extensionToMime[normalizedExtension]
+  ) {
+    return null;
+  }
+
+  return {
+    extension: normalizedExtension,
+    mimeType: safeMimeType,
+  };
+}
+
+async function extractApiMessageContent(
+  message: ApiMessage,
+  conversationId: string,
+  downloadImagesLocally: boolean,
+  imageFileCache: Map<string, Promise<ExportImageFile>>,
+  limitImageRequests: <T>(action: () => Promise<T>) => Promise<T>,
+  reserveImageIndex: () => number,
+  addDownloadedImageBytes: (sizeBytes: number) => void,
+): Promise<{ content: string; imagePaths: string[] }> {
+  const parts = message.content?.parts;
+
+  if (!Array.isArray(parts)) {
+    return { content: "", imagePaths: [] };
+  }
+
+  let imageNumber = 0;
+  const imagePaths: string[] = [];
+
+  const renderedParts = await Promise.all(
+    parts.map(async (part): Promise<string> => {
+      if (typeof part === "string") {
+        return part;
+      }
+
+      if (!isRecord(part)) {
+        return "";
+      }
+
+      const imagePart = part as ApiImagePart;
+      const directUrl = getImageUrlFromPart(imagePart);
+      const imageReference = getImageReferenceFromPart(imagePart);
+      const isImageAttachment =
+        imagePart.content_type === "image_asset_pointer" ||
+        typeof imagePart.image_url === "string" ||
+        isRecord(imagePart.image_url) ||
+        Boolean(directUrl) ||
+        Boolean(imageReference);
+
+      if (!isImageAttachment) {
+        return "";
+      }
+
+      // Preserve the original text-only export unless image bundling is enabled.
+      if (!downloadImagesLocally) {
+        return "";
+      }
+
+      imageNumber++;
+
+      if (!directUrl && !imageReference) {
+        return "[Image attachment could not be downloaded]";
+      }
+
+      const cacheKey = imageReference
+        ? `${imageReference.scheme}:${imageReference.fileId}`
+        : `url:${directUrl}`;
+      let pendingImage = imageFileCache.get(cacheKey);
+
+      if (!pendingImage) {
+        const imageIndex = reserveImageIndex();
+        pendingImage = limitImageRequests(async () => {
+          const downloaded = await fetchImageFile(
+            imageReference,
+            directUrl,
+            conversationId,
+          );
+          const fileType = getImageFileType(
+            downloaded.fileName,
+            downloaded.mimeType,
+          );
+
+          if (!fileType) {
+            throw new Error("The downloaded attachment is not a supported image type.");
+          }
+
+          addDownloadedImageBytes(downloaded.sizeBytes);
+
+          return {
+            path: `images/image-${String(imageIndex).padStart(3, "0")}.${fileType.extension}`,
+            mimeType: fileType.mimeType,
+            base64: downloaded.base64,
+            sizeBytes: downloaded.sizeBytes,
+          };
+        });
+        imageFileCache.set(cacheKey, pendingImage);
+      }
+
+      try {
+        const imageFile = await pendingImage;
+        imagePaths.push(imageFile.path);
+
+        return `![Image ${imageNumber}](${imageFile.path})`;
+      } catch (error) {
+        devWarn("AI Exporter: failed to download an uploaded image", error);
+
+        return "[Image attachment could not be downloaded]";
+      }
+    }),
+  );
+
+  return {
+    content: renderedParts.filter(Boolean).join("\n").trim(),
+    imagePaths: [...new Set(imagePaths)],
+  };
 }
 
 /*
@@ -662,6 +987,12 @@ interface BridgeResponse {
   type?: string;
   requestId?: string;
   data?: ConversationPage;
+  imageFile?: {
+    base64?: string;
+    fileName?: string;
+    mimeType?: string;
+    sizeBytes?: number;
+  };
   error?: string;
 }
 
@@ -774,6 +1105,103 @@ function fetchConversationPage(
   });
 }
 
+function fetchImageFile(
+  reference: ApiImageReference | null,
+  imageUrl: string | null,
+  conversationId: string,
+): Promise<{ base64: string; fileName: string; mimeType: string; sizeBytes: number }> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+
+    let finished = false;
+    let timeoutId: number | undefined;
+
+    const cleanup = (): void => {
+      window.removeEventListener("message", handleMessage);
+
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    const finishError = (error: Error): void => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      cleanup();
+      reject(error);
+    };
+
+    const handleMessage = (event: MessageEvent<BridgeResponse>): void => {
+      if (
+        event.source !== window ||
+        event.data?.source !== "AIExporter" ||
+        event.data.requestId !== requestId
+      ) {
+        return;
+      }
+
+      if (event.data.type === "AIExporter_API_ERROR") {
+        finishError(new Error(event.data.error ?? "Could not download image."));
+
+        return;
+      }
+
+      if (event.data.type !== "AIExporter_FILE_DOWNLOAD_RESPONSE") {
+        return;
+      }
+
+      const downloaded = event.data.imageFile;
+
+      if (
+        typeof downloaded?.base64 !== "string" ||
+        typeof downloaded.fileName !== "string" ||
+        typeof downloaded.mimeType !== "string" ||
+        typeof downloaded.sizeBytes !== "number" ||
+        downloaded.sizeBytes <= 0 ||
+        downloaded.sizeBytes > 8 * 1024 * 1024 ||
+        downloaded.base64.length !== Math.ceil(downloaded.sizeBytes / 3) * 4 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+          downloaded.base64,
+        )
+      ) {
+        finishError(new Error("ChatGPT returned an invalid image file."));
+
+        return;
+      }
+
+      finished = true;
+      cleanup();
+      resolve({
+        base64: downloaded.base64,
+        fileName: downloaded.fileName,
+        mimeType: downloaded.mimeType,
+        sizeBytes: downloaded.sizeBytes,
+      });
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    window.postMessage(
+      {
+      source: "AIExporter",
+      type: "AIExporter_FILE_DOWNLOAD_REQUEST",
+      requestId,
+      conversationId,
+      ...(reference ? { fileId: reference.fileId, scheme: reference.scheme } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
+      },
+      "*",
+    );
+
+    timeoutId = window.setTimeout(() => {
+      finishError(new Error("Timed out while downloading an uploaded image."));
+    }, 60000);
+  });
+}
+
 /*
  * ---------------------------------------------------------
  * LOAD ENTIRE CONVERSATION VIA API
@@ -852,7 +1280,9 @@ async function waitForBridge(): Promise<void> {
    */
 }
 
-async function loadEntireConversation(): Promise<Message[]> {
+async function loadEntireConversation(
+  downloadImagesLocally: boolean,
+): Promise<ConversationLoadResult> {
   await waitForBridge();
 
   const conversationId = getConversationIdFromUrl();
@@ -896,7 +1326,7 @@ async function loadEntireConversation(): Promise<Message[]> {
 
       rawById.set(id, mergedMessage);
 
-      if (isExportableApiMessage(mergedMessage)) {
+      if (isExportableApiMessage(mergedMessage, downloadImagesLocally)) {
         collected.set(id, mergedMessage);
       }
     }
@@ -974,7 +1404,12 @@ async function loadEntireConversation(): Promise<Message[]> {
     }
   }
 
-  const messages = resolveActiveMessages(rawById, collected, currentNode);
+  const messages = resolveActiveMessages(
+    rawById,
+    collected,
+    currentNode,
+    downloadImagesLocally,
+  );
 
   if (!currentNode) {
     devWarn(
@@ -994,26 +1429,61 @@ async function loadEntireConversation(): Promise<Message[]> {
    * -----------------------------------------------------
    */
 
-  const result: Message[] = [];
+  const imageFileCache = new Map<string, Promise<ExportImageFile>>();
+  const limitImageRequests = createRequestLimiter(2);
+  let nextImageIndex = 1;
+  let downloadedImageBytes = 0;
 
-  for (const message of messages) {
-    const id = message.id;
-
-    const role = message.author?.role;
-
-    const content = extractApiMessageText(message);
-
-    if (!id || (role !== "user" && role !== "assistant") || !content) {
-      continue;
+  const reserveImageIndex = (): number => nextImageIndex++;
+  const addDownloadedImageBytes = (sizeBytes: number): void => {
+    if (downloadedImageBytes + sizeBytes > MAX_TOTAL_IMAGE_BYTES) {
+      throw new Error("The conversation's images exceed the 20 MB export limit.");
     }
 
-    result.push({
-      id,
-      role,
-      content,
-      order: result.length,
-    });
-  }
+    downloadedImageBytes += sizeBytes;
+  };
+
+  const convertedMessages = await Promise.all(
+    messages.map(async (message, order): Promise<Message | null> => {
+      const id = message.id;
+
+      const role = message.author?.role;
+
+      const extracted = await extractApiMessageContent(
+        message,
+        conversationId,
+        downloadImagesLocally,
+        imageFileCache,
+        limitImageRequests,
+        reserveImageIndex,
+        addDownloadedImageBytes,
+      );
+
+      if (
+        !id ||
+        (role !== "user" && role !== "assistant") ||
+        !extracted.content
+      ) {
+        return null;
+      }
+
+      return {
+        id,
+        role,
+        content: extracted.content,
+        order,
+        imagePaths: extracted.imagePaths,
+      };
+    }),
+  );
+
+  const result = convertedMessages
+    .filter((message): message is Message => message !== null)
+    .map((message, order) => ({ ...message, order }));
+  const settledImages = await Promise.allSettled(imageFileCache.values());
+  const images = settledImages.flatMap((item) =>
+    item.status === "fulfilled" ? [item.value] : [],
+  );
 
   /*
    * -----------------------------------------------------
@@ -1025,13 +1495,14 @@ async function loadEntireConversation(): Promise<Message[]> {
     conversationId,
     pages: pageNumber + 1,
     messages: result.length,
+    images: images.length,
   });
 
   result.forEach((message, index) => {
     devLog(`${index + 1} ${message.role}:`, message.content.substring(0, 70));
   });
 
-  return result;
+  return { messages: result, images };
 }
 
 /*
@@ -1057,24 +1528,32 @@ window.postMessage(
  * only one API pagination run is performed.
  */
 
-let inFlightLoad: Promise<Message[]> | null = null;
+let inFlightLoad: {
+  downloadImagesLocally: boolean;
+  promise: Promise<ConversationLoadResult>;
+} | null = null;
 
-function loadEntireConversationSingleFlight(): Promise<Message[]> {
+function loadEntireConversationSingleFlight(
+  downloadImagesLocally: boolean,
+): Promise<ConversationLoadResult> {
   if (inFlightLoad) {
-    devLog(
-      "AI Exporter: LOAD_CONVERSATION already in progress, reusing existing run",
-    );
+    if (inFlightLoad.downloadImagesLocally === downloadImagesLocally) {
+      devLog("AI Exporter: reusing the in-progress conversation load");
+      return inFlightLoad.promise;
+    }
 
-    return inFlightLoad;
+    return inFlightLoad.promise
+      .catch(() => undefined)
+      .then(() => loadEntireConversationSingleFlight(downloadImagesLocally));
   }
 
-  const run = loadEntireConversation().finally(() => {
-    if (inFlightLoad === run) {
+  const run = loadEntireConversation(downloadImagesLocally).finally(() => {
+    if (inFlightLoad?.promise === run) {
       inFlightLoad = null;
     }
   });
 
-  inFlightLoad = run;
+  inFlightLoad = { downloadImagesLocally, promise: run };
 
   return run;
 }
@@ -1295,6 +1774,7 @@ chrome.runtime.onMessage.addListener(
   (
     message: {
       type: string;
+      downloadImagesLocally?: boolean;
     },
     _sender,
     sendResponse,
@@ -1305,7 +1785,7 @@ chrome.runtime.onMessage.addListener(
 
     devLog("AI Exporter: LOAD_CONVERSATION received");
 
-    loadEntireConversationSingleFlight()
+    loadEntireConversationSingleFlight(message.downloadImagesLocally === true)
       .then((result) => {
         devLog("AI Exporter: sending conversation", result);
 

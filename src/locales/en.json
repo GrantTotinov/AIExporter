@@ -63,6 +63,8 @@
   "options.headings.none": "No heading",
   "options.downloads.legend": "Downloads",
   "options.downloads.askWhereToSave": "Ask where to save each export",
+  "options.downloads.bundleImages": "Bundle downloaded images with exports as a ZIP",
+  "options.downloads.bundleImagesHint": "When enabled, image exports include an images folder. Otherwise, image attachments are omitted, matching the original text-only export.",
   "options.downloads.settingsLink": "Open browser download location settings",
   "options.timestamp.legend": "Timestamp",
   "options.timestamp.include": "Include export date/time at the top of the file",

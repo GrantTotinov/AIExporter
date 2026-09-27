@@ -24,6 +24,10 @@ const askWhereToSaveInput = document.getElementById(
   "askWhereToSave",
 ) as HTMLInputElement;
 
+const downloadImagesLocallyInput = document.getElementById(
+  "downloadImagesLocally",
+) as HTMLInputElement;
+
 const themeInput = document.getElementById("theme") as HTMLSelectElement;
 
 const languageInput = document.getElementById("language") as HTMLSelectElement;
@@ -96,6 +100,7 @@ function applySettingsToForm(settings: Settings): void {
 
   includeTimestampInput.checked = settings.includeTimestamp;
   askWhereToSaveInput.checked = settings.askWhereToSave;
+  downloadImagesLocallyInput.checked = settings.downloadImagesLocally;
 
   themeInput.value = settings.theme;
   applyTheme(settings.theme);
@@ -112,6 +117,7 @@ function readSettingsFromForm(): Settings {
     ),
     includeTimestamp: includeTimestampInput.checked,
     askWhereToSave: askWhereToSaveInput.checked,
+    downloadImagesLocally: downloadImagesLocallyInput.checked,
     theme: themeInput.value as Settings["theme"],
     language: languageInput.value as Settings["language"],
   };
