@@ -1,6 +1,6 @@
 /*
  * =========================================================
- * GPTChatDownloader - i18n.ts
+ * AI Exporter - i18n.ts
  * =========================================================
  *
  * Small, dependency-free translation layer for the extension's

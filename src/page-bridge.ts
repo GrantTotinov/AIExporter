@@ -1,5 +1,5 @@
 /*
- * GPTChatDownloader - MAIN world bridge
+ * AI Exporter - MAIN world bridge
  *
  * This file runs in the ChatGPT page's MAIN world.
  *
@@ -131,8 +131,8 @@
   function isApiRequestMessage(
     value: unknown,
   ): value is {
-    source: "GPTChatDownloader";
-    type: "GPTChatDownloader_API_REQUEST";
+    source: "AIExporter";
+    type: "AIExporter_API_REQUEST";
     requestId: string;
     conversationId: string;
     cursor: string | null;
@@ -144,8 +144,8 @@
     const message = value as Record<string, unknown>;
 
     return (
-      message.source === "GPTChatDownloader" &&
-      message.type === "GPTChatDownloader_API_REQUEST" &&
+      message.source === "AIExporter" &&
+      message.type === "AIExporter_API_REQUEST" &&
       isValidRequestId(message.requestId) &&
       isValidConversationId(message.conversationId) &&
       isValidCursor(message.cursor)
@@ -210,11 +210,11 @@
         }
 
         devLog(
-          "GPTChatDownloader bridge: authenticated conversation request detected",
+          "AI Exporter bridge: authenticated conversation request detected",
         );
       } catch (error) {
         devWarn(
-          "GPTChatDownloader bridge: could not inspect request headers",
+          "AI Exporter bridge: could not inspect request headers",
           error,
         );
       }
@@ -238,14 +238,14 @@
 
   /*
    * ---------------------------------------------------------
-   * GPTChatDownloader API REQUEST
+   * AI Exporter API REQUEST
    * ---------------------------------------------------------
    *
    * content.ts sends:
    *
    * {
-   *     source: "GPTChatDownloader",
-   *     type: "GPTChatDownloader_API_REQUEST",
+   *     source: "AIExporter",
+   *     type: "AIExporter_API_REQUEST",
    *     requestId,
    *     conversationId,
    *     cursor
@@ -269,8 +269,8 @@
     if (!allowRequest()) {
       window.postMessage(
         {
-          source: "GPTChatDownloader",
-          type: "GPTChatDownloader_API_ERROR",
+          source: "AIExporter",
+          type: "AIExporter_API_ERROR",
           requestId: event.data.requestId,
           error: "Too many conversation API requests.",
         },
@@ -323,7 +323,7 @@
           headers,
         });
 
-        devLog("GPTChatDownloader bridge: API response", response.status);
+        devLog("AI Exporter bridge: API response", response.status);
 
         if (!response.ok) {
           throw new Error(
@@ -338,20 +338,20 @@
          */
         window.postMessage(
           {
-            source: "GPTChatDownloader",
-            type: "GPTChatDownloader_API_RESPONSE",
+            source: "AIExporter",
+            type: "AIExporter_API_RESPONSE",
             requestId,
             data,
           },
           "*",
         );
       } catch (error) {
-        devError("GPTChatDownloader bridge: API request failed");
+        devError("AI Exporter bridge: API request failed");
 
         window.postMessage(
           {
-            source: "GPTChatDownloader",
-            type: "GPTChatDownloader_API_ERROR",
+            source: "AIExporter",
+            type: "AIExporter_API_ERROR",
             requestId,
             error: error instanceof Error ? error.message : String(error),
           },
@@ -371,11 +371,11 @@
 
   window.postMessage(
     {
-      source: "GPTChatDownloader",
+      source: "AIExporter",
       type: "BRIDGE_READY",
     },
     "*",
   );
 
-  devLog("GPTChatDownloader bridge: installed");
+  devLog("AI Exporter bridge: installed");
 })();

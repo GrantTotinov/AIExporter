@@ -1,6 +1,6 @@
 /*
  * =========================================================
- * GPTChatDownloader - github.ts
+ * AI Exporter - github.ts
  * =========================================================
  *
  * GitHub integration: OAuth Device Flow authentication,
@@ -14,7 +14,7 @@
  * exchanging an authorization code for an access token using
  * a client_secret. A client_secret cannot safely live in an
  * extension - the extension's code is fully inspectable (an
- * unpacked .crx is just files on disk), and GPTChatDownloader is
+ * unpacked .crx is just files on disk), and AI Exporter is
  * open source, so anything committed here is public.
  * Embedding a secret would leak it immediately.
  *
@@ -25,7 +25,7 @@
  * docs and official client libraries (e.g. octokit's
  * auth-oauth-device) confirm the device flow requires no
  * client secret and no server-side component. This is why
- * GPTChatDownloader uses it instead of chrome.identity.launchWebAuthFlow
+ * AI Exporter uses it instead of chrome.identity.launchWebAuthFlow
  * (which would still need a secret-holding backend somewhere).
  *
  * Flow:
@@ -68,7 +68,7 @@ const GITHUB_CLIENT_ID = "Ov23livM5zFifnOcvad6";
 const GITHUB_SCOPE = "repo";
 
 const STORAGE_KEY_TOKEN = "githubAccessToken";
-export const PROJECT_REPOSITORY = "GrantTotinov/GPTChatDownloader";
+export const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 
 /*
  * ---------------------------------------------------------
@@ -449,8 +449,8 @@ export async function saveFileToRepo(
       method: "PUT",
       body: JSON.stringify({
         message: existingSha
-          ? `Update ${filename} via GPTChatDownloader`
-          : `Add ${filename} via GPTChatDownloader`,
+          ? `Update ${filename} via AI Exporter`
+          : `Add ${filename} via AI Exporter`,
         content: base64Content,
         sha: existingSha,
       }),
@@ -481,7 +481,7 @@ export async function saveFileToRepo(
       {
         method: "PUT",
         body: JSON.stringify({
-          message: `Update ${filename} via GPTChatDownloader`,
+          message: `Update ${filename} via AI Exporter`,
           content: base64Content,
           sha: retrySha,
         }),

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "GPTChatDownloader",
-  "version": "2.0.0",
-  "description": "Export ChatGPT chats as Markdown, text, JSON, or CSV. Copy to clipboard or save to GitHub, with message selection and dark mode.",
+  "name": "AI Exporter - Export ChatGPT, Claude & Gemini to PDF, MD, JSON & CSV",
+  "version": "2.0.1",
+  "description": "Export and download ChatGPT chats as Markdown, TXT, JSON or CSV. Save conversations to GitHub or copy to clipboard.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -16,7 +16,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "gptchatdownloader@granttotinov.com",
+      "id": "aiexporter@granttotinov.com",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["none"],
@@ -40,7 +40,7 @@
     }
   ],
   "action": {
-    "default_title": "GPTChatDownloader",
+    "default_title": "AI Exporter",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

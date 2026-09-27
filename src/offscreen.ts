@@ -33,7 +33,7 @@ async function copyUsingClipboardApi(text: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    devError("GPTChatDownloader: navigator.clipboard.writeText failed", error);
+    devError("AI Exporter: navigator.clipboard.writeText failed", error);
 
     return false;
   }
@@ -56,7 +56,7 @@ function copyUsingExecCommand(text: string): boolean {
   ) as HTMLTextAreaElement | null;
 
   if (!textarea) {
-    devError("GPTChatDownloader: clipboard-helper textarea missing");
+    devError("AI Exporter: clipboard-helper textarea missing");
 
     return false;
   }
@@ -80,7 +80,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 
   devLog(
-    "GPTChatDownloader: navigator.clipboard unavailable, falling back to execCommand",
+    "AI Exporter: navigator.clipboard unavailable, falling back to execCommand",
   );
 
   return copyUsingExecCommand(text);
@@ -105,13 +105,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         throw new Error("Clipboard write failed");
       }
 
-      devLog("GPTChatDownloader: offscreen clipboard write successful");
+      devLog("AI Exporter: offscreen clipboard write successful");
 
       sendResponse({
         success: true,
       });
     } catch (error) {
-      devError("GPTChatDownloader: offscreen clipboard failed", error);
+      devError("AI Exporter: offscreen clipboard failed", error);
 
       sendResponse({
         success: false,

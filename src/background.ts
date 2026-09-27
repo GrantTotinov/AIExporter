@@ -206,7 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       sendResponse(response);
     } catch (error) {
-      devError("GPTChatDownloader: background clipboard failed", error);
+      devError("AI Exporter: background clipboard failed", error);
 
       sendResponse({
         success: false,

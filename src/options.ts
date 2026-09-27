@@ -288,7 +288,7 @@ githubConnectButton.addEventListener("click", async () => {
 
     window.open(verificationUri, "_blank", "noopener,noreferrer");
   } catch (error) {
-    devError("GPTChatDownloader: GitHub auth start failed", error);
+    devError("AI Exporter: GitHub auth start failed", error);
 
     githubStatusLabel.textContent =
       error instanceof Error

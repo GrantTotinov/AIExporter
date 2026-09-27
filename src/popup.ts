@@ -27,7 +27,7 @@ void initI18n().then(() => {
 
 import { stripMarkdown } from "./markdown-strip.ts";
 
-const PROJECT_REPOSITORY = "GrantTotinov/GPTChatDownloader";
+const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
 
 const devLog = (...args: unknown[]): void => {
@@ -440,7 +440,7 @@ async function loadConversationMessages(): Promise<{
       throw new Error(t("popup.error.openChatGpt"));
     }
 
-    devLog("GPTChatDownloader: requesting conversation");
+    devLog("AI Exporter: requesting conversation");
 
     let response;
 
@@ -450,7 +450,7 @@ async function loadConversationMessages(): Promise<{
       });
     } catch (sendError) {
       devWarn(
-        "GPTChatDownloader: no content script, reloading tab and retrying",
+        "AI Exporter: no content script, reloading tab and retrying",
         sendError,
       );
 
@@ -475,7 +475,7 @@ async function loadConversationMessages(): Promise<{
 
     const messages = response.data as Message[];
 
-    devLog(`GPTChatDownloader: received ${messages.length} messages`);
+    devLog(`AI Exporter: received ${messages.length} messages`);
 
     if (messages.length === 0) {
       throw new Error(t("popup.error.noMessagesFound"));
@@ -500,7 +500,7 @@ async function loadConversationMessages(): Promise<{
  * for Export.
  */
 copyButton.addEventListener("click", async () => {
-  devLog("GPTChatDownloader: copy clicked");
+  devLog("AI Exporter: copy clicked");
 
   try {
     const { messages } = await loadConversationMessages();
@@ -512,7 +512,7 @@ copyButton.addEventListener("click", async () => {
       data: markdown,
     });
 
-    devLog("GPTChatDownloader: clipboard response", copyResponse);
+    devLog("AI Exporter: clipboard response", copyResponse);
 
     if (!copyResponse?.success) {
       throw new Error(
@@ -522,7 +522,7 @@ copyButton.addEventListener("click", async () => {
 
     showToast(t("popup.toast.copied"));
   } catch (error) {
-    devError("GPTChatDownloader: copy failed", error);
+    devError("AI Exporter: copy failed", error);
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -724,7 +724,7 @@ selectorCancelButton.addEventListener("click", () => {
  * every time - it never skips straight to a download.
  */
 exportButton.addEventListener("click", async () => {
-  devLog("GPTChatDownloader: export clicked, opening selector");
+  devLog("AI Exporter: export clicked, opening selector");
 
   try {
     const { messages, tabTitle } = await loadConversationMessages();
@@ -740,7 +740,7 @@ exportButton.addEventListener("click", async () => {
     selectorOverlay.classList.add("open");
     markOverlayOpened();
   } catch (error) {
-    devError("GPTChatDownloader: failed to load messages for export", error);
+    devError("AI Exporter: failed to load messages for export", error);
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -793,7 +793,7 @@ selectorExportButton.addEventListener("click", async () => {
       saveAs: settings.askWhereToSave,
     });
 
-    devLog("GPTChatDownloader: download started", downloadId);
+    devLog("AI Exporter: download started", downloadId);
 
     showToast(t("popup.toast.downloadStarted"));
 
@@ -808,7 +808,7 @@ selectorExportButton.addEventListener("click", async () => {
         openExportSuccess();
       });
   } catch (error) {
-    devError("GPTChatDownloader: download failed", error);
+    devError("AI Exporter: download failed", error);
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -967,13 +967,13 @@ async function saveToGitHub(): Promise<void> {
       throw new Error(saveResponse?.error ?? t("popup.error.githubSaveFailed"));
     }
 
-    devLog("GPTChatDownloader: saved to GitHub", saveResponse.data);
+    devLog("AI Exporter: saved to GitHub", saveResponse.data);
 
     closeGithubPanel();
     showToast(t("popup.toast.githubSaved"));
     openExportSuccess();
   } catch (error) {
-    devError("GPTChatDownloader: GitHub save failed", error);
+    devError("AI Exporter: GitHub save failed", error);
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -988,7 +988,7 @@ async function saveToGitHub(): Promise<void> {
 }
 
 githubPanelSaveButton.addEventListener("click", () => {
-  devLog("GPTChatDownloader: GitHub save confirmation requested");
+  devLog("AI Exporter: GitHub save confirmation requested");
 
   if (!githubRepoSelect.value) {
     return;
@@ -1076,7 +1076,7 @@ githubStarButton.addEventListener("click", async () => {
       return;
     }
   } catch (error) {
-    devWarn("GPTChatDownloader: direct GitHub star failed", error);
+    devWarn("AI Exporter: direct GitHub star failed", error);
   }
 
   await chrome.tabs.create({

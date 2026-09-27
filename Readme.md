@@ -1,4 +1,4 @@
-# GPTChatDownloader
+# AI Exporter
 
 A Chrome extension that exports your ChatGPT conversations to Markdown, plain text, JSON, or CSV, so you can keep a copy, share it, or drop it straight into a GitHub repo.
 
@@ -6,7 +6,7 @@ A Chrome extension that exports your ChatGPT conversations to Markdown, plain te
 
 Most ChatGPT export tools scrape the page's DOM. They scroll through the conversation, grab whatever text is currently rendered, and hope nothing gets missed. That approach is fragile: ChatGPT virtualizes long conversations (it only keeps a portion of messages in the DOM at once), so scroll-based scrapers routinely drop messages or get the order wrong, especially on longer chats.
 
-GPTChatDownloader takes a different approach. It talks to the same conversation API that the ChatGPT web app itself uses, paginating through the full message history and reconstructing the actual conversation tree. ChatGPT stores branches (regenerated replies, edited messages) and this walks the correct path through them using each message's parent pointer. The result is a complete, correctly ordered export, no matter how long the conversation is or how many times you regenerated a response.
+AI Exporter takes a different approach. It talks to the same conversation API that the ChatGPT web app itself uses, paginating through the full message history and reconstructing the actual conversation tree. ChatGPT stores branches (regenerated replies, edited messages) and this walks the correct path through them using each message's parent pointer. The result is a complete, correctly ordered export, no matter how long the conversation is or how many times you regenerated a response.
 
 ## What it does
 
@@ -22,7 +22,7 @@ GPTChatDownloader takes a different approach. It talks to the same conversation 
 
 ### From the Chrome Web Store
 
-The easiest way once it's published: search for "GPTChatDownloader" in the Chrome Web Store and click Add to Chrome. If you're reading this before the listing goes live, use the manual steps below instead.
+The easiest way once it's published: search for "AI Exporter" in the Chrome Web Store and click Add to Chrome. If you're reading this before the listing goes live, use the manual steps below instead.
 
 ### Manually, from source
 
@@ -30,8 +30,8 @@ If you want to run the latest code, or the extension isn't live on the Web Store
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/GrantTotinov/GPTChatDownloader.git
-   cd GPTChatDownloader
+   git clone https://github.com/GrantTotinov/AIExporter.git
+   cd AIExporter
    ```
 2. Install dependencies and build:
    ```bash
@@ -43,19 +43,19 @@ If you want to run the latest code, or the extension isn't live on the Web Store
 4. Turn on **Developer mode** (top right corner).
 5. Click **Load unpacked** and select the `dist/` folder.
 
-The GPTChatDownloader icon should now show up in your toolbar. If you don't see it, click the puzzle-piece icon next to the address bar and pin it.
+The AI Exporter icon should now show up in your toolbar. If you don't see it, click the puzzle-piece icon next to the address bar and pin it.
 
-Any time you pull new changes, re-run `npm run build` and then hit the reload icon for GPTChatDownloader on `chrome://extensions`. Chrome doesn't pick up rebuilt files on its own.
+Any time you pull new changes, re-run `npm run build` and then hit the reload icon for AI Exporter on `chrome://extensions`. Chrome doesn't pick up rebuilt files on its own.
 
 ## Using it
 
 1. Open any conversation on `chatgpt.com`.
-2. Click the GPTChatDownloader icon.
+2. Click the AI Exporter icon.
 3. Pick **Copy Conversation**, or open **Export ▾** to choose a format and, optionally, select specific messages first.
 
 ## Saving to GitHub
 
-GPTChatDownloader can commit an export directly into a repo instead of downloading it to disk.
+AI Exporter can commit an export directly into a repo instead of downloading it to disk.
 
 1. Open the extension's **Settings** page and click **Connect GitHub**.
 2. You'll get a short code and a new tab pointing at `github.com/login/device`. Enter the code there and approve access.
@@ -65,13 +65,13 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 
 ## A few notes
 
-- GPTChatDownloader only works on `chatgpt.com`. If OpenAI changes their internal API, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
+- AI Exporter only works on `chatgpt.com`. If OpenAI changes their internal API, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
 
 ## Support
 
-GPTChatDownloader is free and independently maintained. If it's useful to you, starring the repo or buying me a coffee helps keep it going: [buymeacoffee.com/granttotinov](https://buymeacoffee.com/granttotinov).
+AI Exporter is free and independently maintained. If it's useful to you, starring the repo or buying me a coffee helps keep it going: [buymeacoffee.com/granttotinov](https://buymeacoffee.com/granttotinov).
 
 Questions, bugs, or feature requests: open an issue on this repo, or email **granttotinov604@gmail.com** directly.
 

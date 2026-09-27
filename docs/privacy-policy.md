@@ -1,14 +1,14 @@
-# Privacy Policy for GPTChatDownloader
+# Privacy Policy for AI Exporter
 
 **Effective date:** September 8, 2026
 
-GPTChatDownloader is a Chrome extension that allows users to export their ChatGPT conversations as Markdown or plain text, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository.
+AI Exporter is a Chrome extension that allows users to export their ChatGPT conversations as Markdown or plain text, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository.
 
-This Privacy Policy explains what information GPTChatDownloader processes, how it is used, and where it is stored.
+This Privacy Policy explains what information AI Exporter processes, how it is used, and where it is stored.
 
-## 1. Information GPTChatDownloader Processes
+## 1. Information AI Exporter Processes
 
-GPTChatDownloader processes the following information when you use its features:
+AI Exporter processes the following information when you use its features:
 
 ### ChatGPT conversation content
 
@@ -21,13 +21,13 @@ This may include:
 - Conversation message identifiers
 - Conversation structure and ordering information required to reconstruct the conversation
 
-GPTChatDownloader processes this information only to perform the export or copy operation requested by the user.
+AI Exporter processes this information only to perform the export or copy operation requested by the user.
 
-GPTChatDownloader does not operate its own server or backend for storing or processing conversation content.
+AI Exporter does not operate its own server or backend for storing or processing conversation content.
 
 ### GitHub account information
 
-If you choose to connect GitHub, GPTChatDownloader uses GitHub's OAuth Device Flow to authorize access to your GitHub account.
+If you choose to connect GitHub, AI Exporter uses GitHub's OAuth Device Flow to authorize access to your GitHub account.
 
 The extension may receive and process:
 
@@ -55,15 +55,15 @@ When you choose **Copy Conversation**, the exported conversation is written to t
 
 When you explicitly choose **Save to GitHub**, the selected conversation export is sent directly to GitHub's API and saved in the GitHub repository selected by you, under the `exports/` directory.
 
-GPTChatDownloader does not send GitHub exports to a server operated by the developer.
+AI Exporter does not send GitHub exports to a server operated by the developer.
 
 ## 3. GitHub Authorization
 
 GitHub integration is optional.
 
-If you choose to connect GitHub, GPTChatDownloader uses GitHub's OAuth Device Flow. Authorization takes place through GitHub's website.
+If you choose to connect GitHub, AI Exporter uses GitHub's OAuth Device Flow. Authorization takes place through GitHub's website.
 
-GPTChatDownloader does not ask for or store your GitHub password.
+AI Exporter does not ask for or store your GitHub password.
 
 The GitHub access token is stored locally using Chrome's local extension storage and is used only to make the GitHub API requests required by the extension.
 
@@ -71,15 +71,15 @@ The token is not stored using Chrome's synchronized storage.
 
 You can disconnect GitHub at any time from the extension's Settings page. Disconnecting removes the stored GitHub access token from the extension's local storage.
 
-If GitHub reports that the stored token is invalid or revoked, GPTChatDownloader automatically removes the stored token and treats the GitHub connection as disconnected.
+If GitHub reports that the stored token is invalid or revoked, AI Exporter automatically removes the stored token and treats the GitHub connection as disconnected.
 
 ## 4. Data Storage
 
-GPTChatDownloader does not maintain a remote database or server for user data.
+AI Exporter does not maintain a remote database or server for user data.
 
 ### Conversation content
 
-Conversation content is not persistently stored by GPTChatDownloader.
+Conversation content is not persistently stored by AI Exporter.
 
 During an export, conversation data exists temporarily in the extension's runtime memory while the export is being generated.
 
@@ -97,7 +97,7 @@ Export preferences, such as heading style, timestamp preference, and message spa
 
 ## 5. Data Sharing
 
-GPTChatDownloader does not sell, rent, or share user data with advertisers, analytics providers, data brokers, or other third parties.
+AI Exporter does not sell, rent, or share user data with advertisers, analytics providers, data brokers, or other third parties.
 
 The extension communicates with the following external services when their functionality is used:
 
@@ -110,7 +110,7 @@ No conversation content is sent to the developer's own servers.
 
 ## 6. User Control
 
-You control when GPTChatDownloader processes a conversation.
+You control when AI Exporter processes a conversation.
 
 You can:
 
@@ -127,7 +127,7 @@ Files previously exported to your computer or saved to GitHub are not automatica
 
 ## 7. Data Security
 
-GPTChatDownloader is designed to minimize data handling.
+AI Exporter is designed to minimize data handling.
 
 The extension:
 
@@ -141,13 +141,13 @@ No method of electronic storage or transmission can guarantee absolute security.
 
 ## 8. Third-Party Services
 
-GPTChatDownloader relies on third-party services for functionality:
+AI Exporter relies on third-party services for functionality:
 
 ### ChatGPT
 
-GPTChatDownloader operates on `chatgpt.com` and uses the authenticated session already established by the user in the ChatGPT website.
+AI Exporter operates on `chatgpt.com` and uses the authenticated session already established by the user in the ChatGPT website.
 
-GPTChatDownloader does not collect or store the user's ChatGPT password.
+AI Exporter does not collect or store the user's ChatGPT password.
 
 ### GitHub
 
@@ -157,23 +157,23 @@ When a user chooses to use GitHub integration, GitHub processes the information 
 
 ## 9. Children's Privacy
 
-GPTChatDownloader is not specifically directed at children and does not knowingly collect personal information from children.
+AI Exporter is not specifically directed at children and does not knowingly collect personal information from children.
 
 ## 10. Changes to This Privacy Policy
 
-This Privacy Policy may be updated when GPTChatDownloader's functionality or data practices change.
+This Privacy Policy may be updated when AI Exporter's functionality or data practices change.
 
 The updated version will be published at the same Privacy Policy URL. The effective date at the top of this document will be updated when material changes are made.
 
 ## 11. Contact
 
-For privacy questions, concerns, or requests regarding GPTChatDownloader, contact:
+For privacy questions, concerns, or requests regarding AI Exporter, contact:
 
 **Grant Totinov**
 Email: **[granttotinov604@gmail.com](mailto:granttotinov604@gmail.com)**
 
 ## 12. Open Source
 
-GPTChatDownloader is open-source software. The source code is publicly available in the project's GitHub repository.
+AI Exporter is open-source software. The source code is publicly available in the project's GitHub repository.
 
-This Privacy Policy describes the data practices of the GPTChatDownloader extension and does not modify the terms of the project's MIT License.
+This Privacy Policy describes the data practices of the AI Exporter extension and does not modify the terms of the project's MIT License.

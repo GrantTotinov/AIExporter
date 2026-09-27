@@ -1,6 +1,6 @@
 /*
  * =========================================================
- * GPTChatDownloader - content.ts
+ * AI Exporter - content.ts
  * =========================================================
  *
  * The content script:
@@ -36,7 +36,7 @@ type ContentLocale = (typeof CONTENT_LOCALES)[number];
 const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   en: {
     title: "✅ Export Successful!",
-    thanks: "Built with ❤️. Thanks for using GPTChatDownloader.",
+    thanks: "Built with ❤️. Thanks for using AI Exporter.",
     rate: "⭐ Rate on Chrome Web Store",
     coffee: "☕ Buy Me a Coffee",
     feedbackPrompt: "Found a bug or have an idea? Reach out:",
@@ -46,7 +46,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   },
   es: {
     title: "✅ ¡Exportación exitosa!",
-    thanks: "Hecho con ❤️. Gracias por usar GPTChatDownloader.",
+    thanks: "Hecho con ❤️. Gracias por usar AI Exporter.",
     rate: "⭐ Valóranos en Chrome Web Store",
     coffee: "☕ Invítame a un café",
     feedbackPrompt: "¿Encontraste un error o tienes una idea? Contáctanos:",
@@ -56,7 +56,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   },
   fr: {
     title: "✅ Export réussi !",
-    thanks: "Créé avec ❤️. Merci d'utiliser GPTChatDownloader.",
+    thanks: "Créé avec ❤️. Merci d'utiliser AI Exporter.",
     rate: "⭐ Noter sur le Chrome Web Store",
     coffee: "☕ M'offrir un café",
     feedbackPrompt: "Un bug ou une idée ? Contactez-nous :",
@@ -66,7 +66,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   },
   de: {
     title: "✅ Export erfolgreich!",
-    thanks: "Mit ❤️ erstellt. Danke, dass du GPTChatDownloader nutzt.",
+    thanks: "Mit ❤️ erstellt. Danke, dass du AI Exporter nutzt.",
     rate: "⭐ Im Chrome Web Store bewerten",
     coffee: "☕ Spendiere mir einen Kaffee",
     feedbackPrompt: "Fehler gefunden oder eine Idee? Melde dich:",
@@ -76,7 +76,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   },
   ru: {
     title: "✅ Экспорт выполнен успешно!",
-    thanks: "Сделано с ❤️. Спасибо, что используете GPTChatDownloader.",
+    thanks: "Сделано с ❤️. Спасибо, что используете AI Exporter.",
     rate: "⭐ Оценить в Chrome Web Store",
     coffee: "☕ Угостить кофе",
     feedbackPrompt: "Нашли ошибку или есть идея? Напишите нам:",
@@ -86,7 +86,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   },
   zh: {
     title: "✅ 导出成功！",
-    thanks: "用 ❤️ 打造。感谢您使用 GPTChatDownloader。",
+    thanks: "用 ❤️ 打造。感谢您使用 AI Exporter。",
     rate: "⭐ 在 Chrome 网上应用店评分",
     coffee: "☕ 请我喝咖啡",
     feedbackPrompt: "发现了 bug 或有好想法？请联系我们：",
@@ -186,9 +186,7 @@ const devError = (...args: unknown[]): void => {
  */
 
 function injectPageBridge(): void {
-  if (
-    document.documentElement.dataset.GPTChatDownloaderBridgeInjected === "true"
-  ) {
+  if (document.documentElement.dataset.aiExporterBridgeInjected === "true") {
     return;
   }
 
@@ -196,21 +194,21 @@ function injectPageBridge(): void {
 
   script.src = chrome.runtime.getURL("pageBridge.js");
 
-  script.dataset.GPTChatDownloader = "page-bridge";
+  script.dataset.aiExporter = "page-bridge";
 
   script.onload = () => {
     script.remove();
 
-    devLog("GPTChatDownloader: page bridge injected");
+    devLog("AI Exporter: page bridge injected");
   };
 
   script.onerror = () => {
-    devError("GPTChatDownloader: failed to inject page bridge");
+    devError("AI Exporter: failed to inject page bridge");
   };
 
   (document.head || document.documentElement).appendChild(script);
 
-  document.documentElement.dataset.GPTChatDownloaderBridgeInjected = "true";
+  document.documentElement.dataset.aiExporterBridgeInjected = "true";
 }
 
 injectPageBridge();
@@ -702,7 +700,7 @@ function fetchConversationPage(
 
       const data = event.data;
 
-      if (!data || data.source !== "GPTChatDownloader") {
+      if (!data || data.source !== "AIExporter") {
         return;
       }
 
@@ -710,25 +708,23 @@ function fetchConversationPage(
         return;
       }
 
-      if (data.type === "GPTChatDownloader_API_ERROR") {
+      if (data.type === "AIExporter_API_ERROR") {
         finishError(
           new Error(
-            data.error ?? "Unknown error from GPTChatDownloader page bridge.",
+            data.error ?? "Unknown error from AI Exporter page bridge.",
           ),
         );
 
         return;
       }
 
-      if (data.type !== "GPTChatDownloader_API_RESPONSE") {
+      if (data.type !== "AIExporter_API_RESPONSE") {
         return;
       }
 
       if (!data.data) {
         finishError(
-          new Error(
-            "GPTChatDownloader page bridge returned an empty API response.",
-          ),
+          new Error("AI Exporter page bridge returned an empty API response."),
         );
 
         return;
@@ -749,8 +745,8 @@ function fetchConversationPage(
 
     window.postMessage(
       {
-        source: "GPTChatDownloader",
-        type: "GPTChatDownloader_API_REQUEST",
+        source: "AIExporter",
+        type: "AIExporter_API_REQUEST",
         requestId,
         conversationId,
         cursor,
@@ -771,7 +767,7 @@ function fetchConversationPage(
 
       finishError(
         new Error(
-          "GPTChatDownloader page bridge timed out while requesting the conversation API.",
+          "AI Exporter page bridge timed out while requesting the conversation API.",
         ),
       );
     }, 30000);
@@ -814,14 +810,14 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (!event.data || event.data.source !== "GPTChatDownloader") {
+  if (!event.data || event.data.source !== "AIExporter") {
     return;
   }
 
   if (event.data.type === "BRIDGE_READY") {
     bridgeReady = true;
 
-    devLog("GPTChatDownloader: page bridge ready");
+    devLog("AI Exporter: page bridge ready");
   }
 });
 
@@ -867,7 +863,7 @@ async function loadEntireConversation(): Promise<Message[]> {
     );
   }
 
-  devLog("GPTChatDownloader: API conversation ID", conversationId);
+  devLog("AI Exporter: API conversation ID", conversationId);
 
   /*
    * -----------------------------------------------------
@@ -887,11 +883,7 @@ async function loadEntireConversation(): Promise<Message[]> {
   const collectPage = (currentPage: ConversationPage): void => {
     const messages = currentPage.messages ?? [];
 
-    devLog(
-      "GPTChatDownloader: API page contains",
-      messages.length,
-      "raw messages",
-    );
+    devLog("AI Exporter: API page contains", messages.length, "raw messages");
 
     for (const message of messages) {
       const id = message.id;
@@ -924,8 +916,7 @@ async function loadEntireConversation(): Promise<Message[]> {
   collectPage(page);
 
   devLog(
-    `GPTChatDownloader: API page ${pageNumber}, ` +
-      `collected=${collected.size}`,
+    `AI Exporter: API page ${pageNumber}, ` + `collected=${collected.size}`,
   );
 
   /*
@@ -964,8 +955,7 @@ async function loadEntireConversation(): Promise<Message[]> {
     collectPage(page);
 
     devLog(
-      `GPTChatDownloader: API page ${pageNumber}, ` +
-        `collected=${collected.size}`,
+      `AI Exporter: API page ${pageNumber}, ` + `collected=${collected.size}`,
     );
 
     /*
@@ -988,11 +978,11 @@ async function loadEntireConversation(): Promise<Message[]> {
 
   if (!currentNode) {
     devWarn(
-      "GPTChatDownloader: API response did not include current_node; using chronological fallback",
+      "AI Exporter: API response did not include current_node; using chronological fallback",
     );
   }
 
-  devLog("GPTChatDownloader: resolved active conversation", {
+  devLog("AI Exporter: resolved active conversation", {
     currentNode,
     rawMessages: rawById.size,
     messages: messages.length,
@@ -1031,7 +1021,7 @@ async function loadEntireConversation(): Promise<Message[]> {
    * -----------------------------------------------------
    */
 
-  devLog("GPTChatDownloader: API export complete", {
+  devLog("AI Exporter: API export complete", {
     conversationId,
     pages: pageNumber + 1,
     messages: result.length,
@@ -1052,7 +1042,7 @@ async function loadEntireConversation(): Promise<Message[]> {
 
 window.postMessage(
   {
-    source: "GPTChatDownloader",
+    source: "AIExporter",
     type: "READY",
   },
   "*",
@@ -1072,7 +1062,7 @@ let inFlightLoad: Promise<Message[]> | null = null;
 function loadEntireConversationSingleFlight(): Promise<Message[]> {
   if (inFlightLoad) {
     devLog(
-      "GPTChatDownloader: LOAD_CONVERSATION already in progress, reusing existing run",
+      "AI Exporter: LOAD_CONVERSATION already in progress, reusing existing run",
     );
 
     return inFlightLoad;
@@ -1109,7 +1099,7 @@ function loadEntireConversationSingleFlight(): Promise<Message[]> {
  * with ChatGPT's own page styles.
  */
 
-const EXPORT_SUCCESS_OVERLAY_ID = "gptchatdownloader-export-success-overlay";
+const EXPORT_SUCCESS_OVERLAY_ID = "ai-exporter-export-success-overlay";
 
 type ExportTheme = "system" | "light" | "dark";
 
@@ -1132,8 +1122,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       : "system";
 });
 
-const PROJECT_REPOSITORY_URL =
-  "https://github.com/GrantTotinov/GPTChatDownloader";
+const PROJECT_REPOSITORY_URL = "https://github.com/GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
 const CHROME_STORE_URL =
   "https://chromewebstore.google.com/detail/objkcakdcilfaphifjfcgfamlnnbinjc";
@@ -1240,7 +1229,7 @@ function showExportSuccessOverlay(): void {
 
     <div style="display: flex; justify-content: center; gap: 14px; margin-bottom: 16px;">
       <a
-        href="https://x.com/intent/tweet?text=${encodeURIComponent("Checking out GPTChatDownloader - a handy ChatGPT export extension!")}&url=${encodeURIComponent(PROJECT_REPOSITORY_URL)}"
+        href="https://x.com/intent/tweet?text=${encodeURIComponent("Checking out AI Exporter - a handy ChatGPT export extension!")}&url=${encodeURIComponent(PROJECT_REPOSITORY_URL)}"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="${ct("shareAriaLabel")}"
@@ -1257,7 +1246,7 @@ function showExportSuccessOverlay(): void {
 
     <button
       type="button"
-      id="gptchatdownloader-export-success-close"
+      id="ai-exporter-export-success-close"
       style="width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid #30363d; background: transparent; color: var(--gpt-export-text); font-size: 12.5px; font-weight: 500; cursor: pointer;"
     >
       ${ct("close")}
@@ -1268,7 +1257,7 @@ function showExportSuccessOverlay(): void {
   document.body.appendChild(overlay);
 
   const closeButton = modal.querySelector<HTMLButtonElement>(
-    "#gptchatdownloader-export-success-close",
+    "#ai-exporter-export-success-close",
   );
 
   closeButton?.addEventListener("click", () => {
@@ -1314,11 +1303,11 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    devLog("GPTChatDownloader: LOAD_CONVERSATION received");
+    devLog("AI Exporter: LOAD_CONVERSATION received");
 
     loadEntireConversationSingleFlight()
       .then((result) => {
-        devLog("GPTChatDownloader: sending conversation", result);
+        devLog("AI Exporter: sending conversation", result);
 
         sendResponse({
           success: true,
@@ -1326,7 +1315,7 @@ chrome.runtime.onMessage.addListener(
         });
       })
       .catch((error) => {
-        devError("GPTChatDownloader: failed to load conversation", error);
+        devError("AI Exporter: failed to load conversation", error);
 
         sendResponse({
           success: false,
