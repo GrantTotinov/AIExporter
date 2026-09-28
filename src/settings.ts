@@ -23,8 +23,14 @@ export interface Settings {
    * Firefox, since chrome.downloads.download's saveAs option
    * is part of the shared WebExtensions API surface both
    * browsers implement the same way.
-   */
+  */
   askWhereToSave: boolean;
+  /**
+   * When enabled, image-bearing exports download image assets and bundle them
+   * with the conversation file. The default preserves the original text-only
+   * behavior and omits image attachments from the Markdown.
+   */
+  downloadImagesLocally: boolean;
   theme: "system" | "light" | "dark";
   /*
    * "auto" detects a supported language from the browser's
@@ -42,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   headingStyle: "h2",
   messageSeparator: "double",
   askWhereToSave: true,
+  downloadImagesLocally: false,
   theme: "system",
   language: "auto",
 };

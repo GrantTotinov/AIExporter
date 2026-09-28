@@ -393,6 +393,7 @@ export async function saveFileToRepo(
   fullName: string,
   filename: string,
   content: string,
+  alreadyBase64 = false,
 ): Promise<{ htmlUrl: string }> {
   const path = `exports/${filename}`;
 
@@ -429,19 +430,23 @@ export async function saveFileToRepo(
    * well under engines' function-argument limits (which vary,
    * but problems start well beyond 100k) to stay safe.
    */
-  const utf8Bytes = new TextEncoder().encode(content);
+  let base64Content = content;
 
-  const CHUNK_SIZE = 8192;
+  if (!alreadyBase64) {
+    const utf8Bytes = new TextEncoder().encode(content);
 
-  let binary = "";
+    const CHUNK_SIZE = 8192;
 
-  for (let offset = 0; offset < utf8Bytes.length; offset += CHUNK_SIZE) {
-    const chunk = utf8Bytes.subarray(offset, offset + CHUNK_SIZE);
+    let binary = "";
 
-    binary += String.fromCharCode(...chunk);
+    for (let offset = 0; offset < utf8Bytes.length; offset += CHUNK_SIZE) {
+      const chunk = utf8Bytes.subarray(offset, offset + CHUNK_SIZE);
+
+      binary += String.fromCharCode(...chunk);
+    }
+
+    base64Content = btoa(binary);
   }
-
-  const base64Content = btoa(binary);
 
   const response = await githubApiRequest(
     `/repos/${fullName}/contents/${encodeURIComponent(path)}`,

@@ -30,6 +30,7 @@ describe("settings", () => {
       headingStyle: "h2",
       messageSeparator: "double",
       askWhereToSave: true,
+      downloadImagesLocally: false,
       theme: "system",
       language: "auto",
     });
@@ -61,6 +62,7 @@ describe("settings", () => {
       headingStyle: "bold",
       messageSeparator: "rule",
       askWhereToSave: true,
+      downloadImagesLocally: true,
       theme: "dark",
       language: "en",
     };
@@ -78,6 +80,7 @@ describe("settings", () => {
       headingStyle: "none",
       messageSeparator: "single",
       askWhereToSave: true,
+      downloadImagesLocally: false,
       theme: "light",
       language: "fr",
     };

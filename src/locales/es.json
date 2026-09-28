@@ -63,6 +63,8 @@
   "options.headings.none": "Sin encabezado",
   "options.downloads.legend": "Descargas",
   "options.downloads.askWhereToSave": "Preguntar dónde guardar cada exportación",
+  "options.downloads.bundleImages": "Incluir las imágenes descargadas en un ZIP",
+  "options.downloads.bundleImagesHint": "Al activarlo, las exportaciones con imágenes incluyen una carpeta de imágenes. Si no, se omiten los adjuntos, como en la exportación original solo de texto.",
   "options.downloads.settingsLink": "Abrir los ajustes de descargas del navegador",
   "options.timestamp.legend": "Marca de tiempo",
   "options.timestamp.include": "Incluir fecha/hora de exportación al inicio del archivo",
