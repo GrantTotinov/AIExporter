@@ -73,14 +73,14 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
 
+## Contributors
+Ha1baraA11
+
 ## Support
 
 AI Exporter is free and independently maintained. If it's useful to you, starring the repo or buying me a coffee helps keep it going: [buymeacoffee.com/granttotinov](https://buymeacoffee.com/granttotinov).
 
 Questions, bugs, or feature requests: open an issue on this repo, or email **granttotinov604@gmail.com** directly.
-
-## Contributors
-Ha1baraA11
 
 ## License
 
