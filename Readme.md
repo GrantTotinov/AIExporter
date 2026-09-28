@@ -79,6 +79,9 @@ AI Exporter is free and independently maintained. If it's useful to you, starrin
 
 Questions, bugs, or feature requests: open an issue on this repo, or email **granttotinov604@gmail.com** directly.
 
+## Contributors
+Ha1baraA11
+
 ## License
 
 See [LICENSE](./LICENSE) for details.
