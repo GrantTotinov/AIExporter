@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_PDF_SETTINGS,
   SEPARATOR_TEXT,
   loadSettings,
   saveSettings,
@@ -33,6 +34,7 @@ describe("settings", () => {
       downloadImagesLocally: false,
       theme: "system",
       language: "auto",
+      pdf: DEFAULT_PDF_SETTINGS,
     });
   });
 
@@ -65,6 +67,7 @@ describe("settings", () => {
       downloadImagesLocally: true,
       theme: "dark",
       language: "en",
+      pdf: DEFAULT_PDF_SETTINGS,
     };
 
     storageGet.mockResolvedValue(settings);
@@ -83,6 +86,7 @@ describe("settings", () => {
       downloadImagesLocally: false,
       theme: "light",
       language: "fr",
+      pdf: DEFAULT_PDF_SETTINGS,
     };
 
     storageSet.mockResolvedValue(undefined);

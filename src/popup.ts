@@ -27,6 +27,7 @@ void initI18n().then(() => {
 
 import { stripMarkdown } from "./markdown-strip.ts";
 import { createZipBlob, decodeBase64, encodeBlobBase64 } from "./zip.ts";
+import { buildPdfBlob } from "./pdf-export.ts";
 
 const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
@@ -64,7 +65,7 @@ interface ExportImageFile {
   sizeBytes: number;
 }
 
-type ExportFormat = "md" | "txt" | "json" | "csv";
+type ExportFormat = "md" | "txt" | "json" | "csv" | "pdf";
 type FilenameExtension = ExportFormat | "zip";
 
 /*
@@ -445,6 +446,7 @@ async function loadConversationMessages(
   messages: Message[];
   images: ExportImageFile[];
   tabTitle: string | undefined;
+  tabUrl: string | undefined;
 }> {
   showLoadingOverlay(t("popup.loading.default"));
 
@@ -512,7 +514,12 @@ async function loadConversationMessages(
 
     const sortedMessages = [...messages].sort((a, b) => a.order - b.order);
 
-    return { messages: sortedMessages, images, tabTitle: tab.title };
+    return {
+      messages: sortedMessages,
+      images,
+      tabTitle: tab.title,
+      tabUrl: tab.url,
+    };
   } finally {
     hideLoadingOverlay();
   }
@@ -577,6 +584,7 @@ copyButton.addEventListener("click", async () => {
 let currentMessages: Message[] = [];
 let currentImages: ExportImageFile[] = [];
 let currentTabTitle: string | undefined;
+let currentTabUrl: string | undefined;
 let lastShiftAnchorIndex: number | null = null;
 
 function closeSelectorOverlay(): void {
@@ -749,7 +757,9 @@ function getSelectedImageFiles(messages: Message[]): ExportImageFile[] {
   const selectedPaths = new Set(
     messages.flatMap((message) => message.imagePaths ?? []),
   );
-  const filesByPath = new Map(currentImages.map((image) => [image.path, image]));
+  const filesByPath = new Map(
+    currentImages.map((image) => [image.path, image]),
+  );
 
   return [...selectedPaths]
     .map((path) => filesByPath.get(path))
@@ -792,13 +802,13 @@ exportButton.addEventListener("click", async () => {
 
   try {
     const settings = await loadSettings();
-    const { messages, images, tabTitle } = await loadConversationMessages(
-      settings.downloadImagesLocally,
-    );
+    const { messages, images, tabTitle, tabUrl } =
+      await loadConversationMessages(settings.downloadImagesLocally);
 
     currentMessages = messages;
     currentImages = images;
     currentTabTitle = tabTitle;
+    currentTabUrl = tabUrl;
 
     selectorPanelMessage.textContent = t("popup.selector.subtitle");
     selectorExpandToggle.checked = false;
@@ -839,29 +849,45 @@ selectorExportButton.addEventListener("click", async () => {
   let objectUrl: string | undefined;
 
   try {
-    const markdown = await buildMarkdownFromMessages(chosen);
-
-    const { content, mimeType } = buildContentForFormat(
-      format,
-      markdown,
-      chosen,
-    );
-
+    const settings = await loadSettings();
     const filename = buildFilename(currentTabTitle, format);
-    const selectedImages = getSelectedImageFiles(chosen);
     let downloadFilename = filename;
     let blob: Blob;
 
-    if (selectedImages.length > 0) {
-      downloadFilename = buildFilename(currentTabTitle, "zip");
-      blob = createExportZipBlob(content, filename, selectedImages);
+    if (format === "pdf") {
+      /*
+       * PDF images are embedded inline in the document itself
+       * (see pdf-export.ts), so there's no separate images/
+       * folder to bundle into a ZIP the way the other formats
+       * do - the PDF download always stands alone.
+       */
+      blob = await buildPdfBlob(
+        chosen,
+        getSelectedImageFiles(chosen),
+        settings,
+        currentTabTitle,
+        currentTabUrl,
+      );
     } else {
-      blob = new Blob([content], { type: mimeType });
+      const markdown = await buildMarkdownFromMessages(chosen);
+
+      const { content, mimeType } = buildContentForFormat(
+        format,
+        markdown,
+        chosen,
+      );
+
+      const selectedImages = getSelectedImageFiles(chosen);
+
+      if (selectedImages.length > 0) {
+        downloadFilename = buildFilename(currentTabTitle, "zip");
+        blob = createExportZipBlob(content, filename, selectedImages);
+      } else {
+        blob = new Blob([content], { type: mimeType });
+      }
     }
 
     objectUrl = URL.createObjectURL(blob);
-
-    const settings = await loadSettings();
 
     const downloadId = await chrome.downloads.download({
       url: objectUrl,

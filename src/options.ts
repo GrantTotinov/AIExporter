@@ -1,6 +1,8 @@
 import {
   type Settings,
+  type PdfSettings,
   DEFAULT_SETTINGS,
+  DEFAULT_PDF_SETTINGS,
   loadSettings,
   saveSettings,
 } from "./settings.ts";
@@ -31,6 +33,40 @@ const downloadImagesLocallyInput = document.getElementById(
 const themeInput = document.getElementById("theme") as HTMLSelectElement;
 
 const languageInput = document.getElementById("language") as HTMLSelectElement;
+
+const pdfPageFormatInput = document.getElementById(
+  "pdfPageFormat",
+) as HTMLSelectElement;
+const pdfOrientationInput = document.getElementById(
+  "pdfOrientation",
+) as HTMLSelectElement;
+const pdfMarginTopInput = document.getElementById(
+  "pdfMarginTop",
+) as HTMLInputElement;
+const pdfMarginRightInput = document.getElementById(
+  "pdfMarginRight",
+) as HTMLInputElement;
+const pdfMarginBottomInput = document.getElementById(
+  "pdfMarginBottom",
+) as HTMLInputElement;
+const pdfMarginLeftInput = document.getElementById(
+  "pdfMarginLeft",
+) as HTMLInputElement;
+const pdfFontSizeInput = document.getElementById(
+  "pdfFontSize",
+) as HTMLInputElement;
+const pdfIncludeTableOfContentsInput = document.getElementById(
+  "pdfIncludeTableOfContents",
+) as HTMLInputElement;
+const pdfIncludePageNumbersInput = document.getElementById(
+  "pdfIncludePageNumbers",
+) as HTMLInputElement;
+const pdfIncludeUserInfoInput = document.getElementById(
+  "pdfIncludeUserInfo",
+) as HTMLInputElement;
+const pdfUserInfoTextInput = document.getElementById(
+  "pdfUserInfoText",
+) as HTMLInputElement;
 
 function applyTheme(theme: Settings["theme"]): void {
   if (theme === "system") {
@@ -106,6 +142,60 @@ function applySettingsToForm(settings: Settings): void {
   applyTheme(settings.theme);
 
   languageInput.value = settings.language;
+
+  pdfPageFormatInput.value = settings.pdf.pageFormat;
+  pdfOrientationInput.value = settings.pdf.orientation;
+  pdfMarginTopInput.value = String(settings.pdf.marginTop);
+  pdfMarginRightInput.value = String(settings.pdf.marginRight);
+  pdfMarginBottomInput.value = String(settings.pdf.marginBottom);
+  pdfMarginLeftInput.value = String(settings.pdf.marginLeft);
+  pdfFontSizeInput.value = String(settings.pdf.fontSize);
+  pdfIncludeTableOfContentsInput.checked = settings.pdf.includeTableOfContents;
+  pdfIncludePageNumbersInput.checked = settings.pdf.includePageNumbers;
+  pdfIncludeUserInfoInput.checked = settings.pdf.includeUserInfo;
+  pdfUserInfoTextInput.value = settings.pdf.userInfoText;
+}
+
+function readPositiveNumber(
+  input: HTMLInputElement,
+  fallback: number,
+  min = 0,
+): number {
+  const value = Number(input.value);
+
+  return Number.isFinite(value) && value >= min ? value : fallback;
+}
+
+function readPdfSettingsFromForm(): PdfSettings {
+  return {
+    pageFormat: pdfPageFormatInput.value as PdfSettings["pageFormat"],
+    orientation: pdfOrientationInput.value as PdfSettings["orientation"],
+    marginTop: readPositiveNumber(
+      pdfMarginTopInput,
+      DEFAULT_PDF_SETTINGS.marginTop,
+    ),
+    marginRight: readPositiveNumber(
+      pdfMarginRightInput,
+      DEFAULT_PDF_SETTINGS.marginRight,
+    ),
+    marginBottom: readPositiveNumber(
+      pdfMarginBottomInput,
+      DEFAULT_PDF_SETTINGS.marginBottom,
+    ),
+    marginLeft: readPositiveNumber(
+      pdfMarginLeftInput,
+      DEFAULT_PDF_SETTINGS.marginLeft,
+    ),
+    fontSize: readPositiveNumber(
+      pdfFontSizeInput,
+      DEFAULT_PDF_SETTINGS.fontSize,
+      6,
+    ),
+    includeTableOfContents: pdfIncludeTableOfContentsInput.checked,
+    includePageNumbers: pdfIncludePageNumbersInput.checked,
+    includeUserInfo: pdfIncludeUserInfoInput.checked,
+    userInfoText: pdfUserInfoTextInput.value,
+  };
 }
 
 function readSettingsFromForm(): Settings {
@@ -120,6 +210,7 @@ function readSettingsFromForm(): Settings {
     downloadImagesLocally: downloadImagesLocallyInput.checked,
     theme: themeInput.value as Settings["theme"],
     language: languageInput.value as Settings["language"],
+    pdf: readPdfSettingsFromForm(),
   };
 }
 

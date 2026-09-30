@@ -23,7 +23,7 @@ export interface Settings {
    * Firefox, since chrome.downloads.download's saveAs option
    * is part of the shared WebExtensions API surface both
    * browsers implement the same way.
-  */
+   */
   askWhereToSave: boolean;
   /**
    * When enabled, image-bearing exports download image assets and bundle them
@@ -41,7 +41,49 @@ export interface Settings {
    * the list of supported languages.
    */
   language: "auto" | "en" | "es" | "fr" | "de" | "ru" | "zh";
+  /*
+   * Settings specific to the PDF export format (see
+   * src/pdf-export.ts). Kept as a nested object rather than
+   * flattened top-level keys so the PDF-only fields stay
+   * visually and structurally separate from the settings that
+   * apply to every format.
+   */
+  pdf: PdfSettings;
 }
+
+export interface PdfSettings {
+  pageFormat: "a4" | "letter" | "legal";
+  orientation: "portrait" | "landscape";
+  /* All four margins are in millimeters. */
+  marginTop: number;
+  marginRight: number;
+  marginBottom: number;
+  marginLeft: number;
+  /* Body text size in points. */
+  fontSize: number;
+  includeTableOfContents: boolean;
+  includePageNumbers: boolean;
+  /*
+   * When true, userInfoText is printed in the footer of every
+   * page (e.g. the exporter's name, or "Prepared for <team>").
+   */
+  includeUserInfo: boolean;
+  userInfoText: string;
+}
+
+export const DEFAULT_PDF_SETTINGS: PdfSettings = {
+  pageFormat: "a4",
+  orientation: "portrait",
+  marginTop: 20,
+  marginRight: 18,
+  marginBottom: 20,
+  marginLeft: 18,
+  fontSize: 11,
+  includeTableOfContents: false,
+  includePageNumbers: true,
+  includeUserInfo: false,
+  userInfoText: "",
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   includeTimestamp: false,
@@ -51,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   downloadImagesLocally: false,
   theme: "system",
   language: "auto",
+  pdf: DEFAULT_PDF_SETTINGS,
 };
 
 export const SEPARATOR_TEXT: Record<Settings["messageSeparator"], string> = {

@@ -1,7 +1,7 @@
 {
   "name": "ai-exporter",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,12 +12,19 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build:chrome": "npm run build && node -e \"require('fs').copyFileSync('manifest.chrome.json', 'dist/manifest.json')\"",
-    "build:firefox": "npm run build && node -e \"require('fs').copyFileSync('manifest.firefox.json', 'dist/manifest.json')\""
+    "build:firefox": "npm run build && node -e \"require('fs').copyFileSync('manifest.firefox.json', 'dist/manifest.json')\"",
+    "archive": "node -e \"const v = require('./package.json').version; require('child_process').execSync('powershell -NoProfile -Command \\\"Compress-Archive -Path dist/* -DestinationPath AIExporter-' + v + '.zip -Force\\\"', {stdio:'inherit'})\""
   },
   "devDependencies": {
     "@types/chrome": "^0.2.7",
+    "@types/node": "^24.0.0",
+    "dejavu-fonts-ttf": "^2.37.3",
+    "jsdom": "^29.1.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1"
   }
 }

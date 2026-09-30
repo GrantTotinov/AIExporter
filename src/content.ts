@@ -40,7 +40,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ Rate on Chrome Web Store",
     coffee: "☕ Buy Me a Coffee",
     feedbackPrompt: "Found a bug or have an idea? Reach out:",
-    shareAriaLabel: "Share on X",
+    shareAriaLabel: "Follow on X",
     feedbackAriaLabel: "Send feedback",
     close: "Close",
   },
@@ -50,7 +50,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ Valóranos en Chrome Web Store",
     coffee: "☕ Invítame a un café",
     feedbackPrompt: "¿Encontraste un error o tienes una idea? Contáctanos:",
-    shareAriaLabel: "Compartir en X",
+    shareAriaLabel: "Seguir en X",
     feedbackAriaLabel: "Enviar comentarios",
     close: "Cerrar",
   },
@@ -60,7 +60,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ Noter sur le Chrome Web Store",
     coffee: "☕ M'offrir un café",
     feedbackPrompt: "Un bug ou une idée ? Contactez-nous :",
-    shareAriaLabel: "Partager sur X",
+    shareAriaLabel: "Suivre sur X",
     feedbackAriaLabel: "Envoyer un commentaire",
     close: "Fermer",
   },
@@ -70,7 +70,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ Im Chrome Web Store bewerten",
     coffee: "☕ Spendiere mir einen Kaffee",
     feedbackPrompt: "Fehler gefunden oder eine Idee? Melde dich:",
-    shareAriaLabel: "Auf X teilen",
+    shareAriaLabel: "Auf X folgen",
     feedbackAriaLabel: "Feedback senden",
     close: "Schließen",
   },
@@ -80,7 +80,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ Оценить в Chrome Web Store",
     coffee: "☕ Угостить кофе",
     feedbackPrompt: "Нашли ошибку или есть идея? Напишите нам:",
-    shareAriaLabel: "Поделиться в X",
+    shareAriaLabel: "Подписаться в X",
     feedbackAriaLabel: "Отправить отзыв",
     close: "Закрыть",
   },
@@ -90,7 +90,7 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     rate: "⭐ 在 Chrome 网上应用店评分",
     coffee: "☕ 请我喝咖啡",
     feedbackPrompt: "发现了 bug 或有好想法？请联系我们：",
-    shareAriaLabel: "分享到 X",
+    shareAriaLabel: "在 X 上关注",
     feedbackAriaLabel: "发送反馈",
     close: "关闭",
   },
@@ -704,12 +704,10 @@ function getSafeHostedImageUrl(value: unknown): string | null {
       hostname === "oaistatic.com" ||
       hostname.endsWith(".oaistatic.com");
 
-    return (
-      url.protocol === "https:" &&
+    return url.protocol === "https:" &&
       !url.username &&
       !url.password &&
       (isChatGptHost || isOpenAiFileHost)
-    )
       ? url.toString()
       : null;
   } catch {
@@ -733,7 +731,9 @@ function getImageUrlFromPart(part: ApiImagePart): string | null {
   return getSafeHostedImageUrl(part.url);
 }
 
-function getImageReferenceFromPart(part: ApiImagePart): ApiImageReference | null {
+function getImageReferenceFromPart(
+  part: ApiImagePart,
+): ApiImageReference | null {
   const pointer = part.asset_pointer;
 
   if (typeof pointer !== "string") {
@@ -758,9 +758,9 @@ function getImageReferenceFromPart(part: ApiImagePart): ApiImageReference | null
     : null;
 }
 
-function createRequestLimiter(maxConcurrent: number): <T>(
-  action: () => Promise<T>,
-) => Promise<T> {
+function createRequestLimiter(
+  maxConcurrent: number,
+): <T>(action: () => Promise<T>) => Promise<T> {
   let activeRequests = 0;
   const queue: Array<() => void> = [];
 
@@ -813,7 +813,9 @@ function getImageFileType(
   };
   const normalizedMimeType = mimeType.split(";", 1)[0].trim().toLowerCase();
   const mimeExtension = mimeToExtension[normalizedMimeType];
-  const filenameExtension = fileName.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+  const filenameExtension = fileName
+    .match(/\.([a-z0-9]{2,5})$/i)?.[1]
+    ?.toLowerCase();
 
   if (normalizedMimeType.startsWith("image/") && !mimeExtension) {
     return null;
@@ -911,7 +913,9 @@ async function extractApiMessageContent(
           );
 
           if (!fileType) {
-            throw new Error("The downloaded attachment is not a supported image type.");
+            throw new Error(
+              "The downloaded attachment is not a supported image type.",
+            );
           }
 
           addDownloadedImageBytes(downloaded.sizeBytes);
@@ -1109,7 +1113,12 @@ function fetchImageFile(
   reference: ApiImageReference | null,
   imageUrl: string | null,
   conversationId: string,
-): Promise<{ base64: string; fileName: string; mimeType: string; sizeBytes: number }> {
+): Promise<{
+  base64: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
 
@@ -1186,12 +1195,14 @@ function fetchImageFile(
 
     window.postMessage(
       {
-      source: "AIExporter",
-      type: "AIExporter_FILE_DOWNLOAD_REQUEST",
-      requestId,
-      conversationId,
-      ...(reference ? { fileId: reference.fileId, scheme: reference.scheme } : {}),
-      ...(imageUrl ? { imageUrl } : {}),
+        source: "AIExporter",
+        type: "AIExporter_FILE_DOWNLOAD_REQUEST",
+        requestId,
+        conversationId,
+        ...(reference
+          ? { fileId: reference.fileId, scheme: reference.scheme }
+          : {}),
+        ...(imageUrl ? { imageUrl } : {}),
       },
       "*",
     );
@@ -1437,7 +1448,9 @@ async function loadEntireConversation(
   const reserveImageIndex = (): number => nextImageIndex++;
   const addDownloadedImageBytes = (sizeBytes: number): void => {
     if (downloadedImageBytes + sizeBytes > MAX_TOTAL_IMAGE_BYTES) {
-      throw new Error("The conversation's images exceed the 20 MB export limit.");
+      throw new Error(
+        "The conversation's images exceed the 20 MB export limit.",
+      );
     }
 
     downloadedImageBytes += sizeBytes;
@@ -1603,6 +1616,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 const PROJECT_REPOSITORY_URL = "https://github.com/GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
+const X_PROFILE_URL = "https://x.com/granttotinov";
 const CHROME_STORE_URL =
   "https://chromewebstore.google.com/detail/objkcakdcilfaphifjfcgfamlnnbinjc";
 const FEEDBACK_URL = `${PROJECT_REPOSITORY_URL}/issues`;
@@ -1708,7 +1722,7 @@ function showExportSuccessOverlay(): void {
 
     <div style="display: flex; justify-content: center; gap: 14px; margin-bottom: 16px;">
       <a
-        href="https://x.com/intent/tweet?text=${encodeURIComponent("Checking out AI Exporter - a handy ChatGPT export extension!")}&url=${encodeURIComponent(PROJECT_REPOSITORY_URL)}"
+        href="${X_PROFILE_URL}"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="${ct("shareAriaLabel")}"
