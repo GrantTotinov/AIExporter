@@ -5,7 +5,7 @@ A free browser extension for Chrome and Firefox that exports your ChatGPT, Claud
 ## Free, source-available, and local
 
 - **Free.** No account, no subscription, no paid tier, no ads.
-- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT, Claude or Gemini), and to GitHub if you use the GitHub features. See the [privacy policy](./docs/privacy-policy.md).
+- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT, Claude or Gemini), to GitHub if you use the GitHub features, and to the browser's add-on store to check for updates. See the [privacy policy](./docs/privacy-policy.md).
 - **Source-available.** The complete source code is here on GitHub, so you can read exactly what the extension does, build it yourself, or send a fix. It's free for personal and other noncommercial use (see [License](#license)).
 
 ## Why this exists
@@ -93,6 +93,7 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 ## A few notes
 
 - AI Exporter works on `chatgpt.com`, `claude.ai` and `gemini.google.com`. If OpenAI, Anthropic or Google change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
+- AI Exporter keeps itself up to date. The bottom of the popup shows the version you have and whether it's the latest; click it to check again. Once the browser has downloaded an update, AI Exporter installs it as soon as no export is running, instead of waiting for the next browser restart. Firefox asks you to approve an update that needs new permissions: press Ctrl+Shift+A, click ⚙ and choose **Check for Updates**.
 - Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's thinking and tool calls are left out, and attached files are listed by name.
 - Gemini exports include Canvas and Deep Research documents, and generated images when image bundling is on. Gemini's thinking and the markup only its own interface uses (citation markers, suggested follow-ups, web image results, video cards) are left out, and attached files other than images are listed by name.
 - Image bundling downloads the image files into the export so they work locally without a ChatGPT, Claude or Gemini session.

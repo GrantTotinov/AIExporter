@@ -30,6 +30,25 @@ if (!existsSync(manifestPath)) {
 
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const browser = manifest.browser_specific_settings?.gecko ? "firefox" : "chrome";
+
+/*
+ * Firefox only hands an update to installs with the same add-on
+ * ID, and Firefox Add-ons lists AI Exporter under the ID it was
+ * first published with, back when it was GPTChatDownloader. A
+ * build under any other ID can't be uploaded as a new version of
+ * that listing, and couldn't update anyone who installed it.
+ */
+const FIREFOX_ADDON_ID = "gptchatdownloader@granttotinov.com";
+
+if (
+  browser === "firefox" &&
+  manifest.browser_specific_settings.gecko.id !== FIREFOX_ADDON_ID
+) {
+  console.error(
+    `dist/manifest.json has the Firefox add-on ID "${manifest.browser_specific_settings.gecko.id}", but Firefox Add-ons lists AI Exporter as "${FIREFOX_ADDON_ID}". Existing installs only update to a build with that same ID.`,
+  );
+  process.exit(1);
+}
 const packageVersion = JSON.parse(
   readFileSync(join(root, "package.json"), "utf8"),
 ).version;

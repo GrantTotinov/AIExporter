@@ -10,6 +10,17 @@ import {
 } from "./github.ts";
 import { initI18n } from "./i18n.ts";
 import { decodeBase64, copyToArrayBuffer } from "./zip.ts";
+import {
+  UPDATE_CHECK_INTERVAL_MS,
+  UPDATE_NOTICE_KEY,
+  type StoreCheckStatus,
+  type UpdateState,
+  changeUpdateState,
+  checkStoreForUpdate,
+  getRunningVersion,
+  isNewerVersion,
+  loadUpdateState,
+} from "./updates.ts";
 
 const devError = (...args: unknown[]): void => {
   if (import.meta.env.DEV) {
@@ -124,6 +135,7 @@ chrome.downloads.onChanged.addListener((delta) => {
     trackedDownloadIds.delete(delta.id);
     revokePendingObjectUrl(delta.id);
     notifyDownloadTab(delta.id, "SHOW_EXPORT_SUCCESS");
+    void applyPendingUpdate();
 
     return;
   }
@@ -138,6 +150,7 @@ chrome.downloads.onChanged.addListener((delta) => {
     trackedDownloadIds.delete(delta.id);
     revokePendingObjectUrl(delta.id);
     pendingDownloadTabIds.delete(delta.id);
+    void applyPendingUpdate();
   }
 });
 
@@ -296,7 +309,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  (async () => {
+  void trackTask(async () => {
     let objectUrl: string | undefined;
 
     try {
@@ -326,7 +339,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  })();
+  });
 
   return true;
 });
@@ -372,7 +385,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  (async () => {
+  void trackTask(async () => {
     try {
       await setupOffscreenDocument();
 
@@ -390,13 +403,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: String(error),
       });
     }
-  })();
+  });
 
   /*
    * MUST return true synchronously so Chrome
    * keeps the message channel open until
-   * sendResponse is called inside the async IIFE
-   * above. Without this, the channel closes
+   * sendResponse is called inside the async
+   * task above. Without this, the channel closes
    * immediately and you get a DOMException.
    */
   return true;
@@ -462,7 +475,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  (async () => {
+  /*
+   * Tracked as one task until the poll ends, so an update
+   * waiting to install doesn't reload the extension (and drop
+   * the poll) while the person is still approving on GitHub.
+   */
+  void trackTask(async () => {
     try {
       const deviceCode = await startDeviceFlow();
 
@@ -517,7 +535,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  })();
+  });
 
   return true;
 });
@@ -657,7 +675,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  (async () => {
+  void trackTask(async () => {
     try {
       const result = await saveFileToRepo(
         message.fullName,
@@ -673,7 +691,312 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  return true;
+});
+
+/*
+ * ---------------------------------------------------------
+ * UPDATES
+ * ---------------------------------------------------------
+ *
+ * updates.ts explains why this is needed. In short: the
+ * browser downloads an update, then holds it back while the
+ * extension is running - and Chrome never sees this one stop
+ * running once the offscreen document is open.
+ * runtime.onUpdateAvailable reports an update being held back,
+ * and reloading the extension installs it.
+ *
+ * A reload closes the popup and the options page and cuts off
+ * whatever this file is in the middle of, so it waits until
+ * none of that is going on. While it waits, an alarm tries
+ * again every minute - a setTimeout() wouldn't survive Chrome
+ * shutting the service worker down in between.
+ */
+const APPLY_UPDATE_ALARM = "apply-pending-update";
+
+/*
+ * Downloads being prepared, clipboard copies, GitHub sign-ins
+ * and saves in progress. A count, not a flag, since they can
+ * overlap.
+ */
+let activeTaskCount = 0;
+
+async function trackTask(task: () => Promise<void>): Promise<void> {
+  activeTaskCount++;
+
+  try {
+    await task();
+  } finally {
+    activeTaskCount--;
+    void applyPendingUpdate();
+  }
+}
+
+/*
+ * Only downloads this extension started count, not the
+ * person's own. trackedDownloadIds forgets them whenever Chrome
+ * restarts the service worker mid-download (say, while the
+ * Save As dialog sits open), so the downloads API is asked too.
+ */
+async function hasDownloadInProgress(): Promise<boolean> {
+  if (trackedDownloadIds.size > 0) {
+    return true;
+  }
+
+  const downloads = await chrome.downloads.search({ state: "in_progress" });
+
+  return downloads.some((item) => item.byExtensionId === chrome.runtime.id);
+}
+
+/*
+ * The popup, or the options page in a tab - a reload would
+ * close them in the middle of whatever the person is doing.
+ */
+async function hasOpenExtensionPage(): Promise<boolean> {
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["POPUP", "TAB"],
+  });
+
+  return contexts.length > 0;
+}
+
+async function isBusy(ignoreOpenPages: boolean): Promise<boolean> {
+  if (activeTaskCount > 0) {
+    return true;
+  }
+
+  try {
+    return (
+      (await hasDownloadInProgress()) ||
+      (!ignoreOpenPages && (await hasOpenExtensionPage()))
+    );
+  } catch (error) {
+    /*
+     * Can't tell - better to install a minute later than to
+     * cut something off.
+     */
+    devError("AI Exporter: could not check for running work", error);
+
+    return true;
+  }
+}
+
+/*
+ * Set once reload() has been called, so an attempt that lands
+ * before the extension actually goes down doesn't reload it a
+ * second time.
+ */
+let reloadRequested = false;
+
+async function installPendingUpdate(
+  ignoreOpenPages: boolean,
+): Promise<boolean> {
+  if (reloadRequested) {
+    return true;
+  }
+
+  const { readyVersion, reloadedFor } = await loadUpdateState();
+
+  if (!isNewerVersion(readyVersion, getRunningVersion())) {
+    await chrome.alarms.clear(APPLY_UPDATE_ALARM);
+
+    return false;
+  }
+
+  /*
+   * One reload per downloaded version. If the version a reload
+   * was for still isn't the one running afterwards, the browser
+   * no longer has that download, and reloading again would only
+   * loop - Chrome shuts down an extension that keeps reloading
+   * itself. Its next update round downloads the version again
+   * and fires onUpdateAvailable, which starts this over (so the
+   * state is only cleared if that hasn't just happened).
+   */
+  if (reloadedFor === readyVersion) {
+    await changeUpdateState((state) =>
+      state.reloadedFor === state.readyVersion
+        ? { ...state, readyVersion: undefined }
+        : state,
+    );
+    await chrome.alarms.clear(APPLY_UPDATE_ALARM);
+
+    return false;
+  }
+
+  if (await isBusy(ignoreOpenPages)) {
+    await chrome.alarms.create(APPLY_UPDATE_ALARM, { delayInMinutes: 1 });
+
+    return false;
+  }
+
+  reloadRequested = true;
+  await changeUpdateState((state) => ({ ...state, reloadedFor: readyVersion }));
+  chrome.runtime.reload();
+
+  return true;
+}
+
+let updateInstallQueue: Promise<boolean> = Promise.resolve(false);
+
+/*
+ * Attempts run one after another, so two that land together
+ * (an alarm and a finished download, say) can't both decide to
+ * reload. `ignoreOpenPages` is the popup's "Update now" button:
+ * the person asked for the reload, so their open popup isn't
+ * something to wait for - work in progress still is.
+ */
+function applyPendingUpdate(ignoreOpenPages = false): Promise<boolean> {
+  updateInstallQueue = updateInstallQueue.then(() =>
+    installPendingUpdate(ignoreOpenPages).catch((error) => {
+      devError("AI Exporter: installing the update failed", error);
+
+      return false;
+    }),
+  );
+
+  return updateInstallQueue;
+}
+
+chrome.runtime.onUpdateAvailable.addListener(({ version }) => {
+  changeUpdateState((state) => ({
+    ...state,
+    latestVersion: version,
+    readyVersion: version,
+    /* A fresh download gets a fresh reload. */
+    reloadedFor: undefined,
+  }))
+    .then(() => applyPendingUpdate())
+    .catch((error) => {
+      devError("AI Exporter: could not record the update", error);
+    });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === APPLY_UPDATE_ALARM) {
+    void applyPendingUpdate();
+  }
+});
+
+/*
+ * Clears what led up to the update and leaves the new version
+ * for the popup to mention once. Reloading an unpacked build
+ * fires "update" too, with the same version on both sides -
+ * nothing was updated then.
+ */
+chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
+  const runningVersion = getRunningVersion();
+
+  if (reason !== "update" || previousVersion === runningVersion) {
+    return;
+  }
+
+  changeUpdateState(({ latestVersion, checkedAt }) => ({
+    latestVersion: isNewerVersion(latestVersion, runningVersion)
+      ? latestVersion
+      : undefined,
+    checkedAt,
+  }))
+    .then(() =>
+      chrome.storage.local.set({ [UPDATE_NOTICE_KEY]: runningVersion }),
+    )
+    .catch((error) => {
+      devError("AI Exporter: could not record the update", error);
+    });
+});
+
+/*
+ * Every start of the background - in Chrome, every time the
+ * service worker wakes up - picks up an update that was still
+ * waiting when the previous one shut down.
+ */
+void applyPendingUpdate();
+
+/*
+ * ---------------------------------------------------------
+ * UPDATES: CHECK THE STORE
+ * ---------------------------------------------------------
+ *
+ * The popup asks every time it opens. This only goes to the
+ * store when its last answer is older than
+ * UPDATE_CHECK_INTERVAL_MS, or when `force` is set (the person
+ * clicked "Check for updates"). An answer of "throttled",
+ * "unlisted" or "error" leaves what was known as it was.
+ */
+async function checkForUpdate(
+  force: boolean,
+): Promise<{ result: StoreCheckStatus | "recent"; state: UpdateState }> {
+  const known = await loadUpdateState();
+  const age =
+    known.checkedAt === undefined ? Infinity : Date.now() - known.checkedAt;
+
+  if (!force && age >= 0 && age < UPDATE_CHECK_INTERVAL_MS) {
+    return { result: "recent", state: known };
+  }
+
+  const { status, version } = await checkStoreForUpdate(getRunningVersion());
+
+  const state = await changeUpdateState((current) => {
+    switch (status) {
+      case "update_available":
+        return { ...current, latestVersion: version, checkedAt: Date.now() };
+      case "no_update":
+        return { ...current, latestVersion: undefined, checkedAt: Date.now() };
+      default:
+        return current;
+    }
+  });
+
+  return { result: status, state };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "UPDATE_CHECK") {
+    return false;
+  }
+
+  if (!isOwnExtensionSender(sender)) {
+    return false;
+  }
+
+  (async () => {
+    try {
+      const data = await checkForUpdate(message.force === true);
+
+      sendResponse({ success: true, data });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   })();
+
+  return true;
+});
+
+/*
+ * ---------------------------------------------------------
+ * UPDATES: INSTALL NOW (the popup's "Update now" button)
+ * ---------------------------------------------------------
+ *
+ * Reports whether the reload is happening. It isn't when
+ * there's no downloaded update after all, or when an export
+ * is still running - the alarm installs it once that's done.
+ */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "UPDATE_APPLY") {
+    return false;
+  }
+
+  if (!isOwnExtensionSender(sender)) {
+    return false;
+  }
+
+  void applyPendingUpdate(true).then((reloading) => {
+    sendResponse({ success: true, data: { reloading } });
+  });
 
   return true;
 });

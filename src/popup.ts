@@ -1,5 +1,5 @@
 import { SEPARATOR_TEXT, loadSettings } from "./settings.ts";
-import { initI18n, applyTranslations, t } from "./i18n.ts";
+import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
 
 async function applyStoredTheme(): Promise<void> {
   const settings = await loadSettings();
@@ -19,10 +19,12 @@ void applyStoredTheme();
  * click anything - every string below that's set dynamically
  * (toasts, button label swaps, etc.) happens later, inside
  * event handlers, so it's safe to fire this without awaiting
- * it at the top level.
+ * it at the top level. The update status in the footer is the
+ * one exception, and is only rendered once this has resolved.
  */
 void initI18n().then(() => {
   applyTranslations();
+  void initUpdateStatus();
 });
 
 import { stripMarkdown } from "./markdown-strip.ts";
@@ -33,6 +35,16 @@ import {
   getChatSite,
   stripChatSiteSuffix,
 } from "./chat-sites.ts";
+import {
+  UPDATE_NOTICE_KEY,
+  UPDATE_STATE_KEY,
+  type UpdateState,
+  type UpdateView,
+  getRunningVersion,
+  getUpdateView,
+  loadUpdateState,
+  storeInstallsUpdates,
+} from "./updates.ts";
 
 const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
@@ -90,6 +102,27 @@ const githubStarButton = document.getElementById(
 const buyCoffeeButton = document.getElementById(
   "buy-coffee",
 ) as HTMLButtonElement;
+
+/* Update banner (top) and version/update status (footer) */
+const updateBanner = document.getElementById("update-banner") as HTMLDivElement;
+const updateBannerTitle = document.getElementById(
+  "update-banner-title",
+) as HTMLParagraphElement;
+const updateBannerMessage = document.getElementById(
+  "update-banner-message",
+) as HTMLParagraphElement;
+const updateApplyButton = document.getElementById(
+  "update-apply",
+) as HTMLButtonElement;
+const appVersionLabel = document.getElementById(
+  "app-version",
+) as HTMLSpanElement;
+const updateStatusButton = document.getElementById(
+  "update-status",
+) as HTMLButtonElement;
+const updateStatusText = document.getElementById(
+  "update-status-text",
+) as HTMLSpanElement;
 
 /* Loading overlay (covers the whole popup while messages load) */
 const loadingOverlay = document.getElementById(
@@ -178,6 +211,7 @@ const allButtons = [
   selectorExportButton,
   selectorGithubButton,
   githubPanelSaveButton,
+  updateApplyButton,
 ];
 
 optionsLink.addEventListener("click", (event) => {
@@ -1235,4 +1269,254 @@ githubStarButton.addEventListener("click", async () => {
  */
 buyCoffeeButton.addEventListener("click", () => {
   void chrome.tabs.create({ url: COFFEE_URL });
+});
+
+/*
+ * ---------------------------------------------------------
+ * VERSION AND UPDATES
+ * ---------------------------------------------------------
+ *
+ * The footer shows the running version and whether it's the
+ * newest one. The banner at the top only appears when there's
+ * something to act on: an update that's downloaded and waiting
+ * for a reload, or - in Firefox, which can't be told to update
+ * from here - a newer version on the store.
+ *
+ * background.ts does the actual checking and installing (see
+ * updates.ts) and keeps the outcome in storage. This renders
+ * it, live through storage.onChanged, so an update that
+ * finishes downloading while the popup is open shows up right
+ * away.
+ */
+const runningVersion = getRunningVersion();
+const installsUpdates = storeInstallsUpdates();
+
+let updateState: UpdateState = {};
+let updateCheckRunning = false;
+let showUpdateCheckProgress = false;
+let installingUpdate = false;
+
+appVersionLabel.textContent = `v${runningVersion}`;
+
+/* "5 minutes ago", "yesterday" - in the popup's language. */
+function formatTimeAgo(timestamp: number): string {
+  const formatter = new Intl.RelativeTimeFormat(getLocale(), {
+    numeric: "auto",
+  });
+  const seconds = Math.round((timestamp - Date.now()) / 1000);
+  const units = [
+    ["day", 86_400],
+    ["hour", 3_600],
+    ["minute", 60],
+  ] as const;
+
+  for (const [unit, unitSeconds] of units) {
+    if (Math.abs(seconds) >= unitSeconds) {
+      return formatter.format(Math.round(seconds / unitSeconds), unit);
+    }
+  }
+
+  return formatter.format(0, "second");
+}
+
+/* The shortcut that opens Firefox's Add-ons Manager. */
+function addonsManagerShortcut(): string {
+  return navigator.userAgent.includes("Mac") ? "⌘⇧A" : "Ctrl+Shift+A";
+}
+
+function updateStatusLabel(view: UpdateView): string {
+  switch (view.kind) {
+    case "ready":
+      return t("popup.update.statusReady");
+    case "downloading":
+      return t("popup.update.downloading", { version: view.version });
+    case "available":
+      return t("popup.update.statusAvailable", { version: view.version });
+    case "current":
+      return t("popup.update.upToDate");
+    default:
+      return t("popup.update.check");
+  }
+}
+
+function renderUpdateStatus(): void {
+  const view = getUpdateView(updateState, runningVersion, installsUpdates);
+
+  if (view.kind === "ready") {
+    updateBannerTitle.textContent = t("popup.update.readyTitle", {
+      version: view.version,
+    });
+    updateBannerMessage.textContent = t("popup.update.readyMessage");
+    updateApplyButton.hidden = false;
+    updateBanner.hidden = false;
+  } else if (view.kind === "available" && !installsUpdates) {
+    updateBannerTitle.textContent = t("popup.update.availableTitle", {
+      version: view.version,
+    });
+    updateBannerMessage.textContent = t("popup.update.firefoxHint", {
+      shortcut: addonsManagerShortcut(),
+    });
+    updateApplyButton.hidden = true;
+    updateBanner.hidden = false;
+  } else {
+    updateBanner.hidden = true;
+  }
+
+  if (!installingUpdate) {
+    updateApplyButton.textContent = t("popup.update.installNow");
+  }
+
+  updateStatusButton.dataset.state = showUpdateCheckProgress
+    ? "checking"
+    : view.kind;
+  updateStatusText.textContent = showUpdateCheckProgress
+    ? t("popup.update.checking")
+    : updateStatusLabel(view);
+  updateStatusButton.title =
+    view.kind === "current" && !showUpdateCheckProgress
+      ? t("popup.update.lastChecked", { time: formatTimeAgo(view.checkedAt) })
+      : "";
+}
+
+/*
+ * Only for a check the person asked for - the automatic one
+ * when the popup opens says nothing beyond the footer and
+ * banner. An update found shows up there as well.
+ */
+function reportUpdateCheck(result: string | undefined): void {
+  const view = getUpdateView(updateState, runningVersion, installsUpdates);
+
+  if (view.kind !== "current" && view.kind !== "unknown") {
+    return;
+  }
+
+  if (
+    result === "no_update" ||
+    (result === "throttled" && view.kind === "current")
+  ) {
+    showToast(t("popup.update.upToDateToast"));
+  } else if (result === "throttled") {
+    showToast(t("popup.update.throttled"), 3000);
+  } else {
+    showToast(t("popup.update.checkFailed"), 3000);
+  }
+}
+
+/*
+ * background.ts only goes to the store when its last answer is
+ * a few hours old, unless `force` is set. The "Checking..."
+ * state only shows when the person asked, or when there's no
+ * earlier answer to show meanwhile - otherwise every popup
+ * would open with a flash of it.
+ */
+async function checkForUpdates(force: boolean): Promise<void> {
+  if (updateCheckRunning) {
+    return;
+  }
+
+  updateCheckRunning = true;
+  showUpdateCheckProgress =
+    force ||
+    getUpdateView(updateState, runningVersion, installsUpdates).kind ===
+      "unknown";
+  renderUpdateStatus();
+
+  let result: string | undefined;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "UPDATE_CHECK",
+      force,
+    });
+
+    if (response?.success) {
+      updateState = response.data.state;
+      result = response.data.result;
+    }
+  } catch (error) {
+    devWarn("AI Exporter: update check failed", error);
+  } finally {
+    updateCheckRunning = false;
+    showUpdateCheckProgress = false;
+    renderUpdateStatus();
+  }
+
+  if (force) {
+    reportUpdateCheck(result);
+  }
+}
+
+/*
+ * background.ts leaves the version it just updated to under
+ * UPDATE_NOTICE_KEY, and the first popup after the update
+ * says so, once.
+ */
+async function showUpdateNotice(): Promise<void> {
+  const stored = await chrome.storage.local.get(UPDATE_NOTICE_KEY);
+  const notice = stored[UPDATE_NOTICE_KEY];
+
+  if (notice === undefined) {
+    return;
+  }
+
+  await chrome.storage.local.remove(UPDATE_NOTICE_KEY);
+
+  if (notice === runningVersion) {
+    showToast(t("popup.update.updatedToast", { version: runningVersion }), 3000);
+  }
+}
+
+async function initUpdateStatus(): Promise<void> {
+  appVersionLabel.title = t("popup.update.versionTitle", {
+    version: runningVersion,
+  });
+  updateState = await loadUpdateState();
+  renderUpdateStatus();
+
+  await showUpdateNotice();
+  await checkForUpdates(false);
+}
+
+updateStatusButton.addEventListener("click", () => {
+  void checkForUpdates(true);
+});
+
+updateApplyButton.addEventListener("click", async () => {
+  installingUpdate = true;
+  updateApplyButton.disabled = true;
+  updateApplyButton.textContent = t("popup.update.installing");
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "UPDATE_APPLY",
+    });
+
+    if (response?.data?.reloading) {
+      /* The reload closes this popup in a moment. */
+      return;
+    }
+
+    showToast(t("popup.update.installLater"), 3000);
+  } catch {
+    /*
+     * The reload can take this popup down before the answer
+     * arrives - that's the update going ahead.
+     */
+    return;
+  }
+
+  installingUpdate = false;
+  updateApplyButton.disabled = false;
+  renderUpdateStatus();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  const change = changes[UPDATE_STATE_KEY];
+
+  if (areaName !== "local" || !change) {
+    return;
+  }
+
+  updateState = (change.newValue as UpdateState | undefined) ?? {};
+  renderUpdateStatus();
 });

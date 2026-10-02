@@ -80,7 +80,10 @@ The GitHub access token is stored locally in Chrome extension storage on the use
 It is removed when the user disconnects GitHub through the extension or when the token is detected to be invalid or revoked.
 Extension settings
 
-Export preferences, such as heading style, timestamp preference, message spacing, and export format, are stored using Chrome's extension storage so that the selected preferences can be used across browser sessions. 5. Data Sharing
+Export preferences, such as heading style, timestamp preference, message spacing, and export format, are stored using Chrome's extension storage so that the selected preferences can be used across browser sessions.
+Update status
+
+The version number of the newest AIExporter release and the time of the last update check are stored in the extension's local storage, so that the popup can show whether the installed version is up to date. 5. Data Sharing
 
 AIExporter does not sell, rent, or share user data with advertisers, analytics providers, data brokers, or other third parties.
 
@@ -90,6 +93,7 @@ The extension communicates with the following external services when their funct
     Claude (claude.ai) — to access the currently open conversation using the user's existing authenticated Claude session.
     Gemini (gemini.google.com) — to access the currently open conversation using the user's existing authenticated Google session, and, when image bundling is enabled, Google's image servers (such as lh3.googleusercontent.com) to download the conversation's images.
     GitHub (github.com and api.github.com) — when the user connects GitHub or explicitly saves an export to GitHub.
+    Chrome Web Store or Firefox Add-ons (addons.mozilla.org) — to check whether a newer version of AIExporter is available. In Chrome, this check goes through the browser's own extension update service. In Firefox, the extension asks the public addons.mozilla.org API for AIExporter's current version, sending only AIExporter's public add-on ID and no cookies. No conversation content or personal data is included in either check.
 
 GitHub receives information according to the GitHub functionality and permissions authorized by the user.
 
@@ -118,7 +122,7 @@ The extension:
     Stores the GitHub access token locally rather than in synchronized Chrome storage.
     Does not store GitHub passwords.
     Sends conversation content to GitHub only when the user explicitly chooses a GitHub export.
-    Uses HTTPS when communicating with ChatGPT, Claude, Gemini and GitHub endpoints.
+    Uses HTTPS when communicating with ChatGPT, Claude, Gemini, GitHub and add-on store endpoints.
 
 No method of electronic storage or transmission can guarantee absolute security. Users should take appropriate care when exporting sensitive conversations to external destinations such as GitHub. 8. Third-Party Services
 

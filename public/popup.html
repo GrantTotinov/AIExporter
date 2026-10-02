@@ -15,6 +15,7 @@
         --text-muted: #636c76;
         --accent: #10a37f;
         --accent-hover: #0d8e6d;
+        --accent-soft: rgba(16, 163, 127, 0.08);
         --github: #24292e;
         --github-hover: #1b1f23;
         --github-text: #ffffff;
@@ -36,6 +37,7 @@
         --text-muted: #8b949e;
         --accent: #10a37f;
         --accent-hover: #12b886;
+        --accent-soft: rgba(16, 163, 127, 0.14);
         --github: #21262d;
         --github-hover: #30363d;
         --github-text: #f0f6fc;
@@ -53,6 +55,7 @@
           --text-muted: #8b949e;
           --accent: #10a37f;
           --accent-hover: #12b886;
+          --accent-soft: rgba(16, 163, 127, 0.14);
           --github: #21262d;
           --github-hover: #30363d;
           --github-text: #f0f6fc;
@@ -201,10 +204,170 @@
         border-color: #f0d100;
       }
 
+      /*
+       * ---------------------------------------------------
+       * UPDATE BANNER
+       * ---------------------------------------------------
+       *
+       * Only there when there's something to act on: an
+       * update that's downloaded and waiting, or (in
+       * Firefox) a newer version on the store.
+       */
+
+      #update-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        background: var(--accent-soft);
+      }
+
+      #update-banner[hidden],
+      #update-apply[hidden] {
+        display: none;
+      }
+
+      .update-banner-text {
+        flex: 1;
+        min-width: 0;
+      }
+
+      #update-banner-title {
+        margin: 0;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      #update-banner-message {
+        margin: 2px 0 0;
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--text-muted);
+      }
+
+      #update-apply {
+        flex-shrink: 0;
+        width: auto;
+        padding: 7px 12px;
+        border-color: var(--accent);
+        background: var(--accent);
+        color: var(--github-text);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      #update-apply:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      /*
+       * ---------------------------------------------------
+       * FOOTER - version and update status, Settings
+       * ---------------------------------------------------
+       */
+
+      .popup-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 2px;
+        padding-top: 9px;
+        border-top: 1px solid var(--border);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .update-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+
+      #app-version {
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #update-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        width: auto;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        background: none;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 400;
+      }
+
+      #update-status:hover:not(:disabled) {
+        background: none;
+        color: var(--text);
+      }
+
+      #update-status:hover:not(:disabled) #update-status-text {
+        text-decoration: underline;
+      }
+
+      #update-status[data-state="ready"],
+      #update-status[data-state="available"] {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      #update-status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .update-status-icon {
+        display: none;
+        flex-shrink: 0;
+      }
+
+      #update-status[data-state="current"] .update-status-icon {
+        display: inline;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      #update-status[data-state="current"] .update-status-icon::before {
+        content: "✓";
+      }
+
+      #update-status[data-state="checking"] .update-status-icon {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border: 1.5px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      #update-status[data-state="ready"] .update-status-icon,
+      #update-status[data-state="downloading"] .update-status-icon,
+      #update-status[data-state="available"] .update-status-icon {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
       .footer-link {
-        display: block;
-        text-align: center;
-        margin-top: 4px;
+        flex-shrink: 0;
         font-size: 11px;
         color: var(--text-muted);
         text-decoration: none;
@@ -638,6 +801,15 @@
     </style>
   </head>
   <body>
+    <!-- Update banner: an update is ready, or (Firefox) available -->
+    <div id="update-banner" role="status" hidden>
+      <div class="update-banner-text">
+        <p id="update-banner-title"></p>
+        <p id="update-banner-message"></p>
+      </div>
+      <button id="update-apply" type="button" hidden></button>
+    </div>
+
     <div class="support-card">
       <p data-i18n="popup.support.enjoying">❤️ Support the developer ❤️</p>
       <p class="support-subtitle" data-i18n="popup.support.subtitle">
@@ -656,13 +828,23 @@
     <button id="export" data-i18n="popup.export">Export ▾</button>
     <button id="copy" data-i18n="popup.copy">Copy Conversation</button>
 
-    <a
-      class="footer-link"
-      id="options-link"
-      href="#"
-      data-i18n="popup.settingsLink"
-      >Settings</a
-    >
+    <footer class="popup-footer">
+      <div class="update-status">
+        <span id="app-version"></span>
+        <span aria-hidden="true">·</span>
+        <button id="update-status" type="button">
+          <span class="update-status-icon" aria-hidden="true"></span>
+          <span id="update-status-text">Check for updates</span>
+        </button>
+      </div>
+      <a
+        class="footer-link"
+        id="options-link"
+        href="#"
+        data-i18n="popup.settingsLink"
+        >Settings</a
+      >
+    </footer>
 
     <!-- Loading overlay: covers the popup while messages fetch -->
     <div id="loading-overlay">

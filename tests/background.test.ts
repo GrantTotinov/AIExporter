@@ -30,10 +30,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const runtimeId = "test-extension-id";
 
 const downloadsDownload = vi.fn();
+const downloadsSearch = vi.fn();
 const tabsSendMessage = vi.fn();
 const storageSyncGet = vi.fn();
 const runtimeSendMessage = vi.fn();
 const runtimeGetContexts = vi.fn();
+const runtimeReload = vi.fn();
+const runtimeRequestUpdateCheck = vi.fn();
+const alarmsCreate = vi.fn();
+const alarmsClear = vi.fn();
 const offscreenCreateDocument = vi.fn();
 const onMessageListeners: Array<
   (
@@ -45,6 +50,45 @@ const onMessageListeners: Array<
 const onChangedListeners: Array<
   (delta: chrome.downloads.DownloadDelta) => void
 > = [];
+const onUpdateAvailableListeners: Array<
+  (details: chrome.runtime.UpdateAvailableDetails) => void
+> = [];
+const onInstalledListeners: Array<
+  (details: chrome.runtime.InstalledDetails) => void
+> = [];
+const onAlarmListeners: Array<(alarm: chrome.alarms.Alarm) => void> = [];
+
+let runningVersion = "2.3.0";
+
+/*
+ * chrome.storage.local, kept in memory: the update flow reads
+ * back the state it wrote. Values go through JSON like they do
+ * in Chrome, so a property set to undefined is dropped.
+ */
+let localStorageItems: Record<string, unknown> = {};
+
+const storageLocal = {
+  get: vi.fn(async (keys?: string | string[] | null) => {
+    if (keys === undefined || keys === null) {
+      return { ...localStorageItems };
+    }
+
+    return Object.fromEntries(
+      [keys]
+        .flat()
+        .filter((key) => key in localStorageItems)
+        .map((key) => [key, localStorageItems[key]]),
+    );
+  }),
+  set: vi.fn(async (items: Record<string, unknown>) => {
+    Object.assign(localStorageItems, JSON.parse(JSON.stringify(items)));
+  }),
+  remove: vi.fn(async (keys: string | string[]) => {
+    for (const key of [keys].flat()) {
+      delete localStorageItems[key];
+    }
+  }),
+};
 
 /*
  * A minimal, spec-accurate URL.createObjectURL/revokeObjectURL
@@ -81,14 +125,37 @@ vi.stubGlobal("chrome", {
         onMessageListeners.push(listener);
       },
     },
+    onUpdateAvailable: {
+      addListener: (listener: (typeof onUpdateAvailableListeners)[number]) => {
+        onUpdateAvailableListeners.push(listener);
+      },
+    },
+    onInstalled: {
+      addListener: (listener: (typeof onInstalledListeners)[number]) => {
+        onInstalledListeners.push(listener);
+      },
+    },
     sendMessage: runtimeSendMessage,
     getContexts: runtimeGetContexts,
+    getManifest: () => ({ version: runningVersion }),
+    reload: runtimeReload,
+    requestUpdateCheck: runtimeRequestUpdateCheck,
+  },
+  alarms: {
+    create: alarmsCreate,
+    clear: alarmsClear,
+    onAlarm: {
+      addListener: (listener: (typeof onAlarmListeners)[number]) => {
+        onAlarmListeners.push(listener);
+      },
+    },
   },
   offscreen: {
     createDocument: offscreenCreateDocument,
   },
   downloads: {
     download: downloadsDownload,
+    search: downloadsSearch,
     onChanged: {
       addListener: (listener: (typeof onChangedListeners)[number]) => {
         onChangedListeners.push(listener);
@@ -103,11 +170,7 @@ vi.stubGlobal("chrome", {
       get: storageSyncGet,
       set: vi.fn(),
     },
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn(),
-      remove: vi.fn(),
-    },
+    local: storageLocal,
   },
   i18n: {
     getUILanguage: vi.fn(() => "en-US"),
@@ -171,24 +234,43 @@ function emitDownloadChanged(delta: chrome.downloads.DownloadDelta): void {
   }
 }
 
+/*
+ * A fresh background.ts, as when the browser starts it - or,
+ * in Chrome, wakes the service worker up again.
+ */
+async function startBackground(): Promise<void> {
+  vi.resetModules();
+  onMessageListeners.length = 0;
+  onChangedListeners.length = 0;
+  onUpdateAvailableListeners.length = 0;
+  onInstalledListeners.length = 0;
+  onAlarmListeners.length = 0;
+
+  await import("../src/background");
+}
+
 describe("background.ts download flow (Chrome + Firefox parity)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    vi.resetModules();
-    onMessageListeners.length = 0;
-    onChangedListeners.length = 0;
     nextObjectUrlId = 0;
+    localStorageItems = {};
+    runningVersion = "2.3.0";
 
     storageSyncGet.mockImplementation((defaults: Record<string, unknown>) =>
       Promise.resolve(defaults),
     );
     downloadsDownload.mockResolvedValue(1);
+    downloadsSearch.mockReset().mockResolvedValue([]);
     tabsSendMessage.mockResolvedValue(undefined);
     runtimeSendMessage.mockReset().mockResolvedValue(undefined);
     runtimeGetContexts.mockReset().mockResolvedValue([]);
+    runtimeReload.mockReset();
+    runtimeRequestUpdateCheck.mockReset();
+    alarmsCreate.mockReset().mockResolvedValue(undefined);
+    alarmsClear.mockReset().mockResolvedValue(true);
     offscreenCreateDocument.mockReset().mockResolvedValue(undefined);
 
-    await import("../src/background");
+    await startBackground();
   });
 
   const validContent = btoa("hello world");
@@ -680,6 +762,425 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
         data: { downloadId: 1 },
       });
       expect(offscreenCreateDocument).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /*
+   * The browser downloads an update but holds it back while the
+   * extension is running - and in Chrome, the offscreen document
+   * kept this extension "running" until the browser quit, so
+   * people stayed on old versions for weeks. background.ts now
+   * reloads to install a held-back update as soon as nothing
+   * would be cut short by it (see updates.ts).
+   */
+  describe("installing a downloaded update", () => {
+    let openContextTypes: string[];
+
+    beforeEach(() => {
+      openContextTypes = [];
+
+      runtimeGetContexts.mockImplementation(
+        async (filter: chrome.runtime.ContextFilter) =>
+          openContextTypes
+            .filter(
+              (contextType) =>
+                !filter.contextTypes ||
+                (filter.contextTypes as string[]).includes(contextType),
+            )
+            .map((contextType) => ({ contextType })),
+      );
+    });
+
+    function emitUpdateAvailable(version: string): void {
+      for (const listener of onUpdateAvailableListeners) {
+        listener({ version });
+      }
+    }
+
+    function emitAlarm(name: string): void {
+      for (const listener of onAlarmListeners) {
+        listener({ name, scheduledTime: Date.now() } as chrome.alarms.Alarm);
+      }
+    }
+
+    it("reloads to install it right away when nothing is running", async () => {
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+      expect(localStorageItems.updateState).toMatchObject({
+        latestVersion: "2.4.0",
+        readyVersion: "2.4.0",
+        reloadedFor: "2.4.0",
+      });
+    });
+
+    it("doesn't wait on the offscreen document, which never closes on its own", async () => {
+      openContextTypes = ["OFFSCREEN_DOCUMENT", "BACKGROUND"];
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("waits while the popup is open, then installs it once the popup has closed", async () => {
+      openContextTypes = ["POPUP"];
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() =>
+        expect(alarmsCreate).toHaveBeenCalledWith("apply-pending-update", {
+          delayInMinutes: 1,
+        }),
+      );
+      expect(runtimeReload).not.toHaveBeenCalled();
+
+      openContextTypes = [];
+      emitAlarm("apply-pending-update");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("waits while the options page is open in a tab", async () => {
+      openContextTypes = ["TAB"];
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(alarmsCreate).toHaveBeenCalled());
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("waits for an export download to finish", async () => {
+      await dispatchMessage(validDownloadStartMessage({ tabId: 7 }));
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(alarmsCreate).toHaveBeenCalled());
+      expect(runtimeReload).not.toHaveBeenCalled();
+
+      emitDownloadChanged({
+        id: 1,
+        state: { previous: "in_progress", current: "complete" },
+      } as chrome.downloads.DownloadDelta);
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+      expect(tabsSendMessage).toHaveBeenCalledWith(7, {
+        type: "SHOW_EXPORT_SUCCESS",
+      });
+    });
+
+    it("waits for a download it lost track of when the service worker restarted", async () => {
+      downloadsSearch.mockResolvedValue([
+        { id: 5, state: "in_progress", byExtensionId: runtimeId },
+      ]);
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(alarmsCreate).toHaveBeenCalled());
+      expect(downloadsSearch).toHaveBeenCalledWith({ state: "in_progress" });
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("doesn't wait for the person's own downloads", async () => {
+      downloadsSearch.mockResolvedValue([{ id: 5, state: "in_progress" }]);
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("waits for a clipboard copy in progress", async () => {
+      let finishCopy: (response: unknown) => void = () => undefined;
+
+      runtimeSendMessage.mockImplementation((message: { type: string }) =>
+        message.type === "OFFSCREEN_COPY"
+          ? new Promise((resolve) => {
+              finishCopy = resolve;
+            })
+          : Promise.resolve(undefined),
+      );
+
+      const copied = dispatchMessage({
+        type: "COPY_TO_CLIPBOARD",
+        data: "# hello",
+      });
+
+      await vi.waitFor(() =>
+        expect(runtimeSendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "OFFSCREEN_COPY" }),
+        ),
+      );
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(alarmsCreate).toHaveBeenCalled());
+      expect(runtimeReload).not.toHaveBeenCalled();
+
+      finishCopy({ success: true });
+
+      expect(await copied).toEqual({ success: true });
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("picks up an update still waiting from before the service worker stopped", async () => {
+      localStorageItems.updateState = { readyVersion: "2.4.0" };
+
+      await startBackground();
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("reloads only once per downloaded version, so it can't loop", async () => {
+      /*
+       * A reload for 2.4.0 already happened, yet 2.3.0 is still
+       * the version running: the browser no longer has 2.4.0.
+       */
+      localStorageItems.updateState = {
+        readyVersion: "2.4.0",
+        reloadedFor: "2.4.0",
+      };
+
+      await startBackground();
+
+      await vi.waitFor(() =>
+        expect(localStorageItems.updateState).toEqual({
+          reloadedFor: "2.4.0",
+        }),
+      );
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("tries again when the browser downloads the version again", async () => {
+      localStorageItems.updateState = {
+        readyVersion: "2.4.0",
+        reloadedFor: "2.4.0",
+      };
+
+      await startBackground();
+      await vi.waitFor(() =>
+        expect(localStorageItems.updateState).toEqual({
+          reloadedFor: "2.4.0",
+        }),
+      );
+
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("tries again when the version downloads again just as the service worker starts", async () => {
+      localStorageItems.updateState = {
+        readyVersion: "2.4.0",
+        reloadedFor: "2.4.0",
+      };
+
+      await startBackground();
+      emitUpdateAvailable("2.4.0");
+
+      await vi.waitFor(() => expect(runtimeReload).toHaveBeenCalledTimes(1));
+    });
+
+    it("does nothing once the waiting version is the one running", async () => {
+      runningVersion = "2.4.0";
+      localStorageItems.updateState = {
+        readyVersion: "2.4.0",
+        reloadedFor: "2.4.0",
+      };
+      alarmsClear.mockClear();
+
+      await startBackground();
+
+      await vi.waitFor(() =>
+        expect(alarmsClear).toHaveBeenCalledWith("apply-pending-update"),
+      );
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("installs it on UPDATE_APPLY even though the popup is open", async () => {
+      openContextTypes = ["POPUP"];
+      localStorageItems.updateState = { readyVersion: "2.4.0" };
+
+      const response = await dispatchMessage({ type: "UPDATE_APPLY" });
+
+      expect(response).toEqual({ success: true, data: { reloading: true } });
+      expect(runtimeReload).toHaveBeenCalledTimes(1);
+    });
+
+    it("still lets an export download finish on UPDATE_APPLY", async () => {
+      openContextTypes = ["POPUP"];
+      localStorageItems.updateState = { readyVersion: "2.4.0" };
+      await dispatchMessage(validDownloadStartMessage());
+
+      const response = await dispatchMessage({ type: "UPDATE_APPLY" });
+
+      expect(response).toEqual({ success: true, data: { reloading: false } });
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("reports no reload on UPDATE_APPLY when nothing is downloaded", async () => {
+      const response = await dispatchMessage({ type: "UPDATE_APPLY" });
+
+      expect(response).toEqual({ success: true, data: { reloading: false } });
+      expect(runtimeReload).not.toHaveBeenCalled();
+    });
+
+    it("rejects UPDATE_APPLY from a sender outside the extension", () => {
+      localStorageItems.updateState = { readyVersion: "2.4.0" };
+
+      for (const listener of onMessageListeners) {
+        const result = listener(
+          { type: "UPDATE_APPLY" },
+          { id: "some-other-extension" } as chrome.runtime.MessageSender,
+          vi.fn(),
+        );
+
+        if (result === true) {
+          throw new Error(
+            "UPDATE_APPLY handler must not claim a message from a foreign sender",
+          );
+        }
+      }
+    });
+  });
+
+  describe("after an update installs", () => {
+    function emitInstalled(details: Partial<chrome.runtime.InstalledDetails>) {
+      for (const listener of onInstalledListeners) {
+        listener(details as chrome.runtime.InstalledDetails);
+      }
+    }
+
+    it("clears what led up to it and leaves a notice for the popup", async () => {
+      localStorageItems.updateState = {
+        latestVersion: "2.3.0",
+        checkedAt: 1000,
+        readyVersion: "2.3.0",
+        reloadedFor: "2.3.0",
+      };
+
+      emitInstalled({ reason: "update", previousVersion: "2.2.0" });
+
+      await vi.waitFor(() =>
+        expect(localStorageItems.updateNotice).toBe("2.3.0"),
+      );
+      expect(localStorageItems.updateState).toEqual({ checkedAt: 1000 });
+    });
+
+    it("keeps a store version that's newer still", async () => {
+      localStorageItems.updateState = { latestVersion: "2.5.0" };
+
+      emitInstalled({ reason: "update", previousVersion: "2.2.0" });
+
+      await vi.waitFor(() =>
+        expect(localStorageItems.updateNotice).toBe("2.3.0"),
+      );
+      expect(localStorageItems.updateState).toEqual({ latestVersion: "2.5.0" });
+    });
+
+    it("ignores reloading an unpacked build of the same version", async () => {
+      emitInstalled({ reason: "update", previousVersion: "2.3.0" });
+      emitInstalled({ reason: "install" });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(localStorageItems.updateNotice).toBeUndefined();
+    });
+  });
+
+  describe("UPDATE_CHECK", () => {
+    it("asks Chrome's updater and remembers a newer version", async () => {
+      runtimeRequestUpdateCheck.mockResolvedValue({
+        status: "update_available",
+        version: "2.4.0",
+      });
+
+      const response = await dispatchMessage({
+        type: "UPDATE_CHECK",
+        force: false,
+      });
+
+      expect(response.success).toBe(true);
+      expect(response.data.result).toBe("update_available");
+      expect(response.data.state).toEqual({
+        latestVersion: "2.4.0",
+        checkedAt: expect.any(Number),
+      });
+      expect(localStorageItems.updateState).toEqual(response.data.state);
+    });
+
+    it("doesn't ask the store again within six hours, unless forced", async () => {
+      runtimeRequestUpdateCheck.mockResolvedValue({ status: "no_update" });
+
+      const first = await dispatchMessage({ type: "UPDATE_CHECK" });
+      const second = await dispatchMessage({ type: "UPDATE_CHECK" });
+
+      expect(first.data.result).toBe("no_update");
+      expect(second.data.result).toBe("recent");
+      expect(runtimeRequestUpdateCheck).toHaveBeenCalledTimes(1);
+
+      const forced = await dispatchMessage({
+        type: "UPDATE_CHECK",
+        force: true,
+      });
+
+      expect(forced.data.result).toBe("no_update");
+      expect(runtimeRequestUpdateCheck).toHaveBeenCalledTimes(2);
+    });
+
+    it("asks again once the last answer is older than six hours", async () => {
+      localStorageItems.updateState = {
+        checkedAt: Date.now() - 7 * 60 * 60 * 1000,
+      };
+      runtimeRequestUpdateCheck.mockResolvedValue({ status: "no_update" });
+
+      const response = await dispatchMessage({ type: "UPDATE_CHECK" });
+
+      expect(response.data.result).toBe("no_update");
+      expect(runtimeRequestUpdateCheck).toHaveBeenCalledTimes(1);
+    });
+
+    it("forgets an older store answer once the store says there's nothing newer", async () => {
+      localStorageItems.updateState = { latestVersion: "2.4.0", checkedAt: 0 };
+      runtimeRequestUpdateCheck.mockResolvedValue({ status: "no_update" });
+
+      const response = await dispatchMessage({
+        type: "UPDATE_CHECK",
+        force: true,
+      });
+
+      expect(response.data.state).toEqual({ checkedAt: expect.any(Number) });
+    });
+
+    it("keeps what it knew when Chrome throttles the check", async () => {
+      localStorageItems.updateState = { latestVersion: "2.4.0", checkedAt: 1000 };
+      runtimeRequestUpdateCheck.mockResolvedValue({ status: "throttled" });
+
+      const response = await dispatchMessage({
+        type: "UPDATE_CHECK",
+        force: true,
+      });
+
+      expect(response.data).toEqual({
+        result: "throttled",
+        state: { latestVersion: "2.4.0", checkedAt: 1000 },
+      });
+    });
+
+    it("rejects a message from a sender outside the extension", () => {
+      for (const listener of onMessageListeners) {
+        const result = listener(
+          { type: "UPDATE_CHECK", force: true },
+          { id: "some-other-extension" } as chrome.runtime.MessageSender,
+          vi.fn(),
+        );
+
+        if (result === true) {
+          throw new Error(
+            "UPDATE_CHECK handler must not claim a message from a foreign sender",
+          );
+        }
+      }
+
+      expect(runtimeRequestUpdateCheck).not.toHaveBeenCalled();
     });
   });
 });
