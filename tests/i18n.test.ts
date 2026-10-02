@@ -1,6 +1,23 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "../src/locales/en.json";
+import es from "../src/locales/es.json";
+import fr from "../src/locales/fr.json";
+import de from "../src/locales/de.json";
+import ru from "../src/locales/ru.json";
+import zh from "../src/locales/zh.json";
+
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  es,
+  fr,
+  de,
+  ru,
+  zh,
+};
+
+function placeholders(text: string): string[] {
+  return [...text.matchAll(/\{\{\w+\}\}/g)].map((match) => match[0]).sort();
+}
 
 const storageGet = vi.fn();
 
@@ -61,6 +78,26 @@ describe("i18n", () => {
   it("falls back to the raw key when missing everywhere", () => {
     expect(i18n.t("does.not.exist")).toBe("does.not.exist");
   });
+
+  it.each(Object.keys(TRANSLATIONS))(
+    "translates every English string into %s",
+    (locale) => {
+      expect(Object.keys(TRANSLATIONS[locale]).sort()).toEqual(
+        Object.keys(en).sort(),
+      );
+    },
+  );
+
+  it.each(Object.keys(TRANSLATIONS))(
+    "keeps every {{placeholder}} in the %s strings",
+    (locale) => {
+      for (const [key, english] of Object.entries(en)) {
+        expect(placeholders(TRANSLATIONS[locale][key] ?? ""), key).toEqual(
+          placeholders(english),
+        );
+      }
+    },
+  );
 
   it("substitutes {{placeholders}} with provided variables", () => {
     i18n.setLocale("en");

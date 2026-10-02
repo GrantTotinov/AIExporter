@@ -4,19 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Exporter Settings</title>
+    <link rel="icon" href="icons/icon48.png" />
     <style>
       :root {
         color-scheme: light;
 
-        --canvas: #ffffff;
-        --surface: #f6f8fa;
-        --border: #d0d7de;
+        --bg: #f6f8fa;
+        --card: #ffffff;
+        --card-border: #d8dee4;
+        --border: #c9d1d9;
+        --divider: #eaeef2;
         --text: #1b1f24;
-        --text-muted: #636c76;
+        --text-muted: #57606a;
         --accent: #10a37f;
         --accent-hover: #0d8e6d;
+        --accent-text: #0b7a5f;
+        --accent-soft: rgba(16, 163, 127, 0.1);
+        --accent-ring: rgba(16, 163, 127, 0.35);
+        --tile: #f0f3f6;
+        --hover: rgba(31, 35, 40, 0.06);
+        --switch-off: #afb8c1;
+        --preview-bg: #f6f8fa;
+        --preview-line: #d0d7de;
+        --paper: #ffffff;
+        --paper-line: #d0d7de;
+        --shadow: 0 1px 2px rgba(31, 35, 40, 0.04),
+          0 3px 12px rgba(31, 35, 40, 0.04);
+        --tooltip-bg: #1f2328;
+        --tooltip-border: #1f2328;
+        --tooltip-text: #f0f6fc;
+        --tooltip-muted: #d1d9e0;
+        --tooltip-tip-bg: rgba(255, 255, 255, 0.08);
         --github: #24292e;
         --github-hover: #1b1f23;
+        --github-border: #24292e;
         --github-text: #ffffff;
         --danger: #cf222e;
         --danger-surface: #fff1f0;
@@ -29,15 +50,34 @@
 
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --canvas: #161b22;
-        --surface: #0d1117;
-        --border: #30363d;
+        --bg: #0d1117;
+        --card: #161b22;
+        --card-border: #30363d;
+        --border: #3d444d;
+        --divider: #21262d;
         --text: #f0f6fc;
-        --text-muted: #8b949e;
+        --text-muted: #9198a1;
         --accent: #10a37f;
         --accent-hover: #12b886;
+        --accent-text: #2fbf8f;
+        --accent-soft: rgba(16, 163, 127, 0.16);
+        --accent-ring: rgba(16, 163, 127, 0.45);
+        --tile: #21262d;
+        --hover: rgba(240, 246, 252, 0.06);
+        --switch-off: #484f58;
+        --preview-bg: #0d1117;
+        --preview-line: #3d444d;
+        --paper: #e6edf3;
+        --paper-line: #afb8c1;
+        --shadow: none;
+        --tooltip-bg: #2d333b;
+        --tooltip-border: #444c56;
+        --tooltip-text: #f0f6fc;
+        --tooltip-muted: #d1d9e0;
+        --tooltip-tip-bg: rgba(255, 255, 255, 0.06);
         --github: #21262d;
         --github-hover: #30363d;
+        --github-border: #3d444d;
         --github-text: #f0f6fc;
         --danger: #f85149;
         --danger-surface: #2d1114;
@@ -47,15 +87,34 @@
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme]) {
           color-scheme: dark;
-          --canvas: #161b22;
-          --surface: #0d1117;
-          --border: #30363d;
+          --bg: #0d1117;
+          --card: #161b22;
+          --card-border: #30363d;
+          --border: #3d444d;
+          --divider: #21262d;
           --text: #f0f6fc;
-          --text-muted: #8b949e;
+          --text-muted: #9198a1;
           --accent: #10a37f;
           --accent-hover: #12b886;
+          --accent-text: #2fbf8f;
+          --accent-soft: rgba(16, 163, 127, 0.16);
+          --accent-ring: rgba(16, 163, 127, 0.45);
+          --tile: #21262d;
+          --hover: rgba(240, 246, 252, 0.06);
+          --switch-off: #484f58;
+          --preview-bg: #0d1117;
+          --preview-line: #3d444d;
+          --paper: #e6edf3;
+          --paper-line: #afb8c1;
+          --shadow: none;
+          --tooltip-bg: #2d333b;
+          --tooltip-border: #444c56;
+          --tooltip-text: #f0f6fc;
+          --tooltip-muted: #d1d9e0;
+          --tooltip-tip-bg: rgba(255, 255, 255, 0.06);
           --github: #21262d;
           --github-hover: #30363d;
+          --github-border: #3d444d;
           --github-text: #f0f6fc;
           --danger: #f85149;
           --danger-surface: #2d1114;
@@ -67,197 +126,1170 @@
         box-sizing: border-box;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
+      html {
+        background: var(--bg);
+        scroll-behavior: smooth;
+      }
+
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        max-width: 520px;
-        margin: 48px auto;
-        padding: 0 20px;
+        margin: 0;
         color: var(--text);
+        background: var(--bg);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        font-size: 15px;
         line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
       }
 
-      h1 {
-        font-size: 20px;
-        font-weight: 600;
-        letter-spacing: -0.01em;
-        margin-bottom: 4px;
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
       }
 
-      p.subtitle {
-        color: var(--text-muted);
-        font-size: 13px;
-        margin-top: 0;
-        margin-bottom: 32px;
-      }
-
-      fieldset {
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 16px 18px;
-        margin: 0 0 16px 0;
-      }
-
-      legend {
-        font-weight: 600;
-        font-size: 13px;
-        padding: 0 6px;
-        color: var(--text);
-      }
-
-      label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13.5px;
-        padding: 7px 0;
-        cursor: pointer;
-      }
-
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 12px;
-        background: var(--surface);
-        padding: 1px 5px;
-        border-radius: 4px;
-      }
-
-      select {
-        font-size: 13px;
-        padding: 4px 6px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-      }
-
-      label:has(select),
-      label:has(input[type="number"]),
-      label:has(input[type="text"]) {
-        justify-content: space-between;
-      }
-
-      input[type="number"] {
-        width: 64px;
-        font-size: 13px;
-        padding: 4px 6px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-        background: var(--canvas);
-        color: var(--text);
-      }
-
-      input[type="text"] {
-        width: 220px;
-        font-size: 13px;
-        padding: 5px 8px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-        background: var(--canvas);
-        color: var(--text);
-      }
-
-      .pdf-margin-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        column-gap: 16px;
-      }
-
-      .pdf-margin-grid label {
-        padding: 5px 0;
-      }
-
-      button {
-        font-family: inherit;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        border-radius: 6px;
-        padding: 9px 18px;
-        border: 1px solid transparent;
-      }
-
-      #save {
-        background: var(--accent);
-        color: var(--github-text);
-      }
-
-      #save:hover {
-        background: var(--accent-hover);
-      }
-
-      #status {
-        font-size: 12px;
-        color: var(--accent);
-        margin-left: 10px;
-        opacity: 0;
-        transition: opacity 0.2s;
-      }
-
-      #status.visible {
-        opacity: 1;
-      }
-
-      .hint {
-        margin: 4px 0 0;
-        color: var(--text-muted);
-        font-size: 12px;
-      }
-
-      .row {
-        display: flex;
-        align-items: center;
+      .icon {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
       /*
        * ---------------------------------------------------
-       * GITHUB SECTION
+       * PAGE LAYOUT - header, sidebar (search + section
+       * links) and the settings column
        * ---------------------------------------------------
        */
 
-      .github-status {
-        font-size: 13.5px;
+      .page {
+        display: grid;
+        grid-template-columns: 232px minmax(0, 1fr);
+        grid-template-areas:
+          "header header"
+          "sidebar content";
+        column-gap: 40px;
+        row-gap: 28px;
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 40px 32px 72px;
+      }
+
+      .page-header {
+        grid-area: header;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .brand-logo {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        flex: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.2;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .page-subtitle {
+        margin: 4px 0 0;
         color: var(--text-muted);
-        margin: 0 0 12px 0;
       }
 
-      .github-status.connected {
-        color: var(--accent);
-        font-weight: 500;
+      .sidebar {
+        grid-area: sidebar;
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
       }
 
-      .repository-link {
-        display: inline-block;
-        margin-bottom: 12px;
+      .search {
+        position: relative;
+      }
+
+      .search .icon {
+        position: absolute;
+        left: 13px;
+        top: 50%;
+        transform: translateY(-50%);
         color: var(--text-muted);
-        font-size: 13px;
-        font-weight: 500;
+        pointer-events: none;
       }
 
-      .repository-link:hover {
+      .search input {
+        width: 100%;
+        height: 44px;
+        padding: 0 12px 0 42px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .search input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .search input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .nav-link {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: var(--text);
+        font-weight: 500;
+        text-decoration: none;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          opacity 0.15s;
+      }
+
+      .nav-link .icon {
+        color: var(--text-muted);
+      }
+
+      .nav-link:hover {
+        background: var(--hover);
+      }
+
+      .nav-link[aria-current="true"] {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      .nav-link[aria-current="true"] .icon {
+        color: var(--accent-text);
+      }
+
+      .nav-link.is-dimmed {
+        opacity: 0.4;
+      }
+
+      .content {
+        grid-area: content;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .is-filtered {
+        display: none !important;
+      }
+
+      .search-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 40px 24px;
+        border: 1px dashed var(--card-border);
+        border-radius: 16px;
+        background: var(--card);
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      .search-empty p {
+        margin: 0;
+        text-wrap: balance;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * SECTION CARDS
+       * ---------------------------------------------------
+       */
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        scroll-margin-top: 24px;
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 20px 24px;
+      }
+
+      .card-icon {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        flex: none;
+      }
+
+      .card-icon .icon {
+        width: 24px;
+        height: 24px;
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.3;
+        font-weight: 700;
+      }
+
+      .card-subtitle {
+        margin: 2px 0 0;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * ONE SETTING ROW
+       * ---------------------------------------------------
+       *
+       * Icon + title + plain-language description on the
+       * left, the control on the right. Hovering the left
+       * part (or pressing its ? button) opens the tooltip
+       * with the longer explanation and a tip. --stacked
+       * rows put a wide control (choice cards, margins)
+       * under the text instead of beside it.
+       */
+
+      .setting {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px 24px;
+        padding: 18px 24px;
+        border-top: 1px solid var(--divider);
+      }
+
+      .setting--stacked {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .setting-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .setting-icon {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: var(--tile);
+        color: var(--text-muted);
+        flex: none;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .setting:hover .setting-icon,
+      .setting:focus-within .setting-icon {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .setting-text {
+        min-width: 0;
+        padding-top: 1px;
+      }
+
+      /* Block, not flex, so a title that wraps keeps its ? right
+         after the last word instead of pushing it to the edge */
+      .setting-title-row {
+        display: block;
+        text-wrap: balance;
+      }
+
+      .setting-title {
+        font-weight: 600;
+        line-height: 1.4;
+      }
+
+      label.setting-title {
+        cursor: pointer;
+      }
+
+      .setting-desc {
+        margin: 2px 0 0;
+        color: var(--text-muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .setting-control {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .setting--stacked .setting-control {
+        justify-content: flex-start;
+        padding-left: 50px;
+      }
+
+      .setting-extra {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-left: 50px;
+      }
+
+      .help-button {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        margin-left: 6px;
+        padding: 0;
+        vertical-align: baseline;
+        border: 1.5px solid var(--border);
+        border-radius: 50%;
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: help;
+        flex: none;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      /* Bigger hit area than the visible circle */
+      .help-button::after {
+        content: "";
+        position: absolute;
+        inset: -7px;
+      }
+
+      .help-button:hover,
+      .help-button[aria-expanded="true"] {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #ffffff;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * CONTROLS
+       * ---------------------------------------------------
+       */
+
+      .switch {
+        position: relative;
+        display: inline-flex;
+        width: 48px;
+        height: 28px;
+        flex: none;
+      }
+
+      .switch input,
+      .segment input,
+      .choice input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 1;
+      }
+
+      .switch-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: var(--switch-off);
+        transition: background 0.2s;
+      }
+
+      .switch-track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s;
+      }
+
+      .switch input:checked + .switch-track {
+        background: var(--accent);
+      }
+
+      .switch input:checked + .switch-track::after {
+        transform: translateX(20px);
+      }
+
+      .switch input:focus-visible + .switch-track {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .segmented {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 12px;
+        background: var(--tile);
+      }
+
+      .segment {
+        position: relative;
+        display: flex;
+      }
+
+      .segment-face {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 14px;
+        border-radius: 9px;
+        color: var(--text-muted);
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          box-shadow 0.15s;
+      }
+
+      .segment-face .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      .segment:hover .segment-face {
         color: var(--text);
       }
 
-      #github-connect {
-        background: var(--github);
-        color: var(--github-text);
+      .segment input:checked + .segment-face {
+        background: var(--card);
+        color: var(--text);
+        box-shadow:
+          0 1px 3px rgba(31, 35, 40, 0.12),
+          0 0 0 1px var(--card-border);
       }
 
-      #github-connect:hover:not(:disabled) {
-        background: var(--github-hover);
+      .segment input:checked + .segment-face .icon {
+        color: var(--accent-text);
       }
 
-      #github-connect:disabled {
+      .segment input:focus-visible + .segment-face {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+
+      .select {
+        position: relative;
+        display: inline-flex;
+      }
+
+      .select select {
+        appearance: none;
+        min-width: 230px;
+        height: 42px;
+        padding: 0 40px 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .select select:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .select .icon {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+
+      .stepper {
+        display: inline-flex;
+        align-items: stretch;
+        height: 42px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+        overflow: hidden;
+      }
+
+      .stepper:focus-within {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .stepper-button {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .stepper-button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+      .stepper-button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      .stepper-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 0 8px 0 4px;
+        border-inline: 1px solid var(--divider);
+      }
+
+      .stepper input {
+        width: 34px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 16px;
+        font-weight: 600;
+        text-align: right;
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+
+      .stepper input:focus {
+        outline: none;
+      }
+
+      .stepper input::-webkit-inner-spin-button,
+      .stepper input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      .unit {
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .stepper--small {
+        height: 36px;
+      }
+
+      .stepper--small .stepper-button {
+        width: 32px;
+      }
+
+      .stepper--small input {
+        width: 26px;
+        font-size: 15px;
+      }
+
+      .text-input {
+        width: 100%;
+        max-width: 440px;
+        height: 42px;
+        padding: 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .text-input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .text-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .field-label {
+        color: var(--text-muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+
+      .button .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      .button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+      .button:disabled {
         opacity: 0.6;
         cursor: default;
       }
 
-      #github-disconnect {
-        background: var(--canvas);
-        color: var(--danger);
-        border-color: var(--danger);
-        margin-left: 8px;
+      .button--quiet {
+        border-color: transparent;
+        background: transparent;
+        color: var(--text-muted);
       }
 
-      #github-disconnect:hover {
+      .button--quiet:hover:not(:disabled) {
+        color: var(--text);
+      }
+
+      .button--github {
+        border-color: var(--github-border);
+        background: var(--github);
+        color: var(--github-text);
+      }
+
+      .button--github:hover:not(:disabled) {
+        background: var(--github-hover);
+      }
+
+      .button--danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      .button--danger:hover:not(:disabled) {
         background: var(--danger-surface);
+      }
+
+      /*
+       * Choice cards: radio options with a small picture of
+       * what each one produces, for settings whose names
+       * alone don't say much ("Bold name", "Dividing line").
+       */
+
+      .choices {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+        gap: 12px;
+        width: 100%;
+        max-width: 560px;
+      }
+
+      .choice {
+        position: relative;
+        display: block;
+      }
+
+      .choice-face {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        height: 100%;
+        padding: 10px;
+        border: 1.5px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--card);
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+
+      .choice:hover .choice-face {
+        border-color: var(--text-muted);
+      }
+
+      .choice input:checked + .choice-face {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .choice input:focus-visible + .choice-face {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .choice-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 2px;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+
+      .choice-radio {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--border);
+        border-radius: 50%;
+        background: var(--card);
+        flex: none;
+      }
+
+      .choice input:checked + .choice-face .choice-radio {
+        border-color: var(--accent);
+        background: radial-gradient(
+          circle,
+          var(--accent) 0 4px,
+          var(--card) 4.5px
+        );
+      }
+
+      .preview {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        height: 76px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--preview-bg);
+        overflow: hidden;
+      }
+
+      .pv-line {
+        display: block;
+        flex: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--preview-line);
+      }
+
+      .pv-line--short {
+        width: 62%;
+      }
+
+      .pv-heading {
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+
+      .pv-name {
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+
+      .preview--spacing {
+        gap: 0;
+      }
+
+      .pv-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .pv-gap-small {
+        height: 8px;
+      }
+
+      .pv-gap-big {
+        height: 18px;
+      }
+
+      .pv-rule {
+        display: flex;
+        align-items: center;
+        height: 18px;
+      }
+
+      .pv-rule::before {
+        content: "";
+        width: 100%;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--text-muted);
+      }
+
+      /*
+       * Margins: four number fields around a small picture of
+       * the page, drawn to scale for the chosen paper size and
+       * direction (options.ts sets its size and the --margin-*
+       * insets).
+       */
+
+      .margins {
+        display: grid;
+        grid-template-columns: auto 176px auto;
+        grid-template-areas:
+          ". top ."
+          "left page right"
+          ". bottom .";
+        align-items: center;
+        justify-items: center;
+        gap: 10px 18px;
+      }
+
+      .margin {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .margin--top {
+        grid-area: top;
+      }
+
+      .margin--right {
+        grid-area: right;
+      }
+
+      .margin--bottom {
+        grid-area: bottom;
+      }
+
+      .margin--left {
+        grid-area: left;
+      }
+
+      .page-preview {
+        grid-area: page;
+        display: grid;
+        place-items: center;
+        width: 176px;
+        height: 176px;
+      }
+
+      .sheet {
+        position: relative;
+        width: 113px;
+        height: 160px;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        background: var(--paper);
+        box-shadow: 0 3px 10px rgba(31, 35, 40, 0.12);
+        transition:
+          width 0.2s,
+          height 0.2s;
+      }
+
+      .sheet-text {
+        position: absolute;
+        top: var(--margin-top, 11px);
+        right: var(--margin-right, 10px);
+        bottom: var(--margin-bottom, 11px);
+        left: var(--margin-left, 10px);
+        padding: 3px;
+        border: 1px dashed var(--accent);
+        background: repeating-linear-gradient(
+            to bottom,
+            var(--paper-line) 0 2px,
+            transparent 2px 7px
+          )
+          content-box;
+        transition:
+          top 0.2s,
+          right 0.2s,
+          bottom 0.2s,
+          left 0.2s;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 6px;
+        padding: 3px 10px 3px 9px;
+        border-radius: 999px;
+        background: var(--tile);
+        color: var(--text-muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .status::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--switch-off);
+        flex: none;
+      }
+
+      .status.is-connected {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .status.is-connected::before {
+        background: var(--accent);
+      }
+
+      .status.is-error {
+        background: var(--danger-surface);
+        color: var(--danger);
+      }
+
+      .status.is-error::before {
+        background: var(--danger);
+      }
+
+      /*
+       * ---------------------------------------------------
+       * FOOTER - reset to defaults, version, project link
+       * ---------------------------------------------------
+       */
+
+      .page-footer {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding-top: 4px;
+        text-align: center;
+      }
+
+      .reset-confirm {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        max-width: 460px;
+        padding: 16px 20px;
+        border: 1px solid var(--card-border);
+        border-radius: 14px;
+        background: var(--card);
+      }
+
+      .reset-confirm p {
+        margin: 0;
+        font-weight: 500;
+        text-wrap: balance;
+      }
+
+      .reset-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .about {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .about a {
+        color: inherit;
+      }
+
+      .about a:hover {
+        color: var(--text);
+      }
+
+      /*
+       * ---------------------------------------------------
+       * TOOLTIP + TOAST
+       * ---------------------------------------------------
+       */
+
+      .tooltip {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 50;
+        width: max-content;
+        max-width: min(340px, calc(100vw - 24px));
+        padding: 12px 14px;
+        border: 1px solid var(--tooltip-border);
+        border-radius: 12px;
+        background: var(--tooltip-bg);
+        color: var(--tooltip-text);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .tooltip::before {
+        content: "";
+        position: absolute;
+        left: var(--arrow-left, 24px);
+        width: 12px;
+        height: 12px;
+        border: inherit;
+        background: inherit;
+        transform: translateX(-50%) rotate(45deg);
+      }
+
+      .tooltip[data-placement="below"]::before {
+        top: -7px;
+        border-right: 0;
+        border-bottom: 0;
+      }
+
+      .tooltip[data-placement="above"]::before {
+        bottom: -7px;
+        border-top: 0;
+        border-left: 0;
+      }
+
+      .tooltip p {
+        margin: 0;
+      }
+
+      .tooltip-tip {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px !important;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--tooltip-tip-bg);
+        color: var(--tooltip-muted);
+      }
+
+      .tooltip-tip .icon {
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+        color: #f5c84c;
+      }
+
+      .tooltip-tip strong {
+        color: var(--tooltip-text);
+      }
+
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        z-index: 60;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px 10px 14px;
+        border-radius: 999px;
+        background: var(--tooltip-bg);
+        color: var(--tooltip-text);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        font-size: 14px;
+        font-weight: 600;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, 16px);
+        transition:
+          opacity 0.2s,
+          transform 0.2s;
+      }
+
+      .toast.is-visible {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .toast .icon {
+        width: 18px;
+        height: 18px;
+        stroke-width: 2.4;
+        color: #3fd8a5;
+      }
+
+      .toast .toast-icon-error,
+      .toast[data-tone="error"] .toast-icon-success {
+        display: none;
+      }
+
+      .toast[data-tone="error"] .toast-icon-error {
+        display: block;
+        color: #ff8182;
       }
 
       /*
@@ -289,7 +1321,7 @@
       }
 
       #github-overlay-card {
-        background: var(--canvas);
+        background: var(--card);
         border-radius: 16px;
         padding: 48px 56px;
         max-width: 420px;
@@ -321,10 +1353,6 @@
         line-height: 1.5;
       }
 
-      #github-overlay-instruction strong {
-        color: var(--text);
-      }
-
       #github-overlay-spinner {
         width: 20px;
         height: 20px;
@@ -345,9 +1373,11 @@
         background: none;
         color: var(--text-muted);
         border: none;
+        font: inherit;
         font-size: 13px;
         text-decoration: underline;
         padding: 4px;
+        cursor: pointer;
       }
 
       #github-overlay-error {
@@ -356,255 +1386,1674 @@
         color: var(--danger);
         margin: 0 0 20px 0;
       }
+
+      /*
+       * ---------------------------------------------------
+       * SMALL SCREENS
+       * ---------------------------------------------------
+       *
+       * The sidebar dissolves (display: contents) so search
+       * and the section links become rows of the page grid,
+       * and the links turn into a sticky, sideways-scrolling
+       * row of chips.
+       */
+
+      @media (max-width: 860px) {
+        .page {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-areas:
+            "header"
+            "search"
+            "nav"
+            "content";
+          row-gap: 14px;
+          padding: 24px 16px 56px;
+        }
+
+        .sidebar {
+          display: contents;
+        }
+
+        .search {
+          grid-area: search;
+        }
+
+        .nav {
+          grid-area: nav;
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          flex-direction: row;
+          gap: 8px;
+          margin: 0 -16px;
+          padding: 10px 16px;
+          overflow-x: auto;
+          background: var(--bg);
+          scrollbar-width: none;
+        }
+
+        .nav::-webkit-scrollbar {
+          display: none;
+        }
+
+        .nav-link {
+          flex: none;
+          gap: 8px;
+          padding: 7px 14px;
+          border: 1px solid var(--card-border);
+          border-radius: 999px;
+          background: var(--card);
+          font-size: 14px;
+        }
+
+        .nav-link .icon {
+          width: 18px;
+          height: 18px;
+        }
+
+        .card {
+          scroll-margin-top: 72px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .setting:not(.setting--switch) {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .setting:not(.setting--switch) .setting-control {
+          justify-content: flex-start;
+          padding-left: 50px;
+        }
+
+        .select select {
+          min-width: 0;
+          max-width: 100%;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .card-header,
+        .setting {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .setting:not(.setting--switch) .setting-control,
+        .setting--stacked .setting-control,
+        .setting-extra {
+          padding-left: 0;
+        }
+
+        .margins {
+          grid-template-columns: repeat(2, auto);
+          grid-template-areas:
+            "page page"
+            "top bottom"
+            "left right";
+          justify-content: start;
+        }
+
+        /* Three cards side by side leave no room for longer
+           words ("Überschrift"), so list them one per row */
+        .choices {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .choice-face {
+          flex-direction: row;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .choice-face .preview {
+          flex: none;
+          width: 96px;
+          height: 64px;
+          padding: 6px 10px;
+        }
+
+        /* A segmented bar that wraps looks broken; separate
+           chips wrap cleanly */
+        .segmented {
+          gap: 8px;
+          padding: 0;
+          background: none;
+        }
+
+        .segment-face {
+          border: 1px solid var(--card-border);
+          background: var(--card);
+        }
+
+        .segment input:checked + .segment-face {
+          border-color: var(--accent);
+          background: var(--accent-soft);
+          box-shadow: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1 data-i18n="options.title">AI Exporter Settings</h1>
-    <p class="subtitle" data-i18n="options.subtitle">
-      These preferences apply to every export.
-    </p>
-
-    <fieldset>
-      <legend data-i18n="options.appearance.legend">Appearance</legend>
-      <label for="theme">
-        <span data-i18n="options.appearance.theme">Theme</span>
-        <select id="theme">
-          <option value="system" data-i18n="options.appearance.themeSystem">
-            System
-          </option>
-          <option value="light" data-i18n="options.appearance.themeLight">
-            Light
-          </option>
-          <option value="dark" data-i18n="options.appearance.themeDark">
-            Dark
-          </option>
-        </select>
-      </label>
-      <p class="hint" data-i18n="options.appearance.themeHint">
-        System follows your browser/operating system theme.
-      </p>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.language.legend">Language</legend>
-      <label for="language">
-        <span data-i18n="options.language.label">Language</span>
-        <select id="language">
-          <option value="auto" data-i18n="options.language.auto">
-            Auto-detect (browser language)
-          </option>
-          <option value="en">English</option>
-          <option value="es">Español</option>
-          <option value="fr">Français</option>
-          <option value="de">Deutsch</option>
-          <option value="ru">Русский</option>
-          <option value="zh">中文</option>
-        </select>
-      </label>
-      <p class="hint" data-i18n="options.language.hint">
-        Choose the language for AI Exporter's interface.
-      </p>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.downloads.legend">Downloads</legend>
-      <label>
-        <input type="checkbox" id="askWhereToSave" />
-        <span data-i18n="options.downloads.askWhereToSave"
-          >Ask where to save each export</span
-        >
-      </label>
-      <label>
-        <input type="checkbox" id="downloadImagesLocally" />
-        <span data-i18n="options.downloads.bundleImages"
-          >Bundle downloaded images with exports as a ZIP</span
-        >
-      </label>
-      <p class="hint" data-i18n="options.downloads.bundleImagesHint">
-        When enabled, image exports include an images folder. Otherwise, exports
-        keep ChatGPT-hosted image links.
-      </p>
-      <a
-        class="repository-link"
-        id="downloads-settings-link"
-        href="#"
-        data-i18n="options.downloads.settingsLink"
-      >
-        Open browser download location settings
-      </a>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.headings.legend">Message headings</legend>
-      <label>
-        <input type="radio" name="headingStyle" value="h2" />
-        <span data-i18n-html="options.headings.h2"
-          >Markdown heading (<code>## User</code>)</span
-        >
-      </label>
-      <label>
-        <input type="radio" name="headingStyle" value="bold" />
-        <span data-i18n-html="options.headings.bold"
-          >Bold label (<code>**User:**</code>)</span
-        >
-      </label>
-      <label>
-        <input type="radio" name="headingStyle" value="none" />
-        <span data-i18n="options.headings.none">No heading</span>
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.timestamp.legend">Timestamp</legend>
-      <label>
-        <input type="checkbox" id="includeTimestamp" />
-        <span data-i18n="options.timestamp.include"
-          >Include export date/time at the top of the file</span
-        >
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.spacing.legend">
-        Spacing between messages
-      </legend>
-      <label>
-        <input type="radio" name="messageSeparator" value="single" />
-        <span data-i18n="options.spacing.single">Single blank line</span>
-      </label>
-      <label>
-        <input type="radio" name="messageSeparator" value="double" />
-        <span data-i18n="options.spacing.double">Double blank line</span>
-      </label>
-      <label>
-        <input type="radio" name="messageSeparator" value="rule" />
-        <span data-i18n-html="options.spacing.rule"
-          >Horizontal rule (<code>---</code>)</span
-        >
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend data-i18n="options.pdf.legend">PDF export</legend>
-      <p class="hint" data-i18n="options.pdf.hint">
-        Applies when you export a conversation as a PDF.
-      </p>
-
-      <label for="pdfPageFormat">
-        <span data-i18n="options.pdf.pageFormat">Page size</span>
-        <select id="pdfPageFormat">
-          <option value="a4">A4</option>
-          <option value="letter">Letter</option>
-          <option value="legal">Legal</option>
-        </select>
-      </label>
-
-      <label for="pdfOrientation">
-        <span data-i18n="options.pdf.orientation">Orientation</span>
-        <select id="pdfOrientation">
-          <option value="portrait" data-i18n="options.pdf.orientationPortrait">
-            Portrait
-          </option>
-          <option
-            value="landscape"
-            data-i18n="options.pdf.orientationLandscape"
-          >
-            Landscape
-          </option>
-        </select>
-      </label>
-
-      <label for="pdfFontSize">
-        <span data-i18n="options.pdf.fontSize">Body font size (pt)</span>
-        <input type="number" id="pdfFontSize" min="6" max="24" step="1" />
-      </label>
-
-      <p class="hint" data-i18n="options.pdf.marginsLegend">
-        Margins (millimeters)
-      </p>
-      <div class="pdf-margin-grid">
-        <label for="pdfMarginTop">
-          <span data-i18n="options.pdf.marginTop">Top</span>
-          <input type="number" id="pdfMarginTop" min="0" max="60" step="1" />
-        </label>
-        <label for="pdfMarginRight">
-          <span data-i18n="options.pdf.marginRight">Right</span>
-          <input type="number" id="pdfMarginRight" min="0" max="60" step="1" />
-        </label>
-        <label for="pdfMarginBottom">
-          <span data-i18n="options.pdf.marginBottom">Bottom</span>
-          <input type="number" id="pdfMarginBottom" min="0" max="60" step="1" />
-        </label>
-        <label for="pdfMarginLeft">
-          <span data-i18n="options.pdf.marginLeft">Left</span>
-          <input type="number" id="pdfMarginLeft" min="0" max="60" step="1" />
-        </label>
-      </div>
-
-      <label>
-        <input type="checkbox" id="pdfIncludeTableOfContents" />
-        <span data-i18n="options.pdf.includeTableOfContents"
-          >Include a table of contents</span
-        >
-      </label>
-      <label>
-        <input type="checkbox" id="pdfIncludePageNumbers" />
-        <span data-i18n="options.pdf.includePageNumbers"
-          >Show page numbers in the footer</span
-        >
-      </label>
-      <label>
-        <input type="checkbox" id="pdfIncludeUserInfo" />
-        <span data-i18n="options.pdf.includeUserInfo"
-          >Show a custom footer line on every page</span
-        >
-      </label>
-      <label for="pdfUserInfoText">
-        <span data-i18n="options.pdf.userInfoText">Footer text</span>
-        <input
-          type="text"
-          id="pdfUserInfoText"
-          data-i18n-placeholder="options.pdf.userInfoTextPlaceholder"
-          placeholder="e.g. Prepared by Jane Doe"
+    <!--
+      Icon set. Each <symbol> is drawn on a 24x24 grid with
+      a 1.8px round stroke (see .icon); reference one with
+      <svg class="icon"><use href="#i-name" /></svg>.
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
+        <circle cx="15" cy="6" r="2" />
+        <circle cx="9" cy="12" r="2" />
+        <circle cx="17" cy="18" r="2" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path
+          d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"
         />
-      </label>
-    </fieldset>
+      </symbol>
+      <symbol id="i-contrast" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" />
+      </symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <path d="M8 20h8M12 16v4" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path
+          d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"
+        />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M12 3a6.5 6.5 0 0 0 9 9 9 9 0 1 1-9-9z" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5" />
+        <path
+          d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2"
+        />
+      </symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24">
+        <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+        <path
+          d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2"
+        />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path
+          d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"
+        />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M14 4h6v6M20 4l-8.5 8.5" />
+        <path
+          d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"
+        />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path
+          d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+        />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2.5" />
+        <circle cx="9" cy="9.5" r="1.8" />
+        <path d="m21 15.5-4.5-4.5L6 20" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
+      </symbol>
+      <symbol id="i-spacing" viewBox="0 0 24 24">
+        <rect x="4" y="3.5" width="16" height="5.5" rx="1.5" />
+        <rect x="4" y="15" width="16" height="5.5" rx="1.5" />
+        <path d="M8 12h8" />
+      </symbol>
+      <symbol id="i-file-text" viewBox="0 0 24 24">
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        />
+        <path d="M14 3v5h5M9 13h6M9 17h4" />
+      </symbol>
+      <symbol id="i-ruler" viewBox="0 0 24 24">
+        <path d="M3.5 16.5 16.5 3.5l4 4-13 13z" />
+        <path d="m7 13 2 2M10 10l2 2M13 7l2 2" />
+      </symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v4h-4" />
+      </symbol>
+      <symbol id="i-portrait" viewBox="0 0 24 24">
+        <rect x="6.5" y="3" width="11" height="18" rx="1.5" />
+      </symbol>
+      <symbol id="i-landscape" viewBox="0 0 24 24">
+        <rect x="3" y="6.5" width="18" height="11" rx="1.5" />
+      </symbol>
+      <symbol id="i-type" viewBox="0 0 24 24">
+        <path d="M3 7V5h10v2M8 5v14M6 19h4" />
+        <path d="M14 13v-1.5h7V13M17.5 11.5V19M16 19h3" />
+      </symbol>
+      <symbol id="i-margins" viewBox="0 0 24 24">
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <rect x="8" y="7" width="8" height="10" stroke-dasharray="2 2" />
+      </symbol>
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <path d="M9 6h11M9 12h11M9 18h11" />
+        <circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="i-hash" viewBox="0 0 24 24">
+        <path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18" />
+      </symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24">
+        <path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16z" />
+        <path d="m13.5 6.5 4 4" />
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 16 16">
+        <path
+          fill="currentColor"
+          stroke="none"
+          d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"
+        />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-4-4" />
+      </symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24">
+        <path d="M9 19h6M10 22h4" />
+        <path
+          d="M8.5 13.5a6 6 0 1 1 7 0c-.8.7-1.5 1.6-1.5 2.5h-4c0-.9-.7-1.8-1.5-2.5z"
+        />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12.5 4.5 4.5L19 7.5" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5M12 16.5v.01" />
+      </symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24">
+        <path d="M4 12a8 8 0 1 0 2.34-5.66" />
+        <path d="M4 4v4h4" />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6" />
+      </symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24">
+        <path d="M6 12h12" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M12 6v12M6 12h12" />
+      </symbol>
+    </svg>
 
-    <fieldset>
-      <legend data-i18n="options.github.legend">GitHub</legend>
-      <p
-        id="github-status"
-        class="github-status"
-        data-i18n="options.github.statusDisconnected"
-      >
-        Save exports straight to a GitHub repo.
-      </p>
-      <a
-        class="repository-link"
-        href="https://github.com/GrantTotinov/AIExporter"
-        target="_blank"
-        rel="noopener noreferrer"
-        data-i18n="options.github.viewOnGithub"
-      >
-        View AI Exporter on GitHub
-      </a>
-      <div class="row">
-        <button id="github-connect" data-i18n="options.github.connect">
-          Connect GitHub
-        </button>
-        <button
-          id="github-disconnect"
-          hidden
-          data-i18n="options.github.disconnect"
+    <div class="page">
+      <header class="page-header">
+        <img
+          class="brand-logo"
+          src="icons/icon128.png"
+          alt=""
+          width="52"
+          height="52"
+        />
+        <div>
+          <h1 data-i18n="options.title">AI Exporter Settings</h1>
+          <p class="page-subtitle" data-i18n="options.subtitle">
+            Changes are saved automatically. Point at any ? to see what a
+            setting does.
+          </p>
+        </div>
+      </header>
+
+      <div class="sidebar">
+        <div class="search">
+          <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+          <input
+            type="search"
+            id="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search settings…"
+            aria-label="Search settings"
+            data-i18n-placeholder="options.search.placeholder"
+            data-i18n-aria-label="options.search.label"
+          />
+        </div>
+
+        <nav
+          class="nav"
+          aria-label="Settings sections"
+          data-i18n-aria-label="options.nav.label"
         >
-          Disconnect
-        </button>
+          <a class="nav-link" href="#general">
+            <svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg>
+            <span data-i18n="options.general.title">Language &amp; appearance</span>
+          </a>
+          <a class="nav-link" href="#saving">
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-download" />
+            </svg>
+            <span data-i18n="options.saving.title">Saving files</span>
+          </a>
+          <a class="nav-link" href="#content">
+            <svg class="icon" aria-hidden="true"><use href="#i-chat" /></svg>
+            <span data-i18n="options.content.title">Chat contents</span>
+          </a>
+          <a class="nav-link" href="#pdf">
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-file-text" />
+            </svg>
+            <span data-i18n="options.pdf.title">PDF documents</span>
+          </a>
+          <a class="nav-link" href="#github">
+            <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
+            <span data-i18n="options.github.title">GitHub</span>
+          </a>
+        </nav>
       </div>
-    </fieldset>
 
-    <div class="row">
-      <button id="save" data-i18n="options.save">Save Settings</button>
-      <span id="status" data-i18n="options.saved">Saved</span>
+      <main class="content" id="settings">
+        <div class="search-empty" id="search-empty" hidden>
+          <p id="search-empty-text" role="status"></p>
+          <button
+            type="button"
+            class="button"
+            id="search-clear"
+            data-i18n="options.search.clear"
+          >
+            Show all settings
+          </button>
+        </div>
+
+        <!-- ============ LANGUAGE & APPEARANCE ============ -->
+        <section class="card" id="general" aria-labelledby="general-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-sliders" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="general-title"
+                data-i18n="options.general.title"
+              >
+                Language &amp; appearance
+              </h2>
+              <p class="card-subtitle" data-i18n="options.general.subtitle">
+                The language and colors of AI Exporter.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting"
+            data-help="options.language.help"
+            data-tip="options.language.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-globe" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="language"
+                    data-i18n="options.language.title"
+                    >Language</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="language-desc"
+                  data-i18n="options.language.desc"
+                >
+                  Used for AI Exporter's buttons, menus and messages.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="select">
+                <select id="language" aria-describedby="language-desc">
+                  <option value="auto" data-i18n="options.language.auto">
+                    Automatic (browser language)
+                  </option>
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="ru">Русский</option>
+                  <option value="zh">中文</option>
+                </select>
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-chevron" />
+                </svg>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.theme.help"
+            data-tip="options.theme.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-contrast" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="theme-title"
+                    data-i18n="options.theme.title"
+                    >Colors</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.theme.desc">
+                  A light or dark look for AI Exporter.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div
+                class="segmented"
+                role="radiogroup"
+                aria-labelledby="theme-title"
+              >
+                <label class="segment">
+                  <input type="radio" name="theme" value="system" />
+                  <span class="segment-face">
+                    <svg class="icon" aria-hidden="true">
+                      <use href="#i-monitor" />
+                    </svg>
+                    <span data-i18n="options.theme.system">Automatic</span>
+                  </span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="theme" value="light" />
+                  <span class="segment-face">
+                    <svg class="icon" aria-hidden="true">
+                      <use href="#i-sun" />
+                    </svg>
+                    <span data-i18n="options.theme.light">Light</span>
+                  </span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="theme" value="dark" />
+                  <span class="segment-face">
+                    <svg class="icon" aria-hidden="true">
+                      <use href="#i-moon" />
+                    </svg>
+                    <span data-i18n="options.theme.dark">Dark</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SAVING FILES ================= -->
+        <section class="card" id="saving" aria-labelledby="saving-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-download" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="saving-title"
+                data-i18n="options.saving.title"
+              >
+                Saving files
+              </h2>
+              <p class="card-subtitle" data-i18n="options.saving.subtitle">
+                Where your exported files go.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.askWhereToSave.help"
+            data-tip="options.askWhereToSave.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-folder" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="askWhereToSave"
+                    data-i18n="options.askWhereToSave.title"
+                    >Ask where to save each file</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="askWhereToSave-desc"
+                  data-i18n="options.askWhereToSave.desc"
+                >
+                  Choose the folder and file name every time you export.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="askWhereToSave"
+                  aria-describedby="askWhereToSave-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.downloadFolder.help"
+            data-tip="options.downloadFolder.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-download" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    data-i18n="options.downloadFolder.title"
+                    >Download folder</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.downloadFolder.desc">
+                  Change where files go when AI Exporter doesn't ask.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <button type="button" class="button" id="open-download-settings">
+                <span data-i18n="options.downloadFolder.open"
+                  >Open browser settings</span
+                >
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-external" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================ CHAT CONTENTS ================= -->
+        <section class="card" id="content" aria-labelledby="content-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-chat" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="content-title"
+                data-i18n="options.content.title"
+              >
+                Chat contents
+              </h2>
+              <p class="card-subtitle" data-i18n="options.content.subtitle">
+                What your exported chats include and how they are laid out.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.images.help"
+            data-tip="options.images.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-image" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="downloadImagesLocally"
+                    data-i18n="options.images.title"
+                    >Include pictures</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="downloadImagesLocally-desc"
+                  data-i18n="options.images.desc"
+                >
+                  Save the pictures from the chat together with the text.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="downloadImagesLocally"
+                  aria-describedby="downloadImagesLocally-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.timestamp.help"
+            data-tip="options.timestamp.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-clock" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="includeTimestamp"
+                    data-i18n="options.timestamp.title"
+                    >Date and time of export</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="includeTimestamp-desc"
+                  data-i18n="options.timestamp.desc"
+                >
+                  Write when the chat was exported at the top of the file.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="includeTimestamp"
+                  aria-describedby="includeTimestamp-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--stacked"
+            data-help="options.headings.help"
+            data-tip="options.headings.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-user" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="headingStyle-title"
+                    data-i18n="options.headings.title"
+                    >Names above messages</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.headings.desc">
+                  Show who wrote each message: you or the AI.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div
+                class="choices"
+                role="radiogroup"
+                aria-labelledby="headingStyle-title"
+              >
+                <label class="choice">
+                  <input type="radio" name="headingStyle" value="h2" />
+                  <span class="choice-face">
+                    <span class="preview" aria-hidden="true">
+                      <span class="pv-heading">User</span>
+                      <span class="pv-line"></span>
+                      <span class="pv-line pv-line--short"></span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.headings.h2">Heading</span>
+                    </span>
+                  </span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="headingStyle" value="bold" />
+                  <span class="choice-face">
+                    <span class="preview" aria-hidden="true">
+                      <span class="pv-name">User:</span>
+                      <span class="pv-line"></span>
+                      <span class="pv-line pv-line--short"></span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.headings.bold">Bold name</span>
+                    </span>
+                  </span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="headingStyle" value="none" />
+                  <span class="choice-face">
+                    <span class="preview" aria-hidden="true">
+                      <span class="pv-line"></span>
+                      <span class="pv-line"></span>
+                      <span class="pv-line pv-line--short"></span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.headings.none">No names</span>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--stacked"
+            data-help="options.spacing.help"
+            data-tip="options.spacing.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-spacing" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="messageSeparator-title"
+                    data-i18n="options.spacing.title"
+                    >Space between messages</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.spacing.desc">
+                  How messages are separated from each other.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div
+                class="choices"
+                role="radiogroup"
+                aria-labelledby="messageSeparator-title"
+              >
+                <label class="choice">
+                  <input type="radio" name="messageSeparator" value="single" />
+                  <span class="choice-face">
+                    <span class="preview preview--spacing" aria-hidden="true">
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                      <span class="pv-gap-small"></span>
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.spacing.single">Small gap</span>
+                    </span>
+                  </span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="messageSeparator" value="double" />
+                  <span class="choice-face">
+                    <span class="preview preview--spacing" aria-hidden="true">
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                      <span class="pv-gap-big"></span>
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.spacing.double">Big gap</span>
+                    </span>
+                  </span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="messageSeparator" value="rule" />
+                  <span class="choice-face">
+                    <span class="preview preview--spacing" aria-hidden="true">
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                      <span class="pv-rule"></span>
+                      <span class="pv-block">
+                        <span class="pv-line"></span>
+                        <span class="pv-line pv-line--short"></span>
+                      </span>
+                    </span>
+                    <span class="choice-label">
+                      <span class="choice-radio" aria-hidden="true"></span>
+                      <span data-i18n="options.spacing.rule">Dividing line</span>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================ PDF DOCUMENTS ================= -->
+        <section class="card" id="pdf" aria-labelledby="pdf-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-file-text" /></svg>
+            </span>
+            <div>
+              <h2 class="card-title" id="pdf-title" data-i18n="options.pdf.title">
+                PDF documents
+              </h2>
+              <p class="card-subtitle" data-i18n="options.pdf.subtitle">
+                Only used when you export a chat as a PDF.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting"
+            data-help="options.fontSize.help"
+            data-tip="options.fontSize.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-type" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="pdfFontSize"
+                    data-i18n="options.fontSize.title"
+                    >Text size</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="pdfFontSize-desc"
+                  data-i18n="options.fontSize.desc"
+                >
+                  How big the letters are, in points (pt).
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div class="stepper">
+                <button
+                  type="button"
+                  class="stepper-button"
+                  data-step="-1"
+                  tabindex="-1"
+                  aria-hidden="true"
+                >
+                  <svg class="icon"><use href="#i-minus" /></svg>
+                </button>
+                <span class="stepper-value">
+                  <input
+                    type="number"
+                    id="pdfFontSize"
+                    min="6"
+                    max="24"
+                    step="1"
+                    inputmode="numeric"
+                    aria-describedby="pdfFontSize-desc"
+                  />
+                  <span class="unit" data-i18n="options.unit.pt">pt</span>
+                </span>
+                <button
+                  type="button"
+                  class="stepper-button"
+                  data-step="1"
+                  tabindex="-1"
+                  aria-hidden="true"
+                >
+                  <svg class="icon"><use href="#i-plus" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.pageFormat.help"
+            data-tip="options.pageFormat.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-ruler" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="pdfPageFormat-title"
+                    data-i18n="options.pageFormat.title"
+                    >Paper size</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.pageFormat.desc">
+                  The size of each page.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div
+                class="segmented"
+                role="radiogroup"
+                aria-labelledby="pdfPageFormat-title"
+              >
+                <label class="segment">
+                  <input type="radio" name="pdfPageFormat" value="a4" />
+                  <span class="segment-face">A4</span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="pdfPageFormat" value="letter" />
+                  <span class="segment-face">Letter</span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="pdfPageFormat" value="legal" />
+                  <span class="segment-face">Legal</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.orientation.help"
+            data-tip="options.orientation.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-rotate" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="pdfOrientation-title"
+                    data-i18n="options.orientation.title"
+                    >Page direction</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.orientation.desc">
+                  Tall or wide pages.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div
+                class="segmented"
+                role="radiogroup"
+                aria-labelledby="pdfOrientation-title"
+              >
+                <label class="segment">
+                  <input type="radio" name="pdfOrientation" value="portrait" />
+                  <span class="segment-face">
+                    <svg class="icon" aria-hidden="true">
+                      <use href="#i-portrait" />
+                    </svg>
+                    <span data-i18n="options.orientation.portrait">Portrait</span>
+                  </span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="pdfOrientation" value="landscape" />
+                  <span class="segment-face">
+                    <svg class="icon" aria-hidden="true">
+                      <use href="#i-landscape" />
+                    </svg>
+                    <span data-i18n="options.orientation.landscape"
+                      >Landscape</span
+                    >
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--stacked"
+            data-help="options.margins.help"
+            data-tip="options.margins.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-margins" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    id="margins-title"
+                    data-i18n="options.margins.title"
+                    >Margins</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.margins.desc">
+                  The empty space around the edges of each page, in
+                  millimeters.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <div class="margins" role="group" aria-labelledby="margins-title">
+                <div class="margin margin--top">
+                  <label
+                    class="field-label"
+                    for="pdfMarginTop"
+                    data-i18n="options.margins.top"
+                    >Top</label
+                  >
+                  <div class="stepper stepper--small">
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="-1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-minus" /></svg>
+                    </button>
+                    <span class="stepper-value">
+                      <input
+                        type="number"
+                        id="pdfMarginTop"
+                        min="0"
+                        max="60"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                      <span class="unit" data-i18n="options.unit.mm">mm</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="margin margin--left">
+                  <label
+                    class="field-label"
+                    for="pdfMarginLeft"
+                    data-i18n="options.margins.left"
+                    >Left</label
+                  >
+                  <div class="stepper stepper--small">
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="-1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-minus" /></svg>
+                    </button>
+                    <span class="stepper-value">
+                      <input
+                        type="number"
+                        id="pdfMarginLeft"
+                        min="0"
+                        max="60"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                      <span class="unit" data-i18n="options.unit.mm">mm</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="page-preview" aria-hidden="true">
+                  <div class="sheet" id="page-preview">
+                    <div class="sheet-text"></div>
+                  </div>
+                </div>
+
+                <div class="margin margin--right">
+                  <label
+                    class="field-label"
+                    for="pdfMarginRight"
+                    data-i18n="options.margins.right"
+                    >Right</label
+                  >
+                  <div class="stepper stepper--small">
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="-1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-minus" /></svg>
+                    </button>
+                    <span class="stepper-value">
+                      <input
+                        type="number"
+                        id="pdfMarginRight"
+                        min="0"
+                        max="60"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                      <span class="unit" data-i18n="options.unit.mm">mm</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="margin margin--bottom">
+                  <label
+                    class="field-label"
+                    for="pdfMarginBottom"
+                    data-i18n="options.margins.bottom"
+                    >Bottom</label
+                  >
+                  <div class="stepper stepper--small">
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="-1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-minus" /></svg>
+                    </button>
+                    <span class="stepper-value">
+                      <input
+                        type="number"
+                        id="pdfMarginBottom"
+                        min="0"
+                        max="60"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                      <span class="unit" data-i18n="options.unit.mm">mm</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="stepper-button"
+                      data-step="1"
+                      tabindex="-1"
+                      aria-hidden="true"
+                    >
+                      <svg class="icon"><use href="#i-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.pageNumbers.help"
+            data-tip="options.pageNumbers.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-hash" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="pdfIncludePageNumbers"
+                    data-i18n="options.pageNumbers.title"
+                    >Page numbers</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="pdfIncludePageNumbers-desc"
+                  data-i18n="options.pageNumbers.desc"
+                >
+                  Number every page at the bottom.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="pdfIncludePageNumbers"
+                  aria-describedby="pdfIncludePageNumbers-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.toc.help"
+            data-tip="options.toc.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-list" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="pdfIncludeTableOfContents"
+                    data-i18n="options.toc.title"
+                    >Table of contents</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="pdfIncludeTableOfContents-desc"
+                  data-i18n="options.toc.desc"
+                >
+                  A list of all messages at the start of the PDF.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="pdfIncludeTableOfContents"
+                  aria-describedby="pdfIncludeTableOfContents-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.footerText.help"
+            data-tip="options.footerText.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-pen" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="pdfIncludeUserInfo"
+                    data-i18n="options.footerText.title"
+                    >Your own text on every page</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="pdfIncludeUserInfo-desc"
+                  data-i18n="options.footerText.desc"
+                >
+                  A short line at the bottom of every page, such as your name.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="pdfIncludeUserInfo"
+                  aria-describedby="pdfIncludeUserInfo-desc"
+                  aria-controls="pdfUserInfoTextRow"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+            <div class="setting-extra" id="pdfUserInfoTextRow" hidden>
+              <label
+                class="field-label"
+                for="pdfUserInfoText"
+                data-i18n="options.footerText.label"
+                >Text to print</label
+              >
+              <input
+                type="text"
+                class="text-input"
+                id="pdfUserInfoText"
+                maxlength="200"
+                placeholder="e.g. Prepared by Jane Doe"
+                data-i18n-placeholder="options.footerText.placeholder"
+              />
+            </div>
+          </div>
+        </section>
+
+        <!-- =================== GITHUB ===================== -->
+        <section class="card" id="github" aria-labelledby="github-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-github" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="github-title"
+                data-i18n="options.github.title"
+              >
+                GitHub
+              </h2>
+              <p class="card-subtitle" data-i18n="options.github.subtitle">
+                Optional and meant for programmers. Most people can skip this.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting"
+            data-help="options.github.help"
+            data-tip="options.github.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-upload" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    data-i18n="options.github.saveTitle"
+                    >Save chats to GitHub</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc">
+                  <span class="status" id="github-status" role="status"
+                    >Not connected</span
+                  >
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <button
+                type="button"
+                class="button button--github"
+                id="github-connect"
+              >
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-github" />
+                </svg>
+                <span id="github-connect-label">Connect GitHub</span>
+              </button>
+              <button
+                type="button"
+                class="button button--danger"
+                id="github-disconnect"
+                data-i18n="options.github.disconnect"
+                hidden
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <footer class="page-footer">
+          <button type="button" class="button button--quiet" id="reset-defaults">
+            <svg class="icon" aria-hidden="true"><use href="#i-reset" /></svg>
+            <span data-i18n="options.reset.button">Restore default settings</span>
+          </button>
+          <div
+            class="reset-confirm"
+            id="reset-confirm"
+            role="group"
+            aria-labelledby="reset-question"
+            hidden
+          >
+            <p id="reset-question" data-i18n="options.reset.question">
+              Put every setting back the way it was when you installed AI
+              Exporter?
+            </p>
+            <div class="reset-actions">
+              <button
+                type="button"
+                class="button button--danger"
+                id="reset-yes"
+                data-i18n="options.reset.confirm"
+              >
+                Yes, restore
+              </button>
+              <button
+                type="button"
+                class="button"
+                id="reset-cancel"
+                data-i18n="options.reset.cancel"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <p class="about">
+            <span id="app-version"></span>
+            <span aria-hidden="true">·</span>
+            <a
+              href="https://github.com/GrantTotinov/AIExporter"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-i18n="options.about.github"
+              >AI Exporter on GitHub</a
+            >
+          </p>
+        </footer>
+      </main>
+    </div>
+
+    <!-- Hover/focus help for the setting rows; filled by options.ts -->
+    <div class="tooltip" id="tooltip" role="tooltip" hidden>
+      <p id="tooltip-text"></p>
+      <p class="tooltip-tip" id="tooltip-tip">
+        <svg class="icon" aria-hidden="true"><use href="#i-bulb" /></svg>
+        <span
+          ><strong data-i18n="options.tip">Tip:</strong>
+          <span id="tooltip-tip-text"></span
+        ></span>
+      </p>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <svg class="icon toast-icon-success" aria-hidden="true">
+        <use href="#i-check" />
+      </svg>
+      <svg class="icon toast-icon-error" aria-hidden="true">
+        <use href="#i-alert" />
+      </svg>
+      <span id="toast-text"></span>
     </div>
 
     <!--

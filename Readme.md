@@ -67,9 +67,13 @@ Any time you pull new changes, rebuild and then reload the extension (the reload
 
 Files are named after the site, the conversation, and the date, for example `claude-export-trip-ideas-2026-10-02.pdf`.
 
+### Settings
+
+Click **Settings** at the bottom of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Chat contents**, **PDF documents**, and **GitHub**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
+
 ### Images
 
-By default, images are left out and exports are text-only; any text in the same message is kept. To include them, open **Settings → Downloads**, enable **Bundle downloaded images with exports as a ZIP**, and save the setting. After that:
+By default, images are left out and exports are text-only; any text in the same message is kept. To include them, open **Settings → Chat contents** and turn on **Include pictures**. After that:
 
 - **PDF** exports embed the images right in the document.
 - **Markdown, text, JSON, and CSV** exports that contain images download as a ZIP. Unzip it and keep the conversation file and its `images/` folder together so the image links keep working.
@@ -78,7 +82,7 @@ Copy to clipboard always stays text-only.
 
 ### PDF settings
 
-Open **Settings → PDF export** to pick the page size (A4, Letter, or Legal), orientation, margins, and body font size, and to turn on a table of contents, page numbers, or a footer line of your own on every page (for example "Prepared by Jane Doe").
+Open **Settings → PDF documents** to pick the text size, paper size (A4, Letter, or Legal), page direction, and margins, and to turn on page numbers, a table of contents, or a line of your own text on every page (for example "Prepared by Jane Doe").
 
 ## Saving to GitHub
 
