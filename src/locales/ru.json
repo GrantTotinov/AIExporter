@@ -51,7 +51,7 @@
   "popup.toast.openedGithub": "GitHub открыт",
   "popup.star.opening": "Открытие GitHub...",
   "popup.error.noActiveTab": "Нет активной вкладки",
-  "popup.error.openSupportedSite": "Сначала откройте диалог в ChatGPT или Claude",
+  "popup.error.openSupportedSite": "Сначала откройте диалог в ChatGPT, Claude или Gemini",
   "popup.error.loadConversationFailed": "Не удалось загрузить диалог",
   "popup.error.noMessagesFound": "В этом диалоге не найдено сообщений",
   "popup.error.copyMarkdownFailed": "Не удалось скопировать markdown",

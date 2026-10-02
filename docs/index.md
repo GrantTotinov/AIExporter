@@ -3,16 +3,16 @@ Privacy Policy for AIExporter
 
 Effective date: October 2, 2026
 
-AIExporter (formerly AI Exporter / GPTChatDownloader) is a Chrome extension that allows users to export their ChatGPT and Claude conversations as Markdown, plain text, or PDF, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository.
+AIExporter (formerly AI Exporter / GPTChatDownloader) is a Chrome extension that allows users to export their ChatGPT, Claude and Gemini conversations as Markdown, plain text, or PDF, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository.
 
 This Privacy Policy explains what information AIExporter processes, how it is used, and where it is stored.
 
 1. Information AIExporter Processes
 
 AIExporter processes the following information when you use its features:
-ChatGPT and Claude conversation content
+ChatGPT, Claude and Gemini conversation content
 
-When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com or claude.ai.
+When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai or gemini.google.com.
 
 This may include:
 
@@ -88,6 +88,7 @@ The extension communicates with the following external services when their funct
 
     ChatGPT (chatgpt.com) — to access the currently open conversation using the user's existing authenticated ChatGPT session.
     Claude (claude.ai) — to access the currently open conversation using the user's existing authenticated Claude session.
+    Gemini (gemini.google.com) — to access the currently open conversation using the user's existing authenticated Google session, and, when image bundling is enabled, Google's image servers (such as lh3.googleusercontent.com) to download the conversation's images.
     GitHub (github.com and api.github.com) — when the user connects GitHub or explicitly saves an export to GitHub.
 
 GitHub receives information according to the GitHub functionality and permissions authorized by the user.
@@ -117,7 +118,7 @@ The extension:
     Stores the GitHub access token locally rather than in synchronized Chrome storage.
     Does not store GitHub passwords.
     Sends conversation content to GitHub only when the user explicitly chooses a GitHub export.
-    Uses HTTPS when communicating with ChatGPT, Claude and GitHub endpoints.
+    Uses HTTPS when communicating with ChatGPT, Claude, Gemini and GitHub endpoints.
 
 No method of electronic storage or transmission can guarantee absolute security. Users should take appropriate care when exporting sensitive conversations to external destinations such as GitHub. 8. Third-Party Services
 
@@ -132,6 +133,11 @@ Claude
 AIExporter operates on claude.ai and uses the authenticated session already established by the user in the Claude website.
 
 AIExporter does not collect or store the user's Claude login credentials.
+Gemini
+
+AIExporter operates on gemini.google.com and uses the authenticated session already established by the user in the Gemini website.
+
+AIExporter does not collect or store the user's Google login credentials.
 GitHub
 
 GitHub integration uses GitHub's OAuth Device Flow and GitHub REST API.

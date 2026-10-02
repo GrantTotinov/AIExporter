@@ -51,7 +51,7 @@
   "popup.toast.openedGithub": "已打开 GitHub",
   "popup.star.opening": "正在打开 GitHub...",
   "popup.error.noActiveTab": "没有活动标签页",
-  "popup.error.openSupportedSite": "请先打开一个 ChatGPT 或 Claude 对话",
+  "popup.error.openSupportedSite": "请先打开一个 ChatGPT、Claude 或 Gemini 对话",
   "popup.error.loadConversationFailed": "无法加载对话",
   "popup.error.noMessagesFound": "此对话中未找到任何消息",
   "popup.error.copyMarkdownFailed": "无法复制 markdown",

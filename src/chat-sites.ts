@@ -15,16 +15,18 @@
  * a classic content script can't do (see the top of
  * content.ts).
  */
-export type ChatSite = "chatgpt" | "claude";
+export type ChatSite = "chatgpt" | "claude" | "gemini";
 
 const CHAT_SITE_ORIGINS: Record<ChatSite, string> = {
   chatgpt: "https://chatgpt.com",
   claude: "https://claude.ai",
+  gemini: "https://gemini.google.com",
 };
 
 export const CHAT_SITE_NAMES: Record<ChatSite, string> = {
   chatgpt: "ChatGPT",
   claude: "Claude",
+  gemini: "Gemini",
 };
 
 export function getChatSite(url: string | undefined): ChatSite | null {
@@ -46,10 +48,15 @@ export function getChatSite(url: string | undefined): ChatSite | null {
 }
 
 /*
- * Both sites end the tab title with their own name
- * ("Trip ideas - ChatGPT", "Trip ideas - Claude"); exports are
- * named and titled after the conversation alone.
+ * The sites end the tab title with their own name ("Trip ideas
+ * - ChatGPT", "Trip ideas - Claude", "Trip ideas - Google
+ * Gemini"); exports are named and titled after the conversation
+ * alone. Gemini also puts an invisible left-to-right mark in
+ * front of its titles, which is dropped too.
  */
 export function stripChatSiteSuffix(title: string): string {
-  return title.replace(/\s*[-|]\s*(?:ChatGPT|Claude)\s*$/i, "").trim();
+  return title
+    .replace(/^[\u{200E}\u{200F}]+|[\u{200E}\u{200F}]+$/gu, "")
+    .replace(/\s*[-|]\s*(?:ChatGPT|Claude|(?:Google\s+)?Gemini)\s*$/i, "")
+    .trim();
 }

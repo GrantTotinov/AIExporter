@@ -14,17 +14,19 @@
  * from claude.ai's own API (see LOAD CLAUDE CONVERSATION
  * below): that API authenticates with the session cookie,
  * which this script's same-origin requests send as well, so
- * no page bridge is needed there.
+ * no page bridge is needed there. gemini.google.com works the
+ * same way (see LOAD GEMINI CONVERSATION below).
  *
  * No DOM scrolling is used.
  * No conversation credentials are stored by this file.
  */
 
 /*
- * The one import this file has. claude-conversation.ts is
- * imported by nothing else, so Rollup inlines it into
- * content.js rather than emitting an `import` (see the note
- * below and at the top of that file).
+ * The only imports this file has. claude-conversation.ts and
+ * gemini-conversation.ts are imported by nothing else, so
+ * Rollup inlines them into content.js rather than emitting an
+ * `import` (see the note below and at the top of
+ * claude-conversation.ts).
  */
 import {
   buildClaudeConversationPath,
@@ -36,6 +38,17 @@ import {
   type ClaudeConversation,
   type ClaudeImage,
 } from "./claude-conversation.ts";
+import {
+  buildGeminiReadRequest,
+  convertGeminiTurns,
+  getGeminiAccountPrefix,
+  getGeminiConversationId,
+  isGeminiImageUrl,
+  parseGeminiTurnsPage,
+  readGeminiPageTokens,
+  type GeminiImage,
+  type GeminiPageTokens,
+} from "./gemini-conversation.ts";
 
 /*
  * ---------------------------------------------------------
@@ -207,11 +220,12 @@ const devError = (...args: unknown[]): void => {
  * PAGE BRIDGE INJECTION
  * ---------------------------------------------------------
  *
- * ChatGPT only - claude.ai is loaded without the bridge (see
- * the top of this file).
+ * ChatGPT only - claude.ai and gemini.google.com are loaded
+ * without the bridge (see the top of this file).
  */
 
 const IS_CLAUDE_SITE = window.location.hostname === "claude.ai";
+const IS_GEMINI_SITE = window.location.hostname === "gemini.google.com";
 
 function injectPageBridge(): void {
   if (document.documentElement.dataset.aiExporterBridgeInjected === "true") {
@@ -239,7 +253,7 @@ function injectPageBridge(): void {
   document.documentElement.dataset.aiExporterBridgeInjected = "true";
 }
 
-if (!IS_CLAUDE_SITE) {
+if (!IS_CLAUDE_SITE && !IS_GEMINI_SITE) {
   injectPageBridge();
 }
 
@@ -1331,6 +1345,10 @@ async function loadEntireConversation(
     return loadClaudeConversation(downloadImagesLocally);
   }
 
+  if (IS_GEMINI_SITE) {
+    return loadGeminiConversation(downloadImagesLocally);
+  }
+
   await waitForBridge();
 
   const conversationId = getConversationIdFromUrl();
@@ -1863,6 +1881,388 @@ async function loadClaudeConversation(
 
 /*
  * ---------------------------------------------------------
+ * LOAD GEMINI CONVERSATION
+ * ---------------------------------------------------------
+ *
+ * Like claude.ai, gemini.google.com needs no page bridge. Its
+ * web app reads conversations through Google's batchexecute
+ * endpoint, which authenticates with the session cookie - sent
+ * with this script's same-origin requests too - plus an XSRF
+ * token from the page's own HTML. Each request returns ten
+ * turns, newest first, and a cursor for the ten before them:
+ *
+ * POST /_/BardChatUi/data/batchexecute
+ *     ?rpcids=hNvQHb&source-path=...&bl=...&f.sid=...&rt=c
+ *     f.req=[[["hNvQHb","[\"c_{id}\",10,{cursor},...]",...]]]
+ *     &at={XSRF token}
+ *
+ * gemini-conversation.ts builds the requests and turns the
+ * answers into export messages; this part makes the requests
+ * and downloads the images.
+ */
+
+/* Ten turns a page: a 10,000-turn conversation. */
+const MAX_GEMINI_PAGES = 1000;
+
+/*
+ * The tokens sit in an inline script the page loaded with
+ * (window.WIZ_global_data). They're read from the DOM: this
+ * script can't see the page's JavaScript variables.
+ */
+function readGeminiTokensFromPage(): GeminiPageTokens | null {
+  for (const script of Array.from(document.scripts)) {
+    const text = script.src ? "" : (script.textContent ?? "");
+
+    if (text.includes("SNlM0e")) {
+      const tokens = readGeminiPageTokens(text);
+
+      if (tokens) {
+        return tokens;
+      }
+    }
+  }
+
+  return null;
+}
+
+/*
+ * Fresh tokens from the app's start page, for when the page's
+ * own can't be found or have expired (the tab has been open a
+ * long time).
+ */
+async function fetchGeminiTokens(
+  accountPrefix: string,
+): Promise<GeminiPageTokens> {
+  const response = await fetch(
+    new URL(`${accountPrefix}/app`, window.location.origin),
+    {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "text/html" },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini request failed: ${response.status}`);
+  }
+
+  const tokens = readGeminiPageTokens(await response.text());
+
+  if (!tokens) {
+    throw new Error("Sign in to Gemini to export this conversation.");
+  }
+
+  return tokens;
+}
+
+async function downloadGeminiImage(
+  url: string,
+): Promise<{ base64: string; mimeType: string; sizeBytes: number }> {
+  /*
+   * The request can carry the person's Google session, so
+   * images are only ever requested from Google's image hosts.
+   */
+  if (!isGeminiImageUrl(url)) {
+    throw new Error(
+      "Gemini returned an image URL outside Google's image hosts.",
+    );
+  }
+
+  let response: Response | undefined;
+  let lastError: unknown;
+
+  /*
+   * First without cookies - an image URL from the conversation
+   * usually works on its own, and a request that needs no
+   * session is the better one to make - then with the person's
+   * Google session if that one is refused.
+   */
+  for (const credentials of ["omit", "include"] as const) {
+    try {
+      const attempt = await fetch(url, { method: "GET", credentials });
+
+      if (attempt.ok) {
+        response = attempt;
+        break;
+      }
+
+      lastError = new Error(
+        `Gemini image download failed: ${attempt.status} ${attempt.statusText}`,
+      );
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!response) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Gemini image download failed.");
+  }
+
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+    throw new Error("The image is larger than the 8 MB export limit.");
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error("The image is empty or larger than the 8 MB export limit.");
+  }
+
+  return {
+    base64: bytesToBase64(bytes),
+    mimeType: response.headers.get("content-type") ?? "",
+    sizeBytes: bytes.byteLength,
+  };
+}
+
+async function loadGeminiConversation(
+  downloadImagesLocally: boolean,
+): Promise<ConversationLoadResult> {
+  const { pathname } = window.location;
+  const conversationId = getGeminiConversationId(pathname);
+
+  if (!conversationId) {
+    throw new Error(
+      "Could not determine the Gemini conversation ID from the current URL.",
+    );
+  }
+
+  devLog("AI Exporter: Gemini conversation ID", conversationId);
+
+  const accountPrefix = getGeminiAccountPrefix(pathname);
+  let tokens = readGeminiTokensFromPage();
+  let tokensAreFresh = tokens === null;
+
+  tokens ??= await fetchGeminiTokens(accountPrefix);
+
+  /*
+   * batchexecute's _reqid: the web app starts it at a random
+   * number and adds 100000 for every request.
+   */
+  let requestId = 10000 + Math.floor(Math.random() * 90000);
+
+  const fetchPage = (
+    pageTokens: GeminiPageTokens,
+    cursor: string | null,
+  ): Promise<Response> => {
+    const request = buildGeminiReadRequest({
+      conversationId,
+      cursor,
+      tokens: pageTokens,
+      accountPrefix,
+      sourcePath: pathname,
+      requestId,
+    });
+
+    requestId += 100000;
+
+    return fetch(new URL(request.path, window.location.origin), {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "X-Same-Domain": "1",
+      },
+      body: request.body,
+    });
+  };
+
+  const turns: unknown[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+
+  for (let pageNumber = 1; ; pageNumber++) {
+    let response = await fetchPage(tokens, cursor);
+
+    /*
+     * The page's token has most likely expired - tried once more
+     * with fresh ones.
+     */
+    if (
+      (response.status === 400 || response.status === 401) &&
+      !tokensAreFresh
+    ) {
+      tokens = await fetchGeminiTokens(accountPrefix);
+      tokensAreFresh = true;
+      response = await fetchPage(tokens, cursor);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Gemini API request failed: ${response.status}`);
+    }
+
+    const page = parseGeminiTurnsPage(await response.text());
+
+    turns.push(...page.turns);
+
+    devLog(`AI Exporter: Gemini page ${pageNumber}, turns=${turns.length}`);
+
+    if (!page.nextCursor || page.turns.length === 0) {
+      break;
+    }
+
+    if (seenCursors.has(page.nextCursor)) {
+      throw new Error(
+        "Gemini returned a repeated pagination cursor. Pagination was stopped to prevent an infinite loop.",
+      );
+    }
+
+    if (pageNumber >= MAX_GEMINI_PAGES) {
+      throw new Error("The Gemini conversation is too long to export.");
+    }
+
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+
+    /*
+     * Optional progress notification - a prompt and a reply per
+     * turn. Never allowed to break the export, not even when the
+     * popup has closed and nothing receives it.
+     */
+    try {
+      void Promise.resolve(
+        chrome.runtime.sendMessage({
+          type: "EXPORT_PROGRESS",
+          collected: turns.length * 2,
+        }),
+      ).catch(() => undefined);
+    } catch {
+      /* Progress reporting must never break the export. */
+    }
+  }
+
+  const exportMessages = convertGeminiTurns(turns);
+
+  const imageFileCache = new Map<string, Promise<ExportImageFile>>();
+  const limitImageRequests = createRequestLimiter(2);
+  let nextImageIndex = 1;
+  let downloadedImageBytes = 0;
+
+  const getImageFile = (
+    image: GeminiImage & { url: string },
+  ): Promise<ExportImageFile> => {
+    let pendingImage = imageFileCache.get(image.url);
+
+    if (!pendingImage) {
+      const imageIndex = nextImageIndex++;
+
+      pendingImage = limitImageRequests(async () => {
+        const downloaded = await downloadGeminiImage(image.url);
+        const fileType = getImageFileType(image.fileName, downloaded.mimeType);
+
+        if (!fileType) {
+          throw new Error(
+            "The downloaded attachment is not a supported image type.",
+          );
+        }
+
+        if (downloadedImageBytes + downloaded.sizeBytes > MAX_TOTAL_IMAGE_BYTES) {
+          throw new Error(
+            "The conversation's images exceed the 20 MB export limit.",
+          );
+        }
+
+        downloadedImageBytes += downloaded.sizeBytes;
+
+        return {
+          path: `images/image-${String(imageIndex).padStart(3, "0")}.${fileType.extension}`,
+          mimeType: fileType.mimeType,
+          base64: downloaded.base64,
+          sizeBytes: downloaded.sizeBytes,
+        };
+      });
+      imageFileCache.set(image.url, pendingImage);
+    }
+
+    return pendingImage;
+  };
+
+  const convertedMessages = await Promise.all(
+    exportMessages.map(
+      async (message): Promise<Omit<Message, "order"> | null> => {
+        let imageNumber = 0;
+
+        const renderedParts = await Promise.all(
+          message.parts.map(
+            async (part): Promise<{ text: string; imagePath?: string }> => {
+              if (part.kind === "text") {
+                return { text: part.text };
+              }
+
+              // Like ChatGPT and Claude images: left out unless image bundling is on.
+              if (!downloadImagesLocally) {
+                return { text: "" };
+              }
+
+              const number = ++imageNumber;
+              const { url, fileName } = part.image;
+
+              if (!url) {
+                return { text: "[Image attachment could not be downloaded]" };
+              }
+
+              try {
+                const imageFile = await getImageFile({ url, fileName });
+
+                return {
+                  text: `![Image ${number}](${imageFile.path})`,
+                  imagePath: imageFile.path,
+                };
+              } catch (error) {
+                devWarn("AI Exporter: failed to download a Gemini image", error);
+
+                return { text: "[Image attachment could not be downloaded]" };
+              }
+            },
+          ),
+        );
+
+        const content = renderedParts
+          .map((part) => part.text)
+          .filter(Boolean)
+          .join("\n\n")
+          .trim();
+
+        return content
+          ? {
+              id: message.id,
+              role: message.role,
+              content,
+              imagePaths: [
+                ...new Set(
+                  renderedParts.flatMap((part) =>
+                    part.imagePath ? [part.imagePath] : [],
+                  ),
+                ),
+              ],
+            }
+          : null;
+      },
+    ),
+  );
+
+  const result = convertedMessages
+    .filter((message): message is Omit<Message, "order"> => message !== null)
+    .map((message, order) => ({ ...message, order }));
+  const settledImages = await Promise.allSettled(imageFileCache.values());
+  const images = settledImages.flatMap((item) =>
+    item.status === "fulfilled" ? [item.value] : [],
+  );
+
+  devLog("AI Exporter: Gemini export complete", {
+    conversationId,
+    turns: turns.length,
+    messages: result.length,
+    images: images.length,
+  });
+
+  return { messages: result, images };
+}
+
+/*
+ * ---------------------------------------------------------
  * READY
  * ---------------------------------------------------------
  */
@@ -1919,7 +2319,7 @@ function loadEntireConversationSingleFlight(
  * EXPORT SUCCESS OVERLAY
  * ---------------------------------------------------------
  *
- * Injected directly into the ChatGPT/Claude page (not the popup),
+ * Injected directly into the ChatGPT/Claude/Gemini page (not the popup),
  * so it stays visible even after the person closes the
  * extension popup - which Chrome does automatically the
  * moment focus moves anywhere outside the popup, including

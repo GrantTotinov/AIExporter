@@ -51,7 +51,7 @@
   "popup.toast.openedGithub": "GitHub abierto",
   "popup.star.opening": "Abriendo GitHub...",
   "popup.error.noActiveTab": "No hay pestaña activa",
-  "popup.error.openSupportedSite": "Abre primero una conversación de ChatGPT o Claude",
+  "popup.error.openSupportedSite": "Abre primero una conversación de ChatGPT, Claude o Gemini",
   "popup.error.loadConversationFailed": "No se pudo cargar la conversación",
   "popup.error.noMessagesFound": "No se encontraron mensajes en esta conversación",
   "popup.error.copyMarkdownFailed": "No se pudo copiar el markdown",

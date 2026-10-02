@@ -1,11 +1,11 @@
 # AI Exporter
 
-A free browser extension for Chrome and Firefox that exports your ChatGPT and Claude conversations to PDF, Markdown, plain text, JSON, or CSV, images included, so you can keep a copy, share it, or drop it straight into a GitHub repo. Everything happens locally, in your browser.
+A free browser extension for Chrome and Firefox that exports your ChatGPT, Claude and Gemini conversations to PDF, Markdown, plain text, JSON, or CSV, images included, so you can keep a copy, share it, or drop it straight into a GitHub repo. Everything happens locally, in your browser.
 
 ## Free, source-available, and local
 
 - **Free.** No account, no subscription, no paid tier, no ads.
-- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT or Claude), and to GitHub if you use the GitHub features. See the [privacy policy](./docs/privacy-policy.md).
+- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT, Claude or Gemini), and to GitHub if you use the GitHub features. See the [privacy policy](./docs/privacy-policy.md).
 - **Source-available.** The complete source code is here on GitHub, so you can read exactly what the extension does, build it yourself, or send a fix. It's free for personal and other noncommercial use (see [License](#license)).
 
 ## Why this exists
@@ -14,15 +14,15 @@ Most ChatGPT export tools scrape the page's DOM. They scroll through the convers
 
 AI Exporter takes a different approach. It talks to the same conversation API that the ChatGPT web app itself uses, paginating through the full message history and reconstructing the actual conversation tree. ChatGPT stores branches (regenerated replies, edited messages) and this walks the correct path through them using each message's parent pointer. The result is a complete, correctly ordered export, no matter how long the conversation is or how many times you regenerated a response.
 
-On `claude.ai` it works the same way: it asks Claude's own conversation API for the whole conversation, every branch included, and follows the branch you're currently viewing.
+On `claude.ai` it works the same way: it asks Claude's own conversation API for the whole conversation, every branch included, and follows the branch you're currently viewing. On `gemini.google.com` it reads the conversation through the same internal API the Gemini web app uses, ten turns at a time, so long chats come out complete without any scrolling either.
 
 ## What it does
 
-- **Works on ChatGPT and Claude.** Open a conversation on `chatgpt.com` or `claude.ai` and export it.
+- **Works on ChatGPT, Claude and Gemini.** Open a conversation on `chatgpt.com`, `claude.ai` or `gemini.google.com` and export it.
 - **Exports to five formats:** PDF, Markdown (`.md`), plain text (`.txt`), JSON, or CSV.
 - **Exports images too.** PDFs embed them on the page; Markdown, text, JSON, and CSV exports come as a ZIP with an `images/` folder. It's opt-in, see [Images](#images).
 - **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, and Greek text. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
-- **Keeps Claude's artifacts:** code and documents Claude wrote in an artifact are exported with the reply that made them.
+- **Keeps artifacts and documents:** code and documents Claude wrote in an artifact, and Gemini's Canvas and Deep Research documents, are exported with the reply that made them.
 - **Copies** the whole conversation to your clipboard as Markdown in one click.
 - **Lets you pick the messages** before exporting: everything, only your questions, only the answers, none, or the inverse of what's selected. Shift+click selects a range, and you can expand messages to read them in full.
 - **Saves straight to a GitHub repo** (see below) instead of downloading.
@@ -53,15 +53,15 @@ To run the latest code, or to use it in Firefox:
    This produces a `dist/` folder with the built extension.
 3. Load it:
    - **Chrome:** open `chrome://extensions`, turn on **Developer mode** (top right corner), click **Load unpacked**, and select the `dist/` folder.
-   - **Firefox** (140 or newer): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/manifest.json`. Firefox removes temporary add-ons when it restarts, so load it again after a restart. If Firefox asks for access to `chatgpt.com` and `claude.ai`, allow it; the extension can't read conversations without it.
+   - **Firefox** (140 or newer): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/manifest.json`. Firefox removes temporary add-ons when it restarts, so load it again after a restart. If Firefox asks for access to `chatgpt.com`, `claude.ai` and `gemini.google.com`, allow it; the extension can't read conversations without it.
 
 The AI Exporter icon should now show up in your toolbar. If you don't see it, click the extensions button next to the address bar and pin it.
 
-Any time you pull new changes, rebuild and then reload the extension (the reload icon on `chrome://extensions`, or **Reload** on `about:debugging`), and refresh any open ChatGPT or Claude tabs. The browser doesn't pick up rebuilt files on its own.
+Any time you pull new changes, rebuild and then reload the extension (the reload icon on `chrome://extensions`, or **Reload** on `about:debugging`), and refresh any open ChatGPT, Claude or Gemini tabs. The browser doesn't pick up rebuilt files on its own.
 
 ## Using it
 
-1. Open any conversation on `chatgpt.com` or `claude.ai`.
+1. Open any conversation on `chatgpt.com`, `claude.ai` or `gemini.google.com`.
 2. Click the AI Exporter icon.
 3. Pick **Copy Conversation**, or open **Export ▾** to choose which messages to include and a format: PDF, Markdown, plain text, JSON, or CSV.
 
@@ -92,9 +92,10 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 
 ## A few notes
 
-- AI Exporter works on `chatgpt.com` and `claude.ai`. If OpenAI or Anthropic change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
+- AI Exporter works on `chatgpt.com`, `claude.ai` and `gemini.google.com`. If OpenAI, Anthropic or Google change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
 - Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's thinking and tool calls are left out, and attached files are listed by name.
-- Image bundling downloads the image files into the export so they work locally without a ChatGPT or Claude session.
+- Gemini exports include Canvas and Deep Research documents, and generated images when image bundling is on. Gemini's thinking and the markup only its own interface uses (citation markers, suggested follow-ups, web image results, video cards) are left out, and attached files other than images are listed by name.
+- Image bundling downloads the image files into the export so they work locally without a ChatGPT, Claude or Gemini session.
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
 

@@ -305,8 +305,9 @@ chrome.runtime.onMessage.addListener((message) => {
  *
  * Builds a filesystem-safe filename from the site, the tab
  * title and today's date, e.g.
- * "chatgpt-export-easypay-transfer-help-2026-08-30.md" or
- * "claude-export-easypay-transfer-help-2026-08-30.md".
+ * "chatgpt-export-easypay-transfer-help-2026-08-30.md",
+ * "claude-export-easypay-transfer-help-2026-08-30.md" or
+ * "gemini-export-easypay-transfer-help-2026-08-30.md".
  */
 function buildFilename(
   tabTitle: string | undefined,

@@ -13,9 +13,21 @@ describe("getChatSite", () => {
     ).toBe("claude");
   });
 
+  it("recognizes Gemini conversation URLs", () => {
+    expect(getChatSite("https://gemini.google.com/app/e87b6c6ac16404a5")).toBe(
+      "gemini",
+    );
+    expect(
+      getChatSite(
+        "https://gemini.google.com/u/1/gem/coding-partner/e87b6c6ac16404a5",
+      ),
+    ).toBe("gemini");
+  });
+
   it("recognizes the sites' other pages too (the content script decides what's exportable)", () => {
     expect(getChatSite("https://claude.ai/new")).toBe("claude");
     expect(getChatSite("https://chatgpt.com/")).toBe("chatgpt");
+    expect(getChatSite("https://gemini.google.com/app")).toBe("gemini");
   });
 
   it("rejects other origins, including look-alikes and plain http", () => {
@@ -23,6 +35,11 @@ describe("getChatSite", () => {
     expect(getChatSite("https://claude.ai.example.com/chat/123")).toBeNull();
     expect(getChatSite("https://api.claude.ai/chat/123")).toBeNull();
     expect(getChatSite("http://claude.ai/chat/123")).toBeNull();
+    expect(
+      getChatSite("https://gemini.google.com.example.com/app/1"),
+    ).toBeNull();
+    expect(getChatSite("http://gemini.google.com/app/1")).toBeNull();
+    expect(getChatSite("https://www.google.com/gemini")).toBeNull();
     expect(getChatSite("chrome://extensions")).toBeNull();
   });
 
@@ -51,5 +68,19 @@ describe("stripChatSiteSuffix", () => {
     expect(stripChatSiteSuffix("ChatGPT vs Claude - Claude")).toBe(
       "ChatGPT vs Claude",
     );
+    expect(stripChatSiteSuffix("Gemini vs Claude - Google Gemini")).toBe(
+      "Gemini vs Claude",
+    );
+  });
+
+  it("removes Gemini's suffix and the invisible mark in front of its titles", () => {
+    expect(stripChatSiteSuffix("Trip ideas - Google Gemini")).toBe(
+      "Trip ideas",
+    );
+    expect(stripChatSiteSuffix("\u{200E}Trip ideas - Google Gemini")).toBe(
+      "Trip ideas",
+    );
+    expect(stripChatSiteSuffix("Trip ideas - Gemini")).toBe("Trip ideas");
+    expect(stripChatSiteSuffix("\u{200E}Google Gemini")).toBe("Google Gemini");
   });
 });
