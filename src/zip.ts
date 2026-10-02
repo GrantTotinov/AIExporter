@@ -25,7 +25,7 @@ function crc32(bytes: Uint8Array): number {
   return (value ^ 0xffffffff) >>> 0;
 }
 
-function copyToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+export function copyToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(copy).set(bytes);
   return copy;

@@ -447,6 +447,7 @@ async function loadConversationMessages(
   images: ExportImageFile[];
   tabTitle: string | undefined;
   tabUrl: string | undefined;
+  tabId: number | undefined;
 }> {
   showLoadingOverlay(t("popup.loading.default"));
 
@@ -519,6 +520,7 @@ async function loadConversationMessages(
       images,
       tabTitle: tab.title,
       tabUrl: tab.url,
+      tabId: tab.id,
     };
   } finally {
     hideLoadingOverlay();
@@ -585,6 +587,7 @@ let currentMessages: Message[] = [];
 let currentImages: ExportImageFile[] = [];
 let currentTabTitle: string | undefined;
 let currentTabUrl: string | undefined;
+let currentTabId: number | undefined;
 let lastShiftAnchorIndex: number | null = null;
 
 function closeSelectorOverlay(): void {
@@ -802,13 +805,14 @@ exportButton.addEventListener("click", async () => {
 
   try {
     const settings = await loadSettings();
-    const { messages, images, tabTitle, tabUrl } =
+    const { messages, images, tabTitle, tabUrl, tabId } =
       await loadConversationMessages(settings.downloadImagesLocally);
 
     currentMessages = messages;
     currentImages = images;
     currentTabTitle = tabTitle;
     currentTabUrl = tabUrl;
+    currentTabId = tabId;
 
     selectorPanelMessage.textContent = t("popup.selector.subtitle");
     selectorExpandToggle.checked = false;
@@ -845,8 +849,6 @@ selectorExportButton.addEventListener("click", async () => {
 
   closeSelectorOverlay();
   setBusy(true);
-
-  let objectUrl: string | undefined;
 
   try {
     const settings = await loadSettings();
@@ -887,28 +889,38 @@ selectorExportButton.addEventListener("click", async () => {
       }
     }
 
-    objectUrl = URL.createObjectURL(blob);
-
-    const downloadId = await chrome.downloads.download({
-      url: objectUrl,
+    /*
+     * The actual chrome.downloads.download() call happens in
+     * background.ts, not here. A blob: URL only stays readable
+     * while the document that created it is alive, and Firefox
+     * closes the extension popup as soon as the native "Save As"
+     * dialog (saveAs: true) steals focus - so a blob: URL created
+     * in the popup goes bad right as Firefox tries to read it,
+     * and the download fails right after the person picks a
+     * folder. (A data: URL doesn't fix this either - Firefox
+     * rejects data: URLs outright for downloads.download with
+     * saveAs: true.) The background page has no such lifecycle
+     * issue, so the file bytes are handed over as base64 and
+     * downloaded from there instead.
+     */
+    const downloadResponse = await chrome.runtime.sendMessage({
+      type: "DOWNLOAD_START",
       filename: downloadFilename,
+      mimeType: blob.type || "application/octet-stream",
+      content: await encodeBlobBase64(blob),
       saveAs: settings.askWhereToSave,
+      tabId: currentTabId,
     });
+
+    if (!downloadResponse?.success) {
+      throw new Error(downloadResponse?.error ?? "Download failed.");
+    }
+
+    const downloadId = downloadResponse.data.downloadId;
 
     devLog("AI Exporter: download started", downloadId);
 
     showToast(t("popup.toast.downloadStarted"));
-
-    /*
-     * The success overlay is NOT shown here - see the
-     * DOWNLOAD_TRACK / DOWNLOAD_COMPLETE comment further
-     * below and background.ts for why.
-     */
-    chrome.runtime
-      .sendMessage({ type: "DOWNLOAD_TRACK", downloadId })
-      .catch(() => {
-        openExportSuccess();
-      });
   } catch (error) {
     devError("AI Exporter: download failed", error);
 
@@ -920,11 +932,6 @@ selectorExportButton.addEventListener("click", async () => {
     );
   } finally {
     resetButtons();
-
-    if (objectUrl) {
-      const url = objectUrl;
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    }
   }
 });
 
@@ -1160,17 +1167,16 @@ function openExportSuccess(): void {
 }
 
 /*
- * Fired by background.ts's chrome.downloads.onChanged listener
- * once a tracked download's state actually becomes "complete" -
- * this is the real trigger for the success overlay, not the
- * download Promise resolving (see the comment above
- * chrome.downloads.download for why).
+ * Note: the download success overlay is NOT triggered from here
+ * anymore. background.ts sends SHOW_EXPORT_SUCCESS to the
+ * ChatGPT tab directly once a tracked download actually
+ * completes (see the DOWNLOAD_START handler and the comment
+ * above trackedDownloadIds in background.ts) - the popup is
+ * usually long closed by then (Firefox closes it the instant
+ * the native Save As dialog steals focus), so a popup-local
+ * listener for DOWNLOAD_COMPLETE can't be relied on to still be
+ * around to relay it.
  */
-chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type === "DOWNLOAD_COMPLETE") {
-    openExportSuccess();
-  }
-});
 
 /*
  * ---------------------------------------------------------

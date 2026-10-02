@@ -9,6 +9,7 @@ import {
   starProject,
 } from "./github.ts";
 import { initI18n } from "./i18n.ts";
+import { decodeBase64, copyToArrayBuffer } from "./zip.ts";
 
 const devError = (...args: unknown[]): void => {
   if (import.meta.env.DEV) {
@@ -68,31 +69,51 @@ function isOwnExtensionSender(sender: chrome.runtime.MessageSender): boolean {
  * steals focus, so a popup-local listener could simply never
  * fire. The service worker has no such lifecycle issue.
  *
- * Download IDs we're tracking (from downloadAs() in popup.ts)
- * are registered via DOWNLOAD_TRACK; when that download's
- * state changes, this broadcasts DOWNLOAD_COMPLETE /
- * DOWNLOAD_CANCELLED to any open popup, which is what
- * actually triggers the success overlay.
+ * Download IDs we're tracking (from the DOWNLOAD_START handler
+ * below) map to the object URL that download reads from and to
+ * the ChatGPT tab the export was started from. When that
+ * download's state actually becomes "complete", this sends
+ * SHOW_EXPORT_SUCCESS straight to that tab's content script -
+ * NOT via the popup. The popup is usually long gone by the time
+ * a download finishes (Firefox closes it the instant the native
+ * Save As dialog steals focus, and even Chrome can), so routing
+ * the success overlay through a popup-local listener means it
+ * just never shows up. Going tab-direct from the background
+ * page, which has no such lifecycle issue, is what actually
+ * gets the overlay on screen.
  */
 const trackedDownloadIds = new Set<number>();
+const pendingObjectUrls = new Map<number, string>();
+const pendingDownloadTabIds = new Map<number, number>();
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type !== "DOWNLOAD_TRACK") {
-    return false;
+function revokePendingObjectUrl(downloadId: number): void {
+  const url = pendingObjectUrls.get(downloadId);
+
+  if (url !== undefined) {
+    pendingObjectUrls.delete(downloadId);
+    URL.revokeObjectURL(url);
+  }
+}
+
+function notifyDownloadTab(downloadId: number, type: string): void {
+  const tabId = pendingDownloadTabIds.get(downloadId);
+
+  pendingDownloadTabIds.delete(downloadId);
+
+  if (tabId === undefined) {
+    return;
   }
 
-  if (!isOwnExtensionSender(sender)) {
-    return false;
-  }
-
-  if (typeof message.downloadId === "number") {
-    trackedDownloadIds.add(message.downloadId);
-  }
-
-  sendResponse({ success: true });
-
-  return false;
-});
+  chrome.tabs.sendMessage(tabId, { type }).catch(() => {
+    /*
+     * Content script may not be running in this tab anymore
+     * (e.g. the person navigated away from chatgpt.com while
+     * the download was in flight) - nothing to show it on, so
+     * just drop it silently. The file was still saved
+     * successfully either way.
+     */
+  });
+}
 
 chrome.downloads.onChanged.addListener((delta) => {
   if (!trackedDownloadIds.has(delta.id)) {
@@ -101,17 +122,8 @@ chrome.downloads.onChanged.addListener((delta) => {
 
   if (delta.state?.current === "complete") {
     trackedDownloadIds.delete(delta.id);
-
-    chrome.runtime
-      .sendMessage({ type: "DOWNLOAD_COMPLETE", downloadId: delta.id })
-      .catch(() => {
-        /*
-         * No popup currently open to receive this - fine,
-         * there's nothing further to do. The file was still
-         * saved successfully; we just can't show the success
-         * overlay for a popup that isn't there anymore.
-         */
-      });
+    revokePendingObjectUrl(delta.id);
+    notifyDownloadTab(delta.id, "SHOW_EXPORT_SUCCESS");
 
     return;
   }
@@ -124,12 +136,8 @@ chrome.downloads.onChanged.addListener((delta) => {
    */
   if (delta.state?.current === "interrupted") {
     trackedDownloadIds.delete(delta.id);
-
-    chrome.runtime
-      .sendMessage({ type: "DOWNLOAD_CANCELLED", downloadId: delta.id })
-      .catch(() => {
-        /* No popup open - nothing to do. */
-      });
+    revokePendingObjectUrl(delta.id);
+    pendingDownloadTabIds.delete(delta.id);
   }
 });
 
@@ -141,10 +149,18 @@ chrome.downloads.onChanged.addListener((delta) => {
 const REPO_FULL_NAME_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 /*
- * Matches the filenames buildFilename() in popup.ts
- * generates: no path separators, no traversal segments.
+ * Matches the filenames buildFilename() in popup.ts generates:
+ * no path separators, no traversal segments. buildFilename()
+ * keeps Cyrillic characters (Ѐ-ӿ) as-is instead of
+ * collapsing them to hyphens like every other non-ASCII script,
+ * specifically so a Cyrillic ChatGPT conversation title still
+ * produces a readable filename - so this pattern has to allow
+ * that range too, or every export/GitHub-save of a
+ * Cyrillic-titled conversation gets rejected here as an
+ * "Invalid download request"/"Invalid save request" even though
+ * popup.ts built a perfectly normal filename.
  */
-const SAFE_FILENAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+const SAFE_FILENAME_PATTERN = /^[A-Za-z0-9Ѐ-ӿ._-]+$/;
 
 const MAX_EXPORT_CONTENT_LENGTH = 10_000_000;
 const MAX_BINARY_EXPORT_CONTENT_LENGTH = 45_000_000;
@@ -182,6 +198,80 @@ function isValidBinaryExportContent(value: unknown): value is string {
     )
   );
 }
+
+/*
+ * ---------------------------------------------------------
+ * DOWNLOAD START
+ * ---------------------------------------------------------
+ *
+ * Does the actual chrome.downloads.download() call. This has
+ * to run here rather than in popup.ts - see the big comment
+ * above trackedDownloadIds for why a popup-owned blob: URL (or
+ * a data: URL) doesn't survive the native Save As dialog on
+ * Firefox. popup.ts hands over the file as base64 (the same
+ * binary-content encoding already used for the GitHub save
+ * path) instead of building a blob/object URL itself.
+ */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "DOWNLOAD_START") {
+    return false;
+  }
+
+  if (!isOwnExtensionSender(sender)) {
+    return false;
+  }
+
+  if (
+    !isValidExportFilename(message.filename) ||
+    !isValidBinaryExportContent(message.content) ||
+    typeof message.mimeType !== "string" ||
+    typeof message.saveAs !== "boolean" ||
+    (message.tabId !== undefined && typeof message.tabId !== "number")
+  ) {
+    sendResponse({ success: false, error: "Invalid download request." });
+
+    return true;
+  }
+
+  (async () => {
+    let objectUrl: string | undefined;
+
+    try {
+      const bytes = decodeBase64(message.content);
+      const blob = new Blob([copyToArrayBuffer(bytes)], {
+        type: message.mimeType,
+      });
+
+      objectUrl = URL.createObjectURL(blob);
+
+      const downloadId = await chrome.downloads.download({
+        url: objectUrl,
+        filename: message.filename,
+        saveAs: message.saveAs,
+      });
+
+      trackedDownloadIds.add(downloadId);
+      pendingObjectUrls.set(downloadId, objectUrl);
+
+      if (typeof message.tabId === "number") {
+        pendingDownloadTabIds.set(downloadId, message.tabId);
+      }
+
+      sendResponse({ success: true, data: { downloadId } });
+    } catch (error) {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+
+  return true;
+});
 
 async function setupOffscreenDocument(): Promise<void> {
   const existingContexts = await chrome.runtime.getContexts({
