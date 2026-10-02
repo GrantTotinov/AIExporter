@@ -1,6 +1,12 @@
 # AI Exporter
 
-A Chrome extension that exports your ChatGPT and Claude conversations to Markdown, plain text, JSON, or CSV, so you can keep a copy, share it, or drop it straight into a GitHub repo.
+A free browser extension for Chrome and Firefox that exports your ChatGPT and Claude conversations to PDF, Markdown, plain text, JSON, or CSV, images included, so you can keep a copy, share it, or drop it straight into a GitHub repo. Everything happens locally, in your browser.
+
+## Free, source-available, and local
+
+- **Free.** No account, no subscription, no paid tier, no ads.
+- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT or Claude), and to GitHub if you use the GitHub features. See the [privacy policy](./docs/privacy-policy.md).
+- **Source-available.** The complete source code is here on GitHub, so you can read exactly what the extension does, build it yourself, or send a fix. It's free for personal and other noncommercial use (see [License](#license)).
 
 ## Why this exists
 
@@ -12,51 +18,67 @@ On `claude.ai` it works the same way: it asks Claude's own conversation API for 
 
 ## What it does
 
-- **Copy** the current conversation to your clipboard as Markdown.
-- **Export** it as `.md`, `.txt`, `.json`, or `.csv`.
-- Keep the original text-only behavior for images by default. Optionally enable **Bundle downloaded images with exports as a ZIP** in Settings → Downloads to download images and reference them by relative paths in the Markdown.
-- **Select which messages to include** before exporting, filter to questions or answers only, or pick messages by hand.
-- **Save it straight to a GitHub repo** (see below) instead of downloading it locally.
-- Customize heading style, message spacing, and whether to include a timestamp, from the extension's settings page.
-- Switch between Light, Dark, or System theme.
-- Use the interface in English, Spanish, French, German, Russian, or Chinese, or let it follow your browser's language automatically.
+- **Works on ChatGPT and Claude.** Open a conversation on `chatgpt.com` or `claude.ai` and export it.
+- **Exports to five formats:** PDF, Markdown (`.md`), plain text (`.txt`), JSON, or CSV.
+- **Exports images too.** PDFs embed them on the page; Markdown, text, JSON, and CSV exports come as a ZIP with an `images/` folder. It's opt-in, see [Images](#images).
+- **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, and Greek text. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
+- **Keeps Claude's artifacts:** code and documents Claude wrote in an artifact are exported with the reply that made them.
+- **Copies** the whole conversation to your clipboard as Markdown in one click.
+- **Lets you pick the messages** before exporting: everything, only your questions, only the answers, none, or the inverse of what's selected. Shift+click selects a range, and you can expand messages to read them in full.
+- **Saves straight to a GitHub repo** (see below) instead of downloading.
+- **Fits your preferences:** heading style, spacing between messages, an optional export timestamp, and whether to ask where to save each file.
+- Light, Dark, or System theme.
+- Interface in English, Spanish, French, German, Russian, or Chinese, or following your browser's language automatically.
 
 ## Installing it
 
-### From the Chrome Web Store
+### Chrome
 
-The easiest way once it's published: search for "AI Exporter" in the Chrome Web Store and click Add to Chrome. If you're reading this before the listing goes live, use the manual steps below instead.
+Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/objkcakdcilfaphifjfcgfamlnnbinjc).
 
-### Manually, from source
+### From source (Chrome or Firefox)
 
-If you want to run the latest code, or the extension isn't live on the Web Store yet:
+To run the latest code, or to use it in Firefox:
 
 1. Clone the repo:
    ```bash
    git clone https://github.com/GrantTotinov/AIExporter.git
    cd AIExporter
    ```
-2. Install dependencies and build:
+2. Install dependencies and build for your browser:
    ```bash
    npm install
-   npm run build:chrome
+   npm run build:chrome   # or: npm run build:firefox
    ```
    This produces a `dist/` folder with the built extension.
-3. Open `chrome://extensions` in Chrome.
-4. Turn on **Developer mode** (top right corner).
-5. Click **Load unpacked** and select the `dist/` folder.
+3. Load it:
+   - **Chrome:** open `chrome://extensions`, turn on **Developer mode** (top right corner), click **Load unpacked**, and select the `dist/` folder.
+   - **Firefox** (140 or newer): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/manifest.json`. Firefox removes temporary add-ons when it restarts, so load it again after a restart. If Firefox asks for access to `chatgpt.com` and `claude.ai`, allow it; the extension can't read conversations without it.
 
-The AI Exporter icon should now show up in your toolbar. If you don't see it, click the puzzle-piece icon next to the address bar and pin it.
+The AI Exporter icon should now show up in your toolbar. If you don't see it, click the extensions button next to the address bar and pin it.
 
-Any time you pull new changes, re-run `npm run build:chrome` and then hit the reload icon for AI Exporter on `chrome://extensions`. Chrome doesn't pick up rebuilt files on its own.
+Any time you pull new changes, rebuild and then reload the extension (the reload icon on `chrome://extensions`, or **Reload** on `about:debugging`), and refresh any open ChatGPT or Claude tabs. The browser doesn't pick up rebuilt files on its own.
 
 ## Using it
 
 1. Open any conversation on `chatgpt.com` or `claude.ai`.
 2. Click the AI Exporter icon.
-3. Pick **Copy Conversation**, or open **Export ▾** to choose a format and, optionally, select specific messages first.
+3. Pick **Copy Conversation**, or open **Export ▾** to choose which messages to include and a format: PDF, Markdown, plain text, JSON, or CSV.
 
-By default, image attachments are omitted from the export, matching the original text-only behavior; any text in the same message is preserved. To include local images, open **Settings → Downloads**, enable **Bundle downloaded images with exports as a ZIP**, and save the setting. Exports with images will then download as a ZIP. Unzip it and keep the conversation file and `images/` folder together so relative image links continue to work. Copy-to-clipboard keeps the original text-only behavior.
+Files are named after the site, the conversation, and the date, for example `claude-export-trip-ideas-2026-10-02.pdf`.
+
+### Images
+
+By default, images are left out and exports are text-only; any text in the same message is kept. To include them, open **Settings → Downloads**, enable **Bundle downloaded images with exports as a ZIP**, and save the setting. After that:
+
+- **PDF** exports embed the images right in the document.
+- **Markdown, text, JSON, and CSV** exports that contain images download as a ZIP. Unzip it and keep the conversation file and its `images/` folder together so the image links keep working.
+
+Copy to clipboard always stays text-only.
+
+### PDF settings
+
+Open **Settings → PDF export** to pick the page size (A4, Letter, or Legal), orientation, margins, and body font size, and to turn on a table of contents, page numbers, or a footer line of your own on every page (for example "Prepared by Jane Doe").
 
 ## Saving to GitHub
 
@@ -64,7 +86,7 @@ AI Exporter can commit an export directly into a repo instead of downloading it 
 
 1. Open the extension's **Settings** page and click **Connect GitHub**.
 2. You'll get a short code and a new tab pointing at `github.com/login/device`. Enter the code there and approve access.
-3. Back in the popup, the **GitHub** button next to Export now lets you pick a repo and save. Files land in an `exports/` folder at the root of whichever repo you choose. With image bundling enabled, selected images are saved in a ZIP with the Markdown file and its `images/` folder.
+3. Back in the popup, the **GitHub** button next to Export now lets you pick a repo and save the selected messages as Markdown. Files land in an `exports/` folder at the root of whichever repo you choose. With image bundling enabled, selected images are saved in a ZIP with the Markdown file and its `images/` folder.
 
 This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the GitHub CLI use to sign in. No password or personal access token ever touches the extension, just a short-lived code you type into GitHub's own site. Your access token is stored locally in your browser and never leaves your machine except to talk to `api.github.com`.
 
@@ -72,9 +94,13 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 
 - AI Exporter works on `chatgpt.com` and `claude.ai`. If OpenAI or Anthropic change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
 - Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's thinking and tool calls are left out, and attached files are listed by name.
-- Image bundling downloads the image files into the ZIP so they work locally without a ChatGPT or Claude session.
+- Image bundling downloads the image files into the export so they work locally without a ChatGPT or Claude session.
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
+
+## Contributing
+
+Bug reports, ideas, and pull requests are welcome. [Contributing.md](./Contributing.md) explains how to get started, and contributions are made under the [Contributor License Agreement](./CLA.md). Everyone taking part in the project is expected to follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Contributors
 Ha1baraA11
@@ -87,4 +113,4 @@ Questions, bugs, or feature requests: open an issue on this repo, or email **gra
 
 ## License
 
-See [LICENSE](./LICENSE) for details.
+AI Exporter is free to use, study, modify, and share for personal and other noncommercial purposes under the [PolyForm Noncommercial License 1.0.0](./LICENSE). Commercial use, such as selling it, offering a modified version as a paid product or service, or building a competing paid product on it, requires written permission; see [NOTICE.md](./NOTICE.md).

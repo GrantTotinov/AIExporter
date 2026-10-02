@@ -2,6 +2,8 @@
 
 Thanks for wanting to help with AI Exporter. Contributions are welcome, whether that's a bug fix, a new feature, better docs, or just cleaning something up.
 
+Everyone taking part in the project, in issues, pull requests, or anywhere else, is expected to follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## Getting started
 
 1. Fork the repo and branch off `main`.
