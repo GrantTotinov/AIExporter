@@ -1252,14 +1252,17 @@ function fetchImageFile(
  *
  * /backend-api/conversations/{id}
  *     ?include_has_versions=true
- *     &num_turns=10
+ *     &num_turns=100
  *
  * Older messages:
  *
  * /backend-api/conversations/{id}/messages
  *     ?before={start_cursor}
  *     &include_has_versions=true
- *     &num_turns=10
+ *     &num_turns=100
+ *
+ * (100 turns a page rather than the web app's 10 - see
+ * PAGE_TURNS in page-bridge.ts.)
  *
  * Pagination continues until:
  *

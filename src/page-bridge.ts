@@ -114,16 +114,30 @@
     return true;
   }
 
+  /*
+   * Turns per conversation page. The ChatGPT web app asks for 10,
+   * since it only needs the newest few on screen, but an export
+   * needs every turn, and each page costs another round trip that
+   * can't start before the previous one returns its cursor - 10
+   * per page took 2 requests for a 30-message chat and 11 for a
+   * 200-message one. The endpoint takes larger pages; should it
+   * ever reject one, the page is requested again at the web app's
+   * own size.
+   */
+  const PAGE_TURNS = 100;
+  const WEB_APP_PAGE_TURNS = 10;
+
   function buildConversationUrl(
     conversationId: string,
     cursor: string | null,
+    numTurns: number,
   ): string {
     const endpoint = cursor
       ? `/backend-api/conversations/${conversationId}/messages`
       : `/backend-api/conversations/${conversationId}`;
     const params = new URLSearchParams({
       include_has_versions: "true",
-      num_turns: "10",
+      num_turns: String(numTurns),
     });
 
     if (cursor) {
@@ -588,14 +602,25 @@
          * above.
          */
         if (request.type === "AIExporter_API_REQUEST") {
-          const response = await originalFetch(
-            buildConversationUrl(request.conversationId, request.cursor),
-            {
-              method: "GET",
-              credentials: "include",
-              headers,
-            },
-          );
+          const fetchPage = (numTurns: number): Promise<Response> =>
+            originalFetch(
+              buildConversationUrl(
+                request.conversationId,
+                request.cursor,
+                numTurns,
+              ),
+              {
+                method: "GET",
+                credentials: "include",
+                headers,
+              },
+            );
+
+          let response = await fetchPage(PAGE_TURNS);
+
+          if (response.status === 400 || response.status === 422) {
+            response = await fetchPage(WEB_APP_PAGE_TURNS);
+          }
 
           devLog(
             "AI Exporter bridge: conversation API response",
