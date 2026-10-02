@@ -86,6 +86,72 @@ async function copyToClipboard(text: string): Promise<boolean> {
   return copyUsingExecCommand(text);
 }
 
+/*
+ * ---------------------------------------------------------
+ * DOWNLOAD BLOB URLS
+ * ---------------------------------------------------------
+ *
+ * Chrome's MV3 service worker has no URL.createObjectURL(), so
+ * background.ts has this document turn an export file (sent as
+ * base64) into a blob: URL for chrome.downloads, and revoke it
+ * once the download is over. A blob: URL lives as long as the
+ * document that made it, and this one outlives the popup.
+ *
+ * Decodes inline rather than importing zip.ts's decodeBase64():
+ * offscreen.html loads this file as a classic script, which
+ * can't `import` the chunk Rollup would split it into.
+ */
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (
+    message.type !== "OFFSCREEN_CREATE_BLOB_URL" &&
+    message.type !== "OFFSCREEN_REVOKE_BLOB_URL"
+  ) {
+    return false;
+  }
+
+  if (sender.id !== chrome.runtime.id) {
+    return false;
+  }
+
+  try {
+    if (message.type === "OFFSCREEN_REVOKE_BLOB_URL") {
+      if (typeof message.url === "string" && message.url.startsWith("blob:")) {
+        URL.revokeObjectURL(message.url);
+      }
+
+      sendResponse({ success: true });
+
+      return false;
+    }
+
+    const blob = new Blob([decodeBase64(String(message.content ?? ""))], {
+      type: String(message.mimeType ?? ""),
+    });
+
+    sendResponse({ success: true, url: URL.createObjectURL(blob) });
+  } catch (error) {
+    devError("AI Exporter: offscreen blob URL failed", error);
+
+    sendResponse({
+      success: false,
+      error: String(error),
+    });
+  }
+
+  return false;
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "OFFSCREEN_COPY") {
     return false;

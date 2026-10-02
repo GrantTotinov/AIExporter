@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
  * ---------------------------------------------------------
@@ -15,13 +15,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * The fix moved both the chrome.downloads.download() call and
  * the success-overlay trigger into background.ts, which has
- * no such lifecycle issue in either browser. There is no
- * browser-specific branching left in this code at all - the
- * whole point is that the same code path now works identically
- * in Chrome and Firefox. These tests exist to make sure a
- * future change to this flow can't silently break one browser
- * while "fixing" the other: every assertion here must hold
- * regardless of which browser the WebExtensions APIs belong to.
+ * no such lifecycle issue in either browser. The one thing that
+ * differs between the browsers is where the download's blob:
+ * URL comes from: Firefox runs background.ts as an event page,
+ * which makes it itself, while Chrome runs it as an MV3 service
+ * worker, which has no URL.createObjectURL() and asks the
+ * offscreen document for one instead (see the "Chrome service
+ * worker" tests at the bottom - calling URL.createObjectURL()
+ * there is what broke every Chrome export). These tests exist
+ * to make sure a future change to this flow can't silently
+ * break one browser while "fixing" the other.
  */
 
 const runtimeId = "test-extension-id";
@@ -29,6 +32,9 @@ const runtimeId = "test-extension-id";
 const downloadsDownload = vi.fn();
 const tabsSendMessage = vi.fn();
 const storageSyncGet = vi.fn();
+const runtimeSendMessage = vi.fn();
+const runtimeGetContexts = vi.fn();
+const offscreenCreateDocument = vi.fn();
 const onMessageListeners: Array<
   (
     message: any,
@@ -75,8 +81,11 @@ vi.stubGlobal("chrome", {
         onMessageListeners.push(listener);
       },
     },
-    sendMessage: vi.fn().mockResolvedValue(undefined),
-    getContexts: vi.fn().mockResolvedValue([]),
+    sendMessage: runtimeSendMessage,
+    getContexts: runtimeGetContexts,
+  },
+  offscreen: {
+    createDocument: offscreenCreateDocument,
   },
   downloads: {
     download: downloadsDownload,
@@ -175,6 +184,9 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
     );
     downloadsDownload.mockResolvedValue(1);
     tabsSendMessage.mockResolvedValue(undefined);
+    runtimeSendMessage.mockReset().mockResolvedValue(undefined);
+    runtimeGetContexts.mockReset().mockResolvedValue([]);
+    offscreenCreateDocument.mockReset().mockResolvedValue(undefined);
 
     await import("../src/background");
   });
@@ -536,6 +548,138 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
 
       expect(response.success).toBe(false);
       expect(response.error).not.toBe("Invalid save request.");
+    });
+  });
+
+  /*
+   * Chrome runs background.ts as an MV3 service worker, where
+   * URL.createObjectURL/revokeObjectURL don't exist - calling
+   * them failed every Chrome export with "URL.createObjectURL is
+   * not a function". There the offscreen document makes (and
+   * later revokes) the blob: URL.
+   */
+  describe("in a Chrome service worker (no URL.createObjectURL)", () => {
+    const offscreenUrl = "blob:chrome-extension://test-extension-id/7f3c2b1a";
+
+    beforeEach(() => {
+      URL.createObjectURL = undefined as unknown as typeof URL.createObjectURL;
+      URL.revokeObjectURL = undefined as unknown as typeof URL.revokeObjectURL;
+
+      runtimeSendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === "OFFSCREEN_CREATE_BLOB_URL"
+          ? { success: true, url: offscreenUrl }
+          : { success: true },
+      );
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = createObjectURL as typeof URL.createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    });
+
+    it("downloads a blob: URL made by the offscreen document", async () => {
+      const response = await dispatchMessage(validDownloadStartMessage());
+
+      expect(response).toEqual({ success: true, data: { downloadId: 1 } });
+      expect(offscreenCreateDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "offscreen.html",
+          reasons: expect.arrayContaining(["BLOBS"]),
+        }),
+      );
+      expect(runtimeSendMessage).toHaveBeenCalledWith({
+        type: "OFFSCREEN_CREATE_BLOB_URL",
+        content: validContent,
+        mimeType: "text/markdown",
+      });
+      expect(downloadsDownload).toHaveBeenCalledWith({
+        url: offscreenUrl,
+        filename: "conversation.md",
+        saveAs: true,
+      });
+    });
+
+    it("reuses an offscreen document that already exists", async () => {
+      runtimeGetContexts.mockResolvedValue([
+        { contextType: "OFFSCREEN_DOCUMENT" },
+      ]);
+
+      await dispatchMessage(validDownloadStartMessage());
+
+      expect(offscreenCreateDocument).not.toHaveBeenCalled();
+      expect(downloadsDownload).toHaveBeenCalledWith(
+        expect.objectContaining({ url: offscreenUrl }),
+      );
+    });
+
+    it("has the offscreen document revoke the URL once the download completes", async () => {
+      await dispatchMessage(validDownloadStartMessage({ tabId: 7 }));
+
+      emitDownloadChanged({
+        id: 1,
+        state: { previous: "in_progress", current: "complete" },
+      } as chrome.downloads.DownloadDelta);
+
+      expect(runtimeSendMessage).toHaveBeenCalledWith({
+        type: "OFFSCREEN_REVOKE_BLOB_URL",
+        url: offscreenUrl,
+      });
+      expect(tabsSendMessage).toHaveBeenCalledWith(7, {
+        type: "SHOW_EXPORT_SUCCESS",
+      });
+    });
+
+    it("has the offscreen document revoke the URL when downloads.download() rejects", async () => {
+      downloadsDownload.mockRejectedValueOnce(new Error("Invalid filename"));
+
+      const response = await dispatchMessage(validDownloadStartMessage());
+
+      expect(response).toEqual({ success: false, error: "Invalid filename" });
+      expect(runtimeSendMessage).toHaveBeenCalledWith({
+        type: "OFFSCREEN_REVOKE_BLOB_URL",
+        url: offscreenUrl,
+      });
+    });
+
+    it("reports the offscreen document's error without starting a download", async () => {
+      runtimeSendMessage.mockResolvedValueOnce({
+        success: false,
+        error: "Blob too large",
+      });
+
+      const response = await dispatchMessage(validDownloadStartMessage());
+
+      expect(response).toEqual({ success: false, error: "Blob too large" });
+      expect(downloadsDownload).not.toHaveBeenCalled();
+    });
+
+    it("creates the offscreen document once for a copy and a download started together", async () => {
+      let finishCreating: () => void = () => undefined;
+      offscreenCreateDocument.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishCreating = resolve;
+          }),
+      );
+
+      const copied = dispatchMessage({
+        type: "COPY_TO_CLIPBOARD",
+        data: "# hello",
+      });
+      const downloaded = dispatchMessage(validDownloadStartMessage());
+
+      await vi.waitFor(() =>
+        expect(offscreenCreateDocument).toHaveBeenCalledTimes(1),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      finishCreating();
+
+      expect(await copied).toEqual({ success: true });
+      expect(await downloaded).toEqual({
+        success: true,
+        data: { downloadId: 1 },
+      });
+      expect(offscreenCreateDocument).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -91,7 +91,7 @@ function revokePendingObjectUrl(downloadId: number): void {
 
   if (url !== undefined) {
     pendingObjectUrls.delete(downloadId);
-    URL.revokeObjectURL(url);
+    revokeDownloadUrl(url);
   }
 }
 
@@ -201,6 +201,69 @@ function isValidBinaryExportContent(value: unknown): value is string {
 
 /*
  * ---------------------------------------------------------
+ * DOWNLOAD URLS
+ * ---------------------------------------------------------
+ *
+ * chrome.downloads.download() reads the file from a URL. Firefox
+ * runs this file as an event page, which can make a blob: URL
+ * itself. Chrome runs it as an MV3 service worker, which has no
+ * URL.createObjectURL() at all, so there the offscreen document
+ * (created with the BLOBS reason) makes the blob: URL instead -
+ * it belongs to the extension's origin, so chrome.downloads can
+ * read it from here. A data: URL is no substitute: Firefox
+ * rejects data: URLs with saveAs: true, and a PDF or ZIP export
+ * would make one megabytes long.
+ */
+function canCreateObjectUrls(): boolean {
+  return typeof URL.createObjectURL === "function";
+}
+
+async function createDownloadUrl(
+  content: string,
+  mimeType: string,
+): Promise<string> {
+  if (canCreateObjectUrls()) {
+    const bytes = decodeBase64(content);
+
+    return URL.createObjectURL(
+      new Blob([copyToArrayBuffer(bytes)], { type: mimeType }),
+    );
+  }
+
+  await setupOffscreenDocument();
+
+  const response = await chrome.runtime.sendMessage({
+    type: "OFFSCREEN_CREATE_BLOB_URL",
+    content,
+    mimeType,
+  });
+
+  if (!response?.success || typeof response.url !== "string") {
+    throw new Error(response?.error ?? "Could not prepare the download.");
+  }
+
+  return response.url;
+}
+
+function revokeDownloadUrl(url: string): void {
+  if (canCreateObjectUrls()) {
+    URL.revokeObjectURL(url);
+
+    return;
+  }
+
+  chrome.runtime
+    .sendMessage({ type: "OFFSCREEN_REVOKE_BLOB_URL", url })
+    .catch(() => {
+      /*
+       * The offscreen document is already gone - and its blob:
+       * URLs went with it.
+       */
+    });
+}
+
+/*
+ * ---------------------------------------------------------
  * DOWNLOAD START
  * ---------------------------------------------------------
  *
@@ -237,12 +300,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     let objectUrl: string | undefined;
 
     try {
-      const bytes = decodeBase64(message.content);
-      const blob = new Blob([copyToArrayBuffer(bytes)], {
-        type: message.mimeType,
-      });
-
-      objectUrl = URL.createObjectURL(blob);
+      objectUrl = await createDownloadUrl(message.content, message.mimeType);
 
       const downloadId = await chrome.downloads.download({
         url: objectUrl,
@@ -260,7 +318,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true, data: { downloadId } });
     } catch (error) {
       if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+        revokeDownloadUrl(objectUrl);
       }
 
       sendResponse({
@@ -273,6 +331,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+/*
+ * One offscreen document serves both the clipboard and (in
+ * Chrome) download blob URLs - an extension can only have one.
+ * creatingOffscreenDocument lets a copy and a download that
+ * start together share the one being created, instead of the
+ * second createDocument() call failing.
+ */
+let creatingOffscreenDocument: Promise<void> | null = null;
+
 async function setupOffscreenDocument(): Promise<void> {
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ["OFFSCREEN_DOCUMENT"],
@@ -282,11 +349,18 @@ async function setupOffscreenDocument(): Promise<void> {
     return;
   }
 
-  await chrome.offscreen.createDocument({
-    url: "offscreen.html",
-    reasons: ["CLIPBOARD"],
-    justification: "Copy exported ChatGPT conversation to clipboard.",
-  });
+  creatingOffscreenDocument ??= chrome.offscreen
+    .createDocument({
+      url: "offscreen.html",
+      reasons: ["CLIPBOARD", "BLOBS"],
+      justification:
+        "Copy exported conversations to the clipboard and hand export files to the downloads API.",
+    })
+    .finally(() => {
+      creatingOffscreenDocument = null;
+    });
+
+  await creatingOffscreenDocument;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

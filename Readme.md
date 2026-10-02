@@ -1,12 +1,14 @@
 # AI Exporter
 
-A Chrome extension that exports your ChatGPT conversations to Markdown, plain text, JSON, or CSV, so you can keep a copy, share it, or drop it straight into a GitHub repo.
+A Chrome extension that exports your ChatGPT and Claude conversations to Markdown, plain text, JSON, or CSV, so you can keep a copy, share it, or drop it straight into a GitHub repo.
 
 ## Why this exists
 
 Most ChatGPT export tools scrape the page's DOM. They scroll through the conversation, grab whatever text is currently rendered, and hope nothing gets missed. That approach is fragile: ChatGPT virtualizes long conversations (it only keeps a portion of messages in the DOM at once), so scroll-based scrapers routinely drop messages or get the order wrong, especially on longer chats.
 
 AI Exporter takes a different approach. It talks to the same conversation API that the ChatGPT web app itself uses, paginating through the full message history and reconstructing the actual conversation tree. ChatGPT stores branches (regenerated replies, edited messages) and this walks the correct path through them using each message's parent pointer. The result is a complete, correctly ordered export, no matter how long the conversation is or how many times you regenerated a response.
+
+On `claude.ai` it works the same way: it asks Claude's own conversation API for the whole conversation, every branch included, and follows the branch you're currently viewing.
 
 ## What it does
 
@@ -50,7 +52,7 @@ Any time you pull new changes, re-run `npm run build:chrome` and then hit the re
 
 ## Using it
 
-1. Open any conversation on `chatgpt.com`.
+1. Open any conversation on `chatgpt.com` or `claude.ai`.
 2. Click the AI Exporter icon.
 3. Pick **Copy Conversation**, or open **Export ▾** to choose a format and, optionally, select specific messages first.
 
@@ -68,8 +70,9 @@ This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the 
 
 ## A few notes
 
-- AI Exporter only works on `chatgpt.com`. If OpenAI changes their internal API, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
-- Image bundling downloads the image files into the ZIP so they work locally without a ChatGPT session.
+- AI Exporter works on `chatgpt.com` and `claude.ai`. If OpenAI or Anthropic change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
+- Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's thinking and tool calls are left out, and attached files are listed by name.
+- Image bundling downloads the image files into the ZIP so they work locally without a ChatGPT or Claude session.
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
 

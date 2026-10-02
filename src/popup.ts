@@ -28,6 +28,11 @@ void initI18n().then(() => {
 import { stripMarkdown } from "./markdown-strip.ts";
 import { createZipBlob, decodeBase64, encodeBlobBase64 } from "./zip.ts";
 import { buildPdfBlob } from "./pdf-export.ts";
+import {
+  CHAT_SITE_NAMES,
+  getChatSite,
+  stripChatSiteSuffix,
+} from "./chat-sites.ts";
 
 const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
@@ -298,11 +303,14 @@ chrome.runtime.onMessage.addListener((message) => {
  * FILENAME
  * ---------------------------------------------------------
  *
- * Builds a filesystem-safe filename from the tab title and
- * today's date, e.g. "chatgpt-export-easypay-transfer-help-2026-08-30.md".
+ * Builds a filesystem-safe filename from the site, the tab
+ * title and today's date, e.g.
+ * "chatgpt-export-easypay-transfer-help-2026-08-30.md" or
+ * "claude-export-easypay-transfer-help-2026-08-30.md".
  */
 function buildFilename(
   tabTitle: string | undefined,
+  tabUrl: string | undefined,
   extension: FilenameExtension,
 ): string {
   const date = new Date();
@@ -314,9 +322,7 @@ function buildFilename(
     "-" +
     String(date.getDate()).padStart(2, "0");
 
-  const rawTitle = (tabTitle ?? "conversation")
-    .replace(/\s*[-|]\s*ChatGPT\s*$/i, "")
-    .trim();
+  const rawTitle = stripChatSiteSuffix(tabTitle ?? "conversation");
 
   const safeTitle = rawTitle
     .toLowerCase()
@@ -325,8 +331,9 @@ function buildFilename(
     .slice(0, 60);
 
   const titlePart = safeTitle || "conversation";
+  const site = getChatSite(tabUrl) ?? "chatgpt";
 
-  return `chatgpt-export-${titlePart}-${datePart}.${extension}`;
+  return `${site}-export-${titlePart}-${datePart}.${extension}`;
 }
 
 /*
@@ -461,8 +468,10 @@ async function loadConversationMessages(
       throw new Error(t("popup.error.noActiveTab"));
     }
 
-    if (!tab.url?.startsWith("https://chatgpt.com/")) {
-      throw new Error(t("popup.error.openChatGpt"));
+    const site = getChatSite(tab.url);
+
+    if (!site) {
+      throw new Error(t("popup.error.openSupportedSite"));
     }
 
     devLog("AI Exporter: requesting conversation");
@@ -480,7 +489,9 @@ async function loadConversationMessages(
         sendError,
       );
 
-      loadingOverlayMessage.textContent = t("popup.loading.reconnecting");
+      loadingOverlayMessage.textContent = t("popup.loading.reconnecting", {
+        site: CHAT_SITE_NAMES[site],
+      });
 
       await chrome.tabs.reload(tab.id);
 
@@ -852,7 +863,7 @@ selectorExportButton.addEventListener("click", async () => {
 
   try {
     const settings = await loadSettings();
-    const filename = buildFilename(currentTabTitle, format);
+    const filename = buildFilename(currentTabTitle, currentTabUrl, format);
     let downloadFilename = filename;
     let blob: Blob;
 
@@ -882,7 +893,7 @@ selectorExportButton.addEventListener("click", async () => {
       const selectedImages = getSelectedImageFiles(chosen);
 
       if (selectedImages.length > 0) {
-        downloadFilename = buildFilename(currentTabTitle, "zip");
+        downloadFilename = buildFilename(currentTabTitle, currentTabUrl, "zip");
         blob = createExportZipBlob(content, filename, selectedImages);
       } else {
         blob = new Blob([content], { type: mimeType });
@@ -1063,14 +1074,18 @@ async function saveToGitHub(): Promise<void> {
 
   try {
     const markdown = await buildMarkdownFromMessages(chosen);
-    const markdownFilename = buildFilename(currentTabTitle, "md");
+    const markdownFilename = buildFilename(
+      currentTabTitle,
+      currentTabUrl,
+      "md",
+    );
     const selectedImages = getSelectedImageFiles(chosen);
     let filename = markdownFilename;
     let content = markdown;
     let binary = false;
 
     if (selectedImages.length > 0) {
-      filename = buildFilename(currentTabTitle, "zip");
+      filename = buildFilename(currentTabTitle, currentTabUrl, "zip");
       const archive = createExportZipBlob(
         markdown,
         markdownFilename,

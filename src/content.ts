@@ -10,9 +10,32 @@
  * 3. Paginates backwards through the ChatGPT conversation API.
  * 4. Converts API messages into the format expected by popup.ts.
  *
+ * On claude.ai it instead fetches the conversation straight
+ * from claude.ai's own API (see LOAD CLAUDE CONVERSATION
+ * below): that API authenticates with the session cookie,
+ * which this script's same-origin requests send as well, so
+ * no page bridge is needed there.
+ *
  * No DOM scrolling is used.
  * No conversation credentials are stored by this file.
  */
+
+/*
+ * The one import this file has. claude-conversation.ts is
+ * imported by nothing else, so Rollup inlines it into
+ * content.js rather than emitting an `import` (see the note
+ * below and at the top of that file).
+ */
+import {
+  buildClaudeConversationPath,
+  convertClaudeMessages,
+  getClaudeChatOrganizationIds,
+  getClaudeConversationId,
+  getClaudeOrganizationIdFromCookie,
+  resolveClaudeActiveBranch,
+  type ClaudeConversation,
+  type ClaudeImage,
+} from "./claude-conversation.ts";
 
 /*
  * ---------------------------------------------------------
@@ -183,7 +206,12 @@ const devError = (...args: unknown[]): void => {
  * ---------------------------------------------------------
  * PAGE BRIDGE INJECTION
  * ---------------------------------------------------------
+ *
+ * ChatGPT only - claude.ai is loaded without the bridge (see
+ * the top of this file).
  */
+
+const IS_CLAUDE_SITE = window.location.hostname === "claude.ai";
 
 function injectPageBridge(): void {
   if (document.documentElement.dataset.aiExporterBridgeInjected === "true") {
@@ -211,7 +239,9 @@ function injectPageBridge(): void {
   document.documentElement.dataset.aiExporterBridgeInjected = "true";
 }
 
-injectPageBridge();
+if (!IS_CLAUDE_SITE) {
+  injectPageBridge();
+}
 
 /*
  * ---------------------------------------------------------
@@ -1294,6 +1324,10 @@ async function waitForBridge(): Promise<void> {
 async function loadEntireConversation(
   downloadImagesLocally: boolean,
 ): Promise<ConversationLoadResult> {
+  if (IS_CLAUDE_SITE) {
+    return loadClaudeConversation(downloadImagesLocally);
+  }
+
   await waitForBridge();
 
   const conversationId = getConversationIdFromUrl();
@@ -1520,6 +1554,312 @@ async function loadEntireConversation(
 
 /*
  * ---------------------------------------------------------
+ * LOAD CLAUDE CONVERSATION
+ * ---------------------------------------------------------
+ *
+ * claude.ai needs no page bridge: its API authenticates with
+ * the session cookie, and requests from this script to the
+ * page's own origin are same-origin requests that carry it,
+ * in Chrome and Firefox alike. A single request returns the
+ * whole conversation, every branch included - no pagination:
+ *
+ * /api/organizations/{org}/chat_conversations/{id}
+ *     ?tree=True
+ *     &rendering_mode=messages
+ *     &render_all_tools=true
+ *
+ * claude-conversation.ts picks the branch on screen and turns
+ * it into export messages; this part makes the requests and
+ * downloads the images.
+ */
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function fetchClaudeApi(path: string): Promise<Response> {
+  return fetch(new URL(path, window.location.origin), {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+}
+
+async function fetchClaudeConversation(
+  conversationId: string,
+): Promise<ClaudeConversation> {
+  const triedOrganizations = new Set<string>();
+
+  /*
+   * null when the conversation belongs to another of the
+   * person's organizations - claude.ai answers 403 or 404.
+   */
+  const fetchFromOrganization = async (
+    organizationId: string,
+  ): Promise<ClaudeConversation | null> => {
+    triedOrganizations.add(organizationId);
+
+    const response = await fetchClaudeApi(
+      buildClaudeConversationPath(organizationId, conversationId),
+    );
+
+    if (response.status === 403 || response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Claude API request failed: ${response.status}`);
+    }
+
+    const data: unknown = await response.json();
+
+    if (!isRecord(data) || !Array.isArray(data.chat_messages)) {
+      throw new Error("Claude returned an unexpected conversation format.");
+    }
+
+    return data as ClaudeConversation;
+  };
+
+  const lastActiveOrganizationId = getClaudeOrganizationIdFromCookie(
+    document.cookie,
+  );
+
+  if (lastActiveOrganizationId) {
+    const conversation = await fetchFromOrganization(lastActiveOrganizationId);
+
+    if (conversation) {
+      return conversation;
+    }
+  }
+
+  const organizationsResponse = await fetchClaudeApi("/api/organizations");
+
+  if (!organizationsResponse.ok) {
+    throw new Error(
+      `Claude API request failed: ${organizationsResponse.status}`,
+    );
+  }
+
+  const organizationIds = getClaudeChatOrganizationIds(
+    await organizationsResponse.json(),
+  );
+
+  for (const organizationId of organizationIds) {
+    if (triedOrganizations.has(organizationId)) {
+      continue;
+    }
+
+    const conversation = await fetchFromOrganization(organizationId);
+
+    if (conversation) {
+      return conversation;
+    }
+  }
+
+  throw new Error("Claude could not find this conversation.");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)),
+    );
+  }
+
+  return btoa(binary);
+}
+
+async function downloadClaudeImage(
+  path: string,
+): Promise<{ base64: string; mimeType: string; sizeBytes: number }> {
+  const url = new URL(path, window.location.origin);
+
+  /*
+   * The request carries the person's claude.ai session, so
+   * images are only ever requested from claude.ai's own API.
+   */
+  if (
+    url.origin !== window.location.origin ||
+    !url.pathname.startsWith("/api/")
+  ) {
+    throw new Error("Claude returned an image URL outside its API.");
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Claude image download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+    throw new Error("The image is larger than the 8 MB export limit.");
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error("The image is empty or larger than the 8 MB export limit.");
+  }
+
+  return {
+    base64: bytesToBase64(bytes),
+    mimeType: response.headers.get("content-type") ?? "",
+    sizeBytes: bytes.byteLength,
+  };
+}
+
+async function loadClaudeConversation(
+  downloadImagesLocally: boolean,
+): Promise<ConversationLoadResult> {
+  const conversationId = getClaudeConversationId(window.location.pathname);
+
+  if (!conversationId) {
+    throw new Error(
+      "Could not determine the Claude conversation ID from the current URL.",
+    );
+  }
+
+  devLog("AI Exporter: Claude conversation ID", conversationId);
+
+  const conversation = await fetchClaudeConversation(conversationId);
+  const exportMessages = convertClaudeMessages(
+    resolveClaudeActiveBranch(conversation),
+  );
+
+  const imageFileCache = new Map<string, Promise<ExportImageFile>>();
+  const limitImageRequests = createRequestLimiter(2);
+  let nextImageIndex = 1;
+  let downloadedImageBytes = 0;
+
+  const getImageFile = (
+    image: ClaudeImage & { url: string },
+  ): Promise<ExportImageFile> => {
+    let pendingImage = imageFileCache.get(image.url);
+
+    if (!pendingImage) {
+      const imageIndex = nextImageIndex++;
+
+      pendingImage = limitImageRequests(async () => {
+        const downloaded = await downloadClaudeImage(image.url);
+        const fileType = getImageFileType(image.fileName, downloaded.mimeType);
+
+        if (!fileType) {
+          throw new Error(
+            "The downloaded attachment is not a supported image type.",
+          );
+        }
+
+        if (downloadedImageBytes + downloaded.sizeBytes > MAX_TOTAL_IMAGE_BYTES) {
+          throw new Error(
+            "The conversation's images exceed the 20 MB export limit.",
+          );
+        }
+
+        downloadedImageBytes += downloaded.sizeBytes;
+
+        return {
+          path: `images/image-${String(imageIndex).padStart(3, "0")}.${fileType.extension}`,
+          mimeType: fileType.mimeType,
+          base64: downloaded.base64,
+          sizeBytes: downloaded.sizeBytes,
+        };
+      });
+      imageFileCache.set(image.url, pendingImage);
+    }
+
+    return pendingImage;
+  };
+
+  const convertedMessages = await Promise.all(
+    exportMessages.map(
+      async (message): Promise<Omit<Message, "order"> | null> => {
+        let imageNumber = 0;
+
+        const renderedParts = await Promise.all(
+          message.parts.map(
+            async (part): Promise<{ text: string; imagePath?: string }> => {
+              if (part.kind === "text") {
+                return { text: part.text };
+              }
+
+              // Like ChatGPT uploads: left out unless image bundling is on.
+              if (!downloadImagesLocally) {
+                return { text: "" };
+              }
+
+              const number = ++imageNumber;
+              const { url, fileName } = part.image;
+
+              if (!url) {
+                return { text: "[Image attachment could not be downloaded]" };
+              }
+
+              try {
+                const imageFile = await getImageFile({ url, fileName });
+
+                return {
+                  text: `![Image ${number}](${imageFile.path})`,
+                  imagePath: imageFile.path,
+                };
+              } catch (error) {
+                devWarn("AI Exporter: failed to download a Claude image", error);
+
+                return { text: "[Image attachment could not be downloaded]" };
+              }
+            },
+          ),
+        );
+
+        const content = renderedParts
+          .map((part) => part.text)
+          .filter(Boolean)
+          .join("\n\n")
+          .trim();
+
+        return content
+          ? {
+              id: message.id,
+              role: message.role,
+              content,
+              imagePaths: [
+                ...new Set(
+                  renderedParts.flatMap((part) =>
+                    part.imagePath ? [part.imagePath] : [],
+                  ),
+                ),
+              ],
+            }
+          : null;
+      },
+    ),
+  );
+
+  const result = convertedMessages
+    .filter((message): message is Omit<Message, "order"> => message !== null)
+    .map((message, order) => ({ ...message, order }));
+  const settledImages = await Promise.allSettled(imageFileCache.values());
+  const images = settledImages.flatMap((item) =>
+    item.status === "fulfilled" ? [item.value] : [],
+  );
+
+  devLog("AI Exporter: Claude export complete", {
+    conversationId,
+    rawMessages: conversation.chat_messages?.length ?? 0,
+    messages: result.length,
+    images: images.length,
+  });
+
+  return { messages: result, images };
+}
+
+/*
+ * ---------------------------------------------------------
  * READY
  * ---------------------------------------------------------
  */
@@ -1576,7 +1916,7 @@ function loadEntireConversationSingleFlight(
  * EXPORT SUCCESS OVERLAY
  * ---------------------------------------------------------
  *
- * Injected directly into the ChatGPT page (not the popup),
+ * Injected directly into the ChatGPT/Claude page (not the popup),
  * so it stays visible even after the person closes the
  * extension popup - which Chrome does automatically the
  * moment focus moves anywhere outside the popup, including
@@ -1588,7 +1928,7 @@ function loadEntireConversationSingleFlight(
  * rather than relying on a separate stylesheet, since content
  * scripts don't get a free way to load one without a matching
  * manifest entry, and this way there's no risk of colliding
- * with ChatGPT's own page styles.
+ * with the site's own page styles.
  */
 
 const EXPORT_SUCCESS_OVERLAY_ID = "ai-exporter-export-success-overlay";

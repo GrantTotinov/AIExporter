@@ -221,6 +221,31 @@ describe("parseBlocks", () => {
       { type: "blockquote", text: "Hi team,\nplease review." },
     ]);
   });
+
+  /*
+   * A fence that wraps code containing its own ``` fences is
+   * made longer (````), as ChatGPT does for nested Markdown and
+   * the Claude export does for such artifacts. Only a fence at
+   * least as long closes it; the inner ``` used to, which
+   * turned everything after the block into code.
+   */
+  it("closes a longer fence only with a fence at least as long", () => {
+    expect(
+      parseBlocks(
+        "````markdown\nInstall:\n\n```bash\nnpm install\n```\n````\n\nAfter the block.",
+      ),
+    ).toEqual([
+      { type: "code", code: "Install:\n\n```bash\nnpm install\n```" },
+      { type: "paragraph", text: "After the block." },
+    ]);
+  });
+
+  it("still closes a ``` fence at the next ``` line", () => {
+    expect(parseBlocks("```js\nlet a = 1;\n```\nafter")).toEqual([
+      { type: "code", code: "let a = 1;" },
+      { type: "paragraph", text: "after" },
+    ]);
+  });
 });
 
 describe("parseInline", () => {

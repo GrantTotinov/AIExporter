@@ -31,6 +31,7 @@
 import jsPDF from "jspdf";
 import type { Settings, PdfSettings } from "./settings.ts";
 import { encodeBlobBase64 } from "./zip.ts";
+import { stripChatSiteSuffix } from "./chat-sites.ts";
 
 interface Message {
   id: string;
@@ -613,13 +614,18 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
       continue;
     }
 
-    const fenceMatch = line.match(/^\s*```/);
+    const fenceMatch = line.match(/^\s*(`{3,})/);
 
     if (fenceMatch) {
+      // Only a fence at least as long closes it, so a ```` block
+      // can hold ``` fences of its own.
+      const closingFence = new RegExp(
+        `^\\s*\`{${fenceMatch[1].length},}\\s*$`,
+      );
       const codeLines: string[] = [];
       i++;
 
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+      while (i < lines.length && !closingFence.test(lines[i])) {
         codeLines.push(lines[i]);
         i++;
       }
@@ -1046,9 +1052,7 @@ export async function buildPdfBlob(
     );
   }
 
-  const documentTitle = (tabTitle ?? "")
-    .replace(/\s*[-|]\s*ChatGPT\s*$/i, "")
-    .trim();
+  const documentTitle = stripChatSiteSuffix(tabTitle ?? "");
 
   if (documentTitle) {
     doc.setProperties({ title: documentTitle });
@@ -1889,18 +1893,56 @@ export async function buildPdfBlob(
     drawHeader();
   }
 
+  /*
+   * A heading or a bold label line ("**Step 1:**", a Claude
+   * artifact's title) introduces the block after it, so it's kept
+   * on the same page as that block's first lines - as is a run of
+   * them, such as an artifact title over the document's own
+   * heading.
+   */
+  function isLeadIn(block: Block): boolean {
+    return (
+      block.type === "heading" ||
+      (block.type === "paragraph" && /^\*\*[^*\n]+\*\*$/.test(block.text))
+    );
+  }
+
+  /*
+   * The height that keeps blocks[index] - and, while they're
+   * lead-ins, the blocks after it - with the first lines of what
+   * they introduce. Capped at a third of a page, so a long run of
+   * lead-ins can't push each one onto a page of its own.
+   */
+  function keepWithNextHeight(blocks: Block[], index: number): number {
+    let height = bodyLineHeight * 2;
+
+    for (let i = index; i < blocks.length && isLeadIn(blocks[i]); i++) {
+      const block = blocks[i];
+
+      height +=
+        block.type === "heading"
+          ? mm(headingFontSize + Math.max(0, 3 - block.level)) * 1.32 * 1.2 +
+            bodyLineHeight * 0.2
+          : bodyLineHeight;
+    }
+
+    return Math.min(height, (contentBottom - pdf.marginTop) / 3);
+  }
+
   for (const [index, message] of messages.entries()) {
     const roleLabel = message.role === "user" ? "User" : "Assistant";
     const isUser = message.role === "user";
     const preprocessed = preprocessRawContent(message.content);
     const hasRule = index > 0 && ruleBetweenMessages;
+    const content = isUser ? fenceUserContent(preprocessed) : preprocessed;
+    const blocks = parseBlocks(content, isUser);
 
     // Keep the separator and role label with the message's first
     // lines, so neither is left alone at the bottom of a page.
     ensureSpace(
       (hasRule ? bodyLineHeight * 1.2 : 0) +
         (showRoleLabels ? headingLineHeight * 1.2 : 0) +
-        bodyLineHeight * 2,
+        keepWithNextHeight(blocks, 0),
     );
 
     if (hasRule) {
@@ -1931,9 +1973,11 @@ export async function buildPdfBlob(
       y += bodyLineHeight * 0.2;
     }
 
-    const content = isUser ? fenceUserContent(preprocessed) : preprocessed;
+    for (const [blockIndex, block] of blocks.entries()) {
+      if (isLeadIn(block)) {
+        ensureSpace(keepWithNextHeight(blocks, blockIndex));
+      }
 
-    for (const block of parseBlocks(content, isUser)) {
       renderBlock(block);
     }
 
