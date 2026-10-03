@@ -270,6 +270,8 @@
   "bulk.clearSelection": "Clear selection",
   "bulk.count": "{{checked}} of {{total}} selected",
   "bulk.loading": "Getting your list of chats from {{site}}…",
+  "bulk.loadingMore": "Loading older chats… {{count}} so far. You can start choosing already.",
+  "bulk.loadMoreFailed": "Older chats could not be loaded. Showing the {{count}} newest.",
   "bulk.error.title": "Your chats could not be loaded",
   "bulk.error.retry": "Try again",
   "bulk.error.unknown": "Something went wrong.",

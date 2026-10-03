@@ -37,7 +37,7 @@ import {
   type DatePreset,
 } from "./bulk-export.ts";
 import type {
-  ConversationListResult,
+  ConversationListPage,
   ConversationSummary,
 } from "./conversation-list.ts";
 
@@ -80,6 +80,12 @@ const selectAllCheckbox = byId<HTMLInputElement>("select-all");
 const listCount = byId<HTMLSpanElement>("list-count");
 const clearSelectionButton = byId<HTMLButtonElement>("clear-selection");
 const chatList = byId<HTMLDivElement>("chat-list");
+const listMore = byId<HTMLDivElement>("list-more");
+const listMoreSpinner = byId<HTMLSpanElement>("list-more-spinner");
+const listMoreWarning = document.getElementById(
+  "list-more-warning",
+) as unknown as SVGSVGElement;
+const listMoreText = byId<HTMLSpanElement>("list-more-text");
 const stateLoading = byId<HTMLDivElement>("state-loading");
 const loadingText = byId<HTMLParagraphElement>("loading-text");
 const stateError = byId<HTMLDivElement>("state-error");
@@ -133,7 +139,10 @@ const siteName = site ? CHAT_SITE_NAMES[site] : "";
 let conversations: ConversationSummary[] = [];
 let shown: ConversationSummary[] = [];
 const selected = new Set<string>();
+/* At least the first page is in. */
 let listLoaded = false;
+/* Bumped by every new load, so an older one stops fetching. */
+let listLoadId = 0;
 let running = false;
 let stopRequested = false;
 let lastClickedIndex: number | null = null;
@@ -220,6 +229,10 @@ function showListState(
   stateNoMatch.hidden = state !== "no-match";
   chatList.hidden = state !== "list";
   listHead.hidden = state !== "list";
+
+  if (state !== "list") {
+    listMore.hidden = true;
+  }
 }
 
 function currentFilter(): ConversationFilter {
@@ -406,8 +419,21 @@ resetFiltersButton.addEventListener("click", () => {
   renderList();
 });
 
+/*
+ * The list arrives a page at a time, newest chats first, and is
+ * shown from the first page on: a big account has thousands of
+ * chats, and waiting for all of them before showing any took
+ * minutes. The rest keep loading below while the person
+ * searches, ticks and even exports.
+ */
 async function loadList(): Promise<void> {
+  const loadId = ++listLoadId;
+  const found = new Map<string, ConversationSummary>();
+  let cursor: string | null = null;
+
   listLoaded = false;
+  conversations = [];
+  listMore.hidden = true;
   showListState("loading");
   loadingText.textContent = t("bulk.loading", { site: siteName });
   updateSelectionUi();
@@ -417,22 +443,71 @@ async function loadList(): Promise<void> {
       throw new TabUnavailableError("missing tab");
     }
 
-    const result = await sendToTab<ConversationListResult>({
-      type: "LIST_CONVERSATIONS",
-    });
+    for (;;) {
+      const page: ConversationListPage = await sendToTab<ConversationListPage>({
+        type: "LIST_CONVERSATIONS_PAGE",
+        cursor,
+      });
 
-    conversations = result.conversations;
-    listLoaded = true;
-    renderList();
-    searchInput.focus();
+      if (loadId !== listLoadId) {
+        return;
+      }
+
+      let added = 0;
+
+      for (const conversation of page.conversations) {
+        if (!found.has(conversation.id)) {
+          found.set(conversation.id, conversation);
+          added++;
+        }
+      }
+
+      conversations = [...found.values()];
+      // A page with nothing new means an API that ignores paging.
+      cursor = added > 0 ? page.nextCursor : null;
+      renderList();
+
+      if (!listLoaded) {
+        listLoaded = true;
+        renderList();
+        searchInput.focus();
+      }
+
+      setLoadingMore(cursor === null ? "done" : "loading");
+
+      if (cursor === null) {
+        break;
+      }
+    }
   } catch (error) {
+    if (loadId !== listLoadId) {
+      return;
+    }
+
     devWarn("AI Exporter: couldn't list conversations", error);
+
+    // The chats already shown stay usable.
+    if (listLoaded) {
+      setLoadingMore("failed");
+      return;
+    }
+
     errorText.textContent =
       error instanceof TabUnavailableError
         ? t("bulk.error.tabGone", { site: siteName || "ChatGPT" })
         : t("bulk.error.listFailed", { site: siteName, error: errorMessage(error) });
     showListState("error");
   }
+}
+
+function setLoadingMore(state: "loading" | "done" | "failed"): void {
+  listMore.hidden = state === "done" || chatList.hidden;
+  listMoreSpinner.hidden = state !== "loading";
+  listMoreWarning.toggleAttribute("hidden", state !== "failed");
+  listMoreText.textContent =
+    state === "failed"
+      ? t("bulk.loadMoreFailed", { count: conversations.length })
+      : t("bulk.loadingMore", { count: conversations.length });
 }
 
 retryListButton.addEventListener("click", () => void loadList());

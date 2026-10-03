@@ -55,7 +55,7 @@ import {
 } from "./gemini-conversation.ts";
 import {
   parseChatGptConversationList,
-  type ConversationListResult,
+  type ConversationListPage,
   type ConversationSummary,
 } from "./conversation-list.ts";
 
@@ -3023,134 +3023,144 @@ function showExportSuccessOverlay(): void {
  * LIST CONVERSATIONS
  * ---------------------------------------------------------
  *
- * Every conversation in the sidebar, newest first, for the bulk
- * export page - fetched from the list API the sidebar itself
- * uses, a page at a time, since the sidebar only renders the
- * chats scrolled into view. Each site's loop stops at the end of
- * the list, at a page with nothing new (an API that ignores the
- * page parameters returns everything every time), or at a cap
- * that keeps a runaway loop from hammering the site.
+ * The person's conversations for the bulk export page, a page
+ * at a time, newest first - from the list API the sidebar itself
+ * uses, since the sidebar only renders the chats scrolled into
+ * view. The page asks for one page after another and shows each
+ * as it arrives: a big account has thousands of chats, and the
+ * recent ones people usually want come first.
+ *
+ * `cursor` is opaque to the page: null for the first page, then
+ * whatever the previous answer's nextCursor was (null at the
+ * end). Its form depends on the site.
  */
 
-const MAX_LISTED_CONVERSATIONS = 10_000;
+const LIST_PAGE_SIZE = 100;
 
-function collectUnique(
-  target: Map<string, ConversationSummary>,
-  page: ConversationSummary[],
-): number {
-  let added = 0;
-
-  for (const conversation of page) {
-    if (!target.has(conversation.id)) {
-      target.set(conversation.id, conversation);
-      added++;
-    }
-  }
-
-  return added;
-}
-
-async function listChatGptConversations(): Promise<ConversationSummary[]> {
+async function listChatGptPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
   await waitForBridge();
 
-  const PAGE_SIZE = 100;
-  const found = new Map<string, ConversationSummary>();
+  const offset = cursor === null ? 0 : Number(cursor);
+  const page = parseChatGptConversationList(
+    await fetchChatGptListPage(offset, LIST_PAGE_SIZE),
+  );
+  const next = offset + page.conversations.length;
+  /*
+   * ChatGPT may answer with fewer chats than asked for and still
+   * have more, so the total decides when it's over; without one,
+   * a short page does.
+   */
+  const done =
+    page.conversations.length === 0 ||
+    (page.total !== null
+      ? next >= page.total
+      : page.conversations.length < LIST_PAGE_SIZE);
 
-  for (let offset = 0; offset < MAX_LISTED_CONVERSATIONS; offset += PAGE_SIZE) {
-    const page = parseChatGptConversationList(
-      await fetchChatGptListPage(offset, PAGE_SIZE),
-    );
-    const added = collectUnique(
-      found,
-      page.conversations.map((conversation) => ({
-        ...conversation,
-        url: `${window.location.origin}/c/${conversation.id}`,
-      })),
-    );
-
-    if (
-      added === 0 ||
-      page.conversations.length < PAGE_SIZE ||
-      (page.total !== null && offset + PAGE_SIZE >= page.total)
-    ) {
-      break;
-    }
-  }
-
-  return [...found.values()];
+  return {
+    conversations: page.conversations.map((conversation) => ({
+      ...conversation,
+      url: `${window.location.origin}/c/${conversation.id}`,
+    })),
+    nextCursor: done ? null : String(next),
+  };
 }
 
-async function listClaudeConversations(): Promise<ConversationSummary[]> {
-  const PAGE_SIZE = 100;
-  let organizationIds: string[];
-  const lastActive = getClaudeOrganizationIdFromCookie(document.cookie);
+/* The organizations being listed, resolved on the first page. */
+let claudeListOrganizations: string[] = [];
 
-  if (lastActive) {
-    organizationIds = [lastActive];
-  } else {
-    const response = await fetchClaudeApi("/api/organizations");
+async function listClaudePage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  if (cursor === null) {
+    const lastActive = getClaudeOrganizationIdFromCookie(document.cookie);
 
-    if (!response.ok) {
-      throw new Error(`Claude API request failed: ${response.status}`);
-    }
-
-    organizationIds = getClaudeChatOrganizationIds(await response.json());
-  }
-
-  const found = new Map<string, ConversationSummary>();
-
-  for (const organizationId of organizationIds) {
-    for (
-      let offset = 0;
-      offset < MAX_LISTED_CONVERSATIONS;
-      offset += PAGE_SIZE
-    ) {
-      const response = await fetchClaudeApi(
-        buildClaudeConversationListPath(organizationId, PAGE_SIZE, offset),
-      );
+    if (lastActive) {
+      claudeListOrganizations = [lastActive];
+    } else {
+      const response = await fetchClaudeApi("/api/organizations");
 
       if (!response.ok) {
         throw new Error(`Claude API request failed: ${response.status}`);
       }
 
-      const page = parseClaudeConversationList(await response.json());
-      const added = collectUnique(
-        found,
-        page.map((conversation) => ({
-          ...conversation,
-          url: `${window.location.origin}/chat/${conversation.id}`,
-        })),
+      claudeListOrganizations = getClaudeChatOrganizationIds(
+        await response.json(),
       );
-
-      if (added === 0 || page.length < PAGE_SIZE) {
-        break;
-      }
     }
   }
 
-  return [...found.values()];
+  const position = cursor
+    ? (JSON.parse(cursor) as { organization: number; offset: number })
+    : { organization: 0, offset: 0 };
+  const organizationId = claudeListOrganizations[position.organization];
+
+  if (!organizationId) {
+    return { conversations: [], nextCursor: null };
+  }
+
+  const response = await fetchClaudeApi(
+    buildClaudeConversationListPath(
+      organizationId,
+      LIST_PAGE_SIZE,
+      position.offset,
+    ),
+  );
+
+  if (!response.ok) {
+    throw new Error(`Claude API request failed: ${response.status}`);
+  }
+
+  const page = parseClaudeConversationList(await response.json());
+  const next =
+    page.length < LIST_PAGE_SIZE
+      ? { organization: position.organization + 1, offset: 0 }
+      : { organization: position.organization, offset: position.offset + page.length };
+
+  return {
+    conversations: page.map((conversation) => ({
+      ...conversation,
+      url: `${window.location.origin}/chat/${conversation.id}`,
+    })),
+    nextCursor:
+      next.organization < claudeListOrganizations.length
+        ? JSON.stringify(next)
+        : null,
+  };
 }
 
-async function listGeminiConversations(): Promise<ConversationSummary[]> {
-  const accountPrefix = getGeminiAccountPrefix(window.location.pathname);
-  const sourcePath = `${accountPrefix}/app`;
-  const found = new Map<string, ConversationSummary>();
-  let tokens = readGeminiTokensFromPage() ?? (await fetchGeminiTokens(accountPrefix));
-  let refreshedTokens = false;
-  let requestId = 10000 + Math.floor(Math.random() * 90000);
+/* The tokens the list requests carry, read on the first page. */
+let geminiListTokens: GeminiPageTokens | null = null;
+let geminiListRequestId = 10000 + Math.floor(Math.random() * 90000);
 
-  const fetchPage = async (pinned: boolean, cursor: string | null) => {
+async function listGeminiPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  const accountPrefix = getGeminiAccountPrefix(window.location.pathname);
+
+  if (cursor === null || !geminiListTokens) {
+    geminiListTokens =
+      readGeminiTokensFromPage() ?? (await fetchGeminiTokens(accountPrefix));
+  }
+
+  // Pinned chats first, like the sidebar shows them.
+  const position = cursor
+    ? (JSON.parse(cursor) as { pinned: boolean; token: string | null })
+    : { pinned: true, token: null };
+
+  const fetchPage = (tokens: GeminiPageTokens): Promise<Response> => {
     const request = buildGeminiListRequest({
       tokens,
       accountPrefix,
-      sourcePath,
-      requestId,
-      pinned,
+      sourcePath: `${accountPrefix}/app`,
+      requestId: geminiListRequestId,
+      pinned: position.pinned,
       pageSize: 50,
-      cursor,
+      cursor: position.token,
     });
 
-    requestId += 100000;
+    geminiListRequestId += 100000;
 
     return fetch(new URL(request.path, window.location.origin), {
       method: "POST",
@@ -3163,45 +3173,36 @@ async function listGeminiConversations(): Promise<ConversationSummary[]> {
     });
   };
 
-  // Pinned chats first, like the sidebar shows them.
-  for (const pinned of [true, false]) {
-    let cursor: string | null = null;
+  let response = await fetchPage(geminiListTokens);
 
-    for (let page = 0; page < MAX_LISTED_CONVERSATIONS / 50; page++) {
-      let response = await fetchPage(pinned, cursor);
-
-      // The page's tokens expire when a tab stays open for long.
-      if (!response.ok && !refreshedTokens) {
-        refreshedTokens = true;
-        tokens = await fetchGeminiTokens(accountPrefix);
-        response = await fetchPage(pinned, cursor);
-      }
-
-      if (!response.ok) {
-        throw new Error(`Gemini request failed: ${response.status}`);
-      }
-
-      const result = parseGeminiConversationList(await response.text());
-      const added = collectUnique(
-        found,
-        result.conversations.map((conversation) => ({
-          id: conversation.id,
-          title: conversation.title,
-          url: `${window.location.origin}${accountPrefix}/app/${conversation.id}`,
-          createdAt: null,
-          updatedAt: conversation.updatedAt,
-        })),
-      );
-
-      if (added === 0 || !result.nextCursor || result.nextCursor === cursor) {
-        break;
-      }
-
-      cursor = result.nextCursor;
-    }
+  // The page's tokens expire when a tab stays open for long.
+  if (!response.ok) {
+    geminiListTokens = await fetchGeminiTokens(accountPrefix);
+    response = await fetchPage(geminiListTokens);
   }
 
-  return [...found.values()];
+  if (!response.ok) {
+    throw new Error(`Gemini request failed: ${response.status}`);
+  }
+
+  const result = parseGeminiConversationList(await response.text());
+  const next =
+    result.nextCursor && result.nextCursor !== position.token
+      ? { pinned: position.pinned, token: result.nextCursor }
+      : position.pinned
+        ? { pinned: false, token: null }
+        : null;
+
+  return {
+    conversations: result.conversations.map((conversation) => ({
+      id: conversation.id,
+      title: conversation.title,
+      url: `${window.location.origin}${accountPrefix}/app/${conversation.id}`,
+      createdAt: null,
+      updatedAt: conversation.updatedAt,
+    })),
+    nextCursor: next ? JSON.stringify(next) : null,
+  };
 }
 
 /*
@@ -3221,9 +3222,8 @@ function scrapeSidebarConversations(): ConversationSummary[] {
 
   for (const link of Array.from(document.querySelectorAll("a[href]"))) {
     const url = new URL((link as HTMLAnchorElement).href, window.location.href);
-    const id = url.origin === window.location.origin
-      ? idFromPath(url.pathname)
-      : null;
+    const id =
+      url.origin === window.location.origin ? idFromPath(url.pathname) : null;
     const title = (link.textContent ?? "").replace(/\s+/g, " ").trim();
 
     if (id && !found.has(id)) {
@@ -3240,35 +3240,49 @@ function scrapeSidebarConversations(): ConversationSummary[] {
   return [...found.values()];
 }
 
-async function listConversations(): Promise<ConversationListResult> {
+async function listConversationsPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  const started = Date.now();
+
   try {
-    const conversations = IS_CLAUDE_SITE
-      ? await listClaudeConversations()
+    const page = IS_CLAUDE_SITE
+      ? await listClaudePage(cursor)
       : IS_GEMINI_SITE
-        ? await listGeminiConversations()
-        : await listChatGptConversations();
+        ? await listGeminiPage(cursor)
+        : await listChatGptPage(cursor);
 
-    return { conversations };
+    devLog(
+      `AI Exporter: listed ${page.conversations.length} chats in ${Date.now() - started} ms`,
+    );
+
+    return page;
   } catch (error) {
-    const scraped = scrapeSidebarConversations();
-
     devWarn("AI Exporter: conversation list API failed", error);
+
+    // Only a failed first page falls back to the sidebar's links.
+    const scraped = cursor === null ? scrapeSidebarConversations() : [];
 
     if (scraped.length === 0) {
       throw error;
     }
 
-    return { conversations: scraped };
+    return { conversations: scraped, nextCursor: null };
   }
 }
 
 chrome.runtime.onMessage.addListener(
-  (message: { type: string }, _sender, sendResponse) => {
-    if (message.type !== "LIST_CONVERSATIONS") {
+  (message: { type: string; cursor?: unknown }, _sender, sendResponse) => {
+    if (message.type !== "LIST_CONVERSATIONS_PAGE") {
       return false;
     }
 
-    listConversations()
+    const cursor =
+      typeof message.cursor === "string" && message.cursor.length <= 4096
+        ? message.cursor
+        : null;
+
+    listConversationsPage(cursor)
       .then((data) => sendResponse({ success: true, data }))
       .catch((error: unknown) =>
         sendResponse({

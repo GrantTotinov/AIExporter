@@ -270,6 +270,8 @@
   "bulk.clearSelection": "取消选择",
   "bulk.count": "已选 {{checked}} / {{total}}",
   "bulk.loading": "正在从 {{site}} 获取对话列表…",
+  "bulk.loadingMore": "正在加载更早的对话…目前 {{count}} 个。你现在就可以开始选择。",
+  "bulk.loadMoreFailed": "无法加载更早的对话。当前显示最新的 {{count}} 个。",
   "bulk.error.title": "无法加载你的对话",
   "bulk.error.retry": "重试",
   "bulk.error.unknown": "出现了问题。",

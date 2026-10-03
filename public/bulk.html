@@ -507,6 +507,29 @@
         animation: spin 0.8s linear infinite;
       }
 
+      .spinner--small {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+        flex: none;
+      }
+
+      .list-more {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 24px;
+        border-bottom: 1px solid var(--divider);
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .list-more .icon {
+        width: 16px;
+        height: 16px;
+        color: var(--warning-text);
+      }
+
       @keyframes spin {
         to {
           transform: rotate(360deg);
@@ -975,6 +998,14 @@
           >
             Clear selection
           </button>
+        </div>
+
+        <div class="list-more" id="list-more" role="status" hidden>
+          <span class="spinner spinner--small" id="list-more-spinner" aria-hidden="true"></span>
+          <svg class="icon" id="list-more-warning" aria-hidden="true" hidden>
+            <use href="#i-warning" />
+          </svg>
+          <span id="list-more-text"></span>
         </div>
 
         <div class="chat-list" id="chat-list" role="list"></div>

@@ -270,6 +270,8 @@
   "bulk.clearSelection": "Снять выбор",
   "bulk.count": "Выбрано {{checked}} из {{total}}",
   "bulk.loading": "Загружаем список чатов из {{site}}…",
+  "bulk.loadingMore": "Загружаем более старые чаты… пока {{count}}. Выбирать можно уже сейчас.",
+  "bulk.loadMoreFailed": "Не удалось загрузить более старые чаты. Показаны {{count}} самых новых.",
   "bulk.error.title": "Не удалось загрузить чаты",
   "bulk.error.retry": "Попробовать снова",
   "bulk.error.unknown": "Что-то пошло не так.",

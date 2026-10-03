@@ -270,6 +270,8 @@
   "bulk.clearSelection": "Tout désélectionner",
   "bulk.count": "{{checked}} sur {{total}} sélectionnées",
   "bulk.loading": "Récupération de vos conversations {{site}}…",
+  "bulk.loadingMore": "Chargement des conversations plus anciennes… {{count}} pour l'instant. Vous pouvez déjà choisir.",
+  "bulk.loadMoreFailed": "Impossible de charger les conversations plus anciennes. Affichage des {{count}} plus récentes.",
   "bulk.error.title": "Impossible de charger vos conversations",
   "bulk.error.retry": "Réessayer",
   "bulk.error.unknown": "Une erreur s'est produite.",

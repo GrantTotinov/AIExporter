@@ -270,6 +270,8 @@
   "bulk.clearSelection": "Auswahl aufheben",
   "bulk.count": "{{checked}} von {{total}} ausgewählt",
   "bulk.loading": "Deine Chat-Liste wird von {{site}} geladen…",
+  "bulk.loadingMore": "Ältere Chats werden geladen… bisher {{count}}. Du kannst schon auswählen.",
+  "bulk.loadMoreFailed": "Ältere Chats konnten nicht geladen werden. Die {{count}} neuesten werden angezeigt.",
   "bulk.error.title": "Deine Chats konnten nicht geladen werden",
   "bulk.error.retry": "Erneut versuchen",
   "bulk.error.unknown": "Etwas ist schiefgelaufen.",

@@ -23,8 +23,13 @@ export interface ConversationSummary {
   updatedAt: number | null;
 }
 
-export interface ConversationListResult {
+/*
+ * One page of the list. `nextCursor` is passed back to get the
+ * next page, and is null after the last one.
+ */
+export interface ConversationListPage {
   conversations: ConversationSummary[];
+  nextCursor: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
