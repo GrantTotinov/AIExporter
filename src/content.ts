@@ -71,64 +71,112 @@ type ContentLocale = (typeof CONTENT_LOCALES)[number];
 
 const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
   en: {
-    title: "✅ Export Successful!",
-    thanks: "Built with ❤️. Thanks for using AI Exporter.",
-    rate: "⭐ Rate on Chrome Web Store",
-    coffee: "☕ Buy Me a Coffee",
-    feedbackPrompt: "Found a bug or have an idea? Reach out:",
-    shareAriaLabel: "Follow on X",
-    feedbackAriaLabel: "Send feedback",
+    title: "Export complete",
+    subtitle: "Your chat has been saved.",
+    freeTitle: "Free for everyone",
+    freeText:
+      "No ads, no account, no tracking. AI Exporter is built by one independent developer — a review or a coffee helps keep it free and improving.",
+    review: "Leave a review",
+    coffee: "Buy me a coffee",
+    feedbackTitle: "Questions, ideas or a problem?",
+    feedbackText: "Write to me directly — I read every message.",
+    writeToMe: "Write to me",
+    copyEmail: "Copy email address",
+    copied: "Copied",
+    github: "or report it on GitHub",
     close: "Close",
+    emailSubject: "AI Exporter feedback",
+    emailPlaceholder: "Write your message here:",
   },
   es: {
-    title: "✅ ¡Exportación exitosa!",
-    thanks: "Hecho con ❤️. Gracias por usar AI Exporter.",
-    rate: "⭐ Valóranos en Chrome Web Store",
-    coffee: "☕ Invítame a un café",
-    feedbackPrompt: "¿Encontraste un error o tienes una idea? Contáctanos:",
-    shareAriaLabel: "Seguir en X",
-    feedbackAriaLabel: "Enviar comentarios",
+    title: "Exportación completada",
+    subtitle: "Tu chat se ha guardado.",
+    freeTitle: "Gratis para todos",
+    freeText:
+      "Sin anuncios, sin cuenta y sin rastreo. AI Exporter lo desarrolla una sola persona: una reseña o un café ayudan a que siga siendo gratis y mejorando.",
+    review: "Dejar una reseña",
+    coffee: "Invítame a un café",
+    feedbackTitle: "¿Preguntas, ideas o algún problema?",
+    feedbackText: "Escríbeme directamente; leo todos los mensajes.",
+    writeToMe: "Escríbeme",
+    copyEmail: "Copiar dirección de correo",
+    copied: "Copiada",
+    github: "o infórmalo en GitHub",
     close: "Cerrar",
+    emailSubject: "Comentarios sobre AI Exporter",
+    emailPlaceholder: "Escribe tu mensaje aquí:",
   },
   fr: {
-    title: "✅ Export réussi !",
-    thanks: "Créé avec ❤️. Merci d'utiliser AI Exporter.",
-    rate: "⭐ Noter sur le Chrome Web Store",
-    coffee: "☕ M'offrir un café",
-    feedbackPrompt: "Un bug ou une idée ? Contactez-nous :",
-    shareAriaLabel: "Suivre sur X",
-    feedbackAriaLabel: "Envoyer un commentaire",
+    title: "Export terminé",
+    subtitle: "Votre conversation a été enregistrée.",
+    freeTitle: "Gratuit pour tous",
+    freeText:
+      "Pas de publicité, pas de compte, pas de pistage. AI Exporter est développé par une seule personne : un avis ou un café l'aide à rester gratuit et à s'améliorer.",
+    review: "Laisser un avis",
+    coffee: "M'offrir un café",
+    feedbackTitle: "Une question, une idée ou un problème ?",
+    feedbackText: "Écrivez-moi directement, je lis tous les messages.",
+    writeToMe: "M'écrire",
+    copyEmail: "Copier l'adresse e-mail",
+    copied: "Copiée",
+    github: "ou signalez-le sur GitHub",
     close: "Fermer",
+    emailSubject: "Avis sur AI Exporter",
+    emailPlaceholder: "Écrivez votre message ici :",
   },
   de: {
-    title: "✅ Export erfolgreich!",
-    thanks: "Mit ❤️ erstellt. Danke, dass du AI Exporter nutzt.",
-    rate: "⭐ Im Chrome Web Store bewerten",
-    coffee: "☕ Spendiere mir einen Kaffee",
-    feedbackPrompt: "Fehler gefunden oder eine Idee? Melde dich:",
-    shareAriaLabel: "Auf X folgen",
-    feedbackAriaLabel: "Feedback senden",
+    title: "Export abgeschlossen",
+    subtitle: "Dein Chat wurde gespeichert.",
+    freeTitle: "Kostenlos für alle",
+    freeText:
+      "Keine Werbung, kein Konto, kein Tracking. AI Exporter wird von einer einzelnen Person entwickelt — eine Bewertung oder ein Kaffee hilft, es kostenlos zu halten und weiter zu verbessern.",
+    review: "Bewertung schreiben",
+    coffee: "Spendiere mir einen Kaffee",
+    feedbackTitle: "Fragen, Ideen oder ein Problem?",
+    feedbackText: "Schreib mir direkt — ich lese jede Nachricht.",
+    writeToMe: "Schreib mir",
+    copyEmail: "E-Mail-Adresse kopieren",
+    copied: "Kopiert",
+    github: "oder melde es auf GitHub",
     close: "Schließen",
+    emailSubject: "Feedback zu AI Exporter",
+    emailPlaceholder: "Schreib deine Nachricht hier:",
   },
   ru: {
-    title: "✅ Экспорт выполнен успешно!",
-    thanks: "Сделано с ❤️. Спасибо, что используете AI Exporter.",
-    rate: "⭐ Оценить в Chrome Web Store",
-    coffee: "☕ Угостить кофе",
-    feedbackPrompt: "Нашли ошибку или есть идея? Напишите нам:",
-    shareAriaLabel: "Подписаться в X",
-    feedbackAriaLabel: "Отправить отзыв",
+    title: "Экспорт завершён",
+    subtitle: "Ваш чат сохранён.",
+    freeTitle: "Бесплатно для всех",
+    freeText:
+      "Без рекламы, без регистрации и без слежки. AI Exporter создаёт один независимый разработчик — отзыв или чашка кофе помогают ему оставаться бесплатным и становиться лучше.",
+    review: "Оставить отзыв",
+    coffee: "Угостить кофе",
+    feedbackTitle: "Вопросы, идеи или что-то не работает?",
+    feedbackText: "Напишите мне напрямую — я читаю каждое сообщение.",
+    writeToMe: "Написать мне",
+    copyEmail: "Скопировать адрес",
+    copied: "Скопировано",
+    github: "или сообщите на GitHub",
     close: "Закрыть",
+    emailSubject: "Отзыв об AI Exporter",
+    emailPlaceholder: "Напишите ваше сообщение здесь:",
   },
   zh: {
-    title: "✅ 导出成功！",
-    thanks: "用 ❤️ 打造。感谢您使用 AI Exporter。",
-    rate: "⭐ 在 Chrome 网上应用店评分",
-    coffee: "☕ 请我喝咖啡",
-    feedbackPrompt: "发现了 bug 或有好想法？请联系我们：",
-    shareAriaLabel: "在 X 上关注",
-    feedbackAriaLabel: "发送反馈",
+    title: "导出完成",
+    subtitle: "您的对话已保存。",
+    freeTitle: "完全免费",
+    freeText:
+      "无广告、无需账号、无跟踪。AI Exporter 由一名独立开发者打造——留个评价或请杯咖啡，都能帮助它保持免费并持续改进。",
+    review: "留下评价",
+    coffee: "请我喝咖啡",
+    feedbackTitle: "有问题、想法或遇到故障？",
+    feedbackText: "直接给我写信——每条消息我都会阅读。",
+    writeToMe: "给我写信",
+    copyEmail: "复制邮箱地址",
+    copied: "已复制",
+    github: "或在 GitHub 上反馈",
     close: "关闭",
+    emailSubject: "AI Exporter 反馈",
+    emailPlaceholder: "请在此输入您的消息：",
   },
 };
 
@@ -2359,15 +2407,421 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 const PROJECT_REPOSITORY_URL = "https://github.com/GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
-const X_PROFILE_URL = "https://x.com/granttotinov";
+const FEEDBACK_EMAIL = "granttotinov604@gmail.com";
 const CHROME_STORE_URL =
-  "https://chromewebstore.google.com/detail/objkcakdcilfaphifjfcgfamlnnbinjc";
-const FEEDBACK_URL = `${PROJECT_REPOSITORY_URL}/issues`;
+  "https://chromewebstore.google.com/detail/objkcakdcilfaphifjfcgfamlnnbinjc/reviews";
+/*
+ * addons.mozilla.org resolves an add-on's GUID (the gecko ID
+ * in manifest.firefox.json) the same way it resolves its slug.
+ */
+const FIREFOX_STORE_URL =
+  "https://addons.mozilla.org/firefox/addon/gptchatdownloader@granttotinov.com/";
+const GITHUB_ISSUES_URL = `${PROJECT_REPOSITORY_URL}/issues`;
+
+/*
+ * Extension pages run on moz-extension:// in Firefox and
+ * chrome-extension:// everywhere else (Chrome, Edge, Brave...,
+ * which all install from the Chrome Web Store).
+ */
+function isFirefoxExtension(): boolean {
+  try {
+    return chrome.runtime.getURL("").startsWith("moz-extension:");
+  } catch {
+    return false;
+  }
+}
+
+function getExtensionVersion(): string {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return "";
+  }
+}
+
+/*
+ * A ready-to-send email: the subject is filled in, and the
+ * version/browser/site go at the bottom so a bug report
+ * already says where it happened without the person having
+ * to know or look any of it up. Nothing about the chat itself
+ * is included.
+ */
+function buildFeedbackMailto(): string {
+  const details = [
+    `AI Exporter ${getExtensionVersion()}`.trim(),
+    isFirefoxExtension() ? "Firefox" : "Chrome",
+    window.location.hostname,
+  ].join(" · ");
+
+  const body = `${ct("emailPlaceholder")}\n\n\n\n---\n${details}`;
+
+  return `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(
+    ct("emailSubject"),
+  )}&body=${encodeURIComponent(body)}`;
+}
+
+const OVERLAY_ICONS = {
+  check:
+    '<path d="M20 6 9 17l-5-5"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  heart:
+    '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',
+  coffee:
+    '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+} as const;
+
+function overlayIcon(name: keyof typeof OVERLAY_ICONS): string {
+  return `<svg class="aie-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OVERLAY_ICONS[name]}</svg>`;
+}
+
+/*
+ * Scoped under the overlay's ID, and inside the overlay
+ * element itself, so it can't leak into (or be overridden by)
+ * the site's own styles and is removed together with it.
+ */
+const OVERLAY_STYLES = `
+  #${EXPORT_SUCCESS_OVERLAY_ID} {
+    --aie-backdrop: rgba(15, 23, 42, 0.45);
+    --aie-surface: #ffffff;
+    --aie-soft: #f6f8fa;
+    --aie-border: #d8dee4;
+    --aie-text: #1f2328;
+    --aie-muted: #59636e;
+    --aie-success: #1a7f37;
+    --aie-success-bg: #dafbe1;
+    --aie-primary: #0b7a5e;
+    --aie-primary-hover: #096650;
+    --aie-on-primary: #ffffff;
+    --aie-heart: #cf222e;
+    --aie-star: #bf8700;
+    --aie-coffee: #b45309;
+    --aie-focus: #0969da;
+
+    all: initial;
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--aie-backdrop);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    animation: aie-fade 160ms ease-out;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID}[data-theme="dark"] {
+    --aie-backdrop: rgba(1, 4, 9, 0.65);
+    --aie-surface: #161b22;
+    --aie-soft: #0d1117;
+    --aie-border: #30363d;
+    --aie-text: #f0f6fc;
+    --aie-muted: #9198a1;
+    --aie-success: #3fb950;
+    --aie-success-bg: rgba(46, 160, 67, 0.15);
+    --aie-primary: #238636;
+    --aie-primary-hover: #2ea043;
+    --aie-heart: #f85149;
+    --aie-star: #d29922;
+    --aie-coffee: #e3a008;
+    --aie-focus: #4493f8;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    #${EXPORT_SUCCESS_OVERLAY_ID}[data-theme="system"] {
+      --aie-backdrop: rgba(1, 4, 9, 0.65);
+      --aie-surface: #161b22;
+      --aie-soft: #0d1117;
+      --aie-border: #30363d;
+      --aie-text: #f0f6fc;
+      --aie-muted: #9198a1;
+      --aie-success: #3fb950;
+      --aie-success-bg: rgba(46, 160, 67, 0.15);
+      --aie-primary: #238636;
+      --aie-primary-hover: #2ea043;
+      --aie-heart: #f85149;
+      --aie-star: #d29922;
+      --aie-coffee: #e3a008;
+      --aie-focus: #4493f8;
+    }
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} * {
+    box-sizing: border-box;
+    margin: 0;
+    font-family: inherit;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-modal {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 28px 24px 20px;
+    border: 1px solid var(--aie-border);
+    border-radius: 16px;
+    background: var(--aie-surface);
+    color: var(--aie-text);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+    text-align: center;
+    animation: aie-rise 200ms ease-out;
+    outline: none;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-dismiss {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--aie-muted);
+    cursor: pointer;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-dismiss:hover {
+    background: var(--aie-soft);
+    color: var(--aie-text);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 14px;
+    border-radius: 50%;
+    background: var(--aie-success-bg);
+    color: var(--aie-success);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-badge .aie-icon {
+    width: 26px;
+    height: 26px;
+    stroke-width: 2.5;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-title {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--aie-text);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-subtitle {
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--aie-muted);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--aie-border);
+    border-radius: 12px;
+    background: var(--aie-soft);
+    text-align: left;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--aie-text);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section-title > span,
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-button > span {
+    display: inline-flex;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section-title .aie-heart {
+    color: var(--aie-heart);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section-title .aie-mail {
+    color: var(--aie-muted);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-section-text {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--aie-muted);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-button {
+    display: inline-flex;
+    flex: 1 1 140px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid var(--aie-border);
+    border-radius: 10px;
+    background: var(--aie-surface);
+    color: var(--aie-text);
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-button:hover {
+    border-color: var(--aie-muted);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-button.aie-primary {
+    border-color: var(--aie-primary);
+    background: var(--aie-primary);
+    color: var(--aie-on-primary);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-button.aie-primary:hover {
+    border-color: var(--aie-primary-hover);
+    background: var(--aie-primary-hover);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-star {
+    color: var(--aie-star);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-coffee {
+    color: var(--aie-coffee);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-address {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--aie-text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-address:hover {
+    background: var(--aie-surface);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-address-text {
+    overflow-wrap: anywhere;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-address .aie-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--aie-muted);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-copied {
+    color: var(--aie-success);
+    font-weight: 600;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} [hidden] {
+    display: none;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-link {
+    display: block;
+    width: fit-content;
+    margin: 4px auto 0;
+    font-size: 12.5px;
+    color: var(--aie-muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-link:hover {
+    color: var(--aie-text);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-close {
+    width: 100%;
+    margin-top: 16px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--aie-muted);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} .aie-close:hover {
+    background: var(--aie-soft);
+    color: var(--aie-text);
+  }
+
+  #${EXPORT_SUCCESS_OVERLAY_ID} a:focus-visible,
+  #${EXPORT_SUCCESS_OVERLAY_ID} button:focus-visible {
+    outline: 2px solid var(--aie-focus);
+    outline-offset: 2px;
+  }
+
+  @keyframes aie-fade {
+    from { opacity: 0; }
+  }
+
+  @keyframes aie-rise {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #${EXPORT_SUCCESS_OVERLAY_ID},
+    #${EXPORT_SUCCESS_OVERLAY_ID} .aie-modal {
+      animation: none;
+    }
+  }
+`;
+
+let removeOverlayKeyListener: (() => void) | null = null;
 
 function removeExportSuccessOverlay(): void {
-  const existing = document.getElementById(EXPORT_SUCCESS_OVERLAY_ID);
+  removeOverlayKeyListener?.();
+  removeOverlayKeyListener = null;
 
-  existing?.remove();
+  document.getElementById(EXPORT_SUCCESS_OVERLAY_ID)?.remove();
 }
 
 function showExportSuccessOverlay(): void {
@@ -2381,124 +2835,78 @@ function showExportSuccessOverlay(): void {
   const overlay = document.createElement("div");
   overlay.id = EXPORT_SUCCESS_OVERLAY_ID;
   overlay.dataset.theme = exportTheme;
-  overlay.setAttribute("role", "dialog");
 
-  const themeStyle = document.createElement("style");
-  themeStyle.textContent = `
-    #${EXPORT_SUCCESS_OVERLAY_ID} {
-      --gpt-export-overlay: rgba(0, 0, 0, 0.4);
-      --gpt-export-surface: #ffffff;
-      --gpt-export-text: #1b1f24;
-    }
+  const storeUrl = isFirefoxExtension() ? FIREFOX_STORE_URL : CHROME_STORE_URL;
 
-    #${EXPORT_SUCCESS_OVERLAY_ID}[data-theme="dark"] {
-      --gpt-export-overlay: rgba(0, 0, 0, 0.6);
-      --gpt-export-surface: #0d1117;
-      --gpt-export-text: #f0f6fc;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      #${EXPORT_SUCCESS_OVERLAY_ID}[data-theme="system"] {
-        --gpt-export-overlay: rgba(0, 0, 0, 0.6);
-        --gpt-export-surface: #0d1117;
-        --gpt-export-text: #f0f6fc;
-      }
-    }
-  `;
-  document.head.appendChild(themeStyle);
-  overlay.setAttribute("aria-modal", "true");
-  overlay.style.cssText = `
-    position: fixed;
-    inset: 0;
-    z-index: 2147483647;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    background: var(--gpt-export-overlay);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  `;
-
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-    width: 100%;
-    max-width: 380px;
-    max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: 24px 22px;
-    border-radius: 14px;
-    background: var(--gpt-export-surface);
-    color: var(--gpt-export-text);
-    text-align: center;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  `;
-
-  modal.innerHTML = `
-    <p style="margin: 0 0 6px; font-size: 19px; font-weight: 700; color: #3fb950;">
-      ${ct("title")}
-    </p>
-    <p style="margin: 0 0 20px; font-size: 13px; color: var(--gpt-export-text); line-height: 1.5;">
-      ${ct("thanks")}
-    </p>
-
-    <a
-      href="${CHROME_STORE_URL}"
-      target="_blank"
-      rel="noopener noreferrer"
-      style="display: block; padding: 11px 10px; margin-bottom: 8px; border-radius: 8px; background: #10a37f; color: #ffffff; text-decoration: none; font-size: 13.5px; font-weight: 700;"
+  overlay.innerHTML = `
+    <style>${OVERLAY_STYLES}</style>
+    <div
+      class="aie-modal"
+      tabindex="-1"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-exporter-export-success-title"
+      aria-describedby="ai-exporter-export-success-subtitle"
     >
-      ${ct("rate")}
-    </a>
+      <button type="button" class="aie-dismiss" data-aie-close aria-label="${ct("close")}">
+        ${overlayIcon("close")}
+      </button>
 
-    <a
-      href="${COFFEE_URL}"
-      target="_blank"
-      rel="noopener noreferrer"
-      style="display: block; padding: 11px 10px; margin-bottom: 14px; border-radius: 8px; background: #ffdd00; color: #1b1f24; text-decoration: none; font-size: 13.5px; font-weight: 700;"
-    >
-      ${ct("coffee")}
-    </a>
+      <div class="aie-badge">${overlayIcon("check")}</div>
+      <h2 class="aie-title" id="ai-exporter-export-success-title">${ct("title")}</h2>
+      <p class="aie-subtitle" id="ai-exporter-export-success-subtitle">${ct("subtitle")}</p>
 
-    <p style="margin: 0 0 10px; font-size: 12px; color: #8b949e;">
-      ${ct("feedbackPrompt")}
-    </p>
+      <section class="aie-section">
+        <p class="aie-section-title">
+          <span class="aie-heart">${overlayIcon("heart")}</span>
+          ${ct("freeTitle")}
+        </p>
+        <p class="aie-section-text">${ct("freeText")}</p>
+        <div class="aie-row">
+          <a class="aie-button" data-aie-link="review" href="${storeUrl}" target="_blank" rel="noopener noreferrer">
+            <span class="aie-star">${overlayIcon("star")}</span>
+            ${ct("review")}
+          </a>
+          <a class="aie-button" data-aie-link="coffee" href="${COFFEE_URL}" target="_blank" rel="noopener noreferrer">
+            <span class="aie-coffee">${overlayIcon("coffee")}</span>
+            ${ct("coffee")}
+          </a>
+        </div>
+      </section>
 
-    <div style="display: flex; justify-content: center; gap: 14px; margin-bottom: 16px;">
-      <a
-        href="${X_PROFILE_URL}"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="${ct("shareAriaLabel")}"
-        style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #2d333b; color: #ffffff; text-decoration: none;"
-      >✕</a>
-      <a
-        href="${FEEDBACK_URL}"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="${ct("feedbackAriaLabel")}"
-        style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #2d333b; color: #ffffff; text-decoration: none; font-size: 15px;"
-      >✉</a>
+      <section class="aie-section">
+        <p class="aie-section-title">
+          <span class="aie-mail">${overlayIcon("mail")}</span>
+          ${ct("feedbackTitle")}
+        </p>
+        <p class="aie-section-text">${ct("feedbackText")}</p>
+        <div class="aie-row">
+          <a class="aie-button aie-primary" data-aie-link="email" href="${buildFeedbackMailto()}">
+            ${overlayIcon("mail")}
+            ${ct("writeToMe")}
+          </a>
+        </div>
+        <button type="button" class="aie-address" data-aie-copy aria-label="${ct("copyEmail")}" title="${ct("copyEmail")}">
+          <span class="aie-address-text">${FEEDBACK_EMAIL}</span>
+          ${overlayIcon("copy")}
+          <span class="aie-copied" hidden>${ct("copied")}</span>
+        </button>
+        <a class="aie-link" data-aie-link="github" href="${GITHUB_ISSUES_URL}" target="_blank" rel="noopener noreferrer">
+          ${ct("github")}
+        </a>
+      </section>
+
+      <button type="button" class="aie-close" id="ai-exporter-export-success-close" data-aie-close>
+        ${ct("close")}
+      </button>
     </div>
-
-    <button
-      type="button"
-      id="ai-exporter-export-success-close"
-      style="width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid #30363d; background: transparent; color: var(--gpt-export-text); font-size: 12.5px; font-weight: 500; cursor: pointer;"
-    >
-      ${ct("close")}
-    </button>
   `;
 
-  overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  const closeButton = modal.querySelector<HTMLButtonElement>(
-    "#ai-exporter-export-success-close",
-  );
-
-  closeButton?.addEventListener("click", () => {
-    removeExportSuccessOverlay();
-  });
+  for (const button of overlay.querySelectorAll("[data-aie-close]")) {
+    button.addEventListener("click", removeExportSuccessOverlay);
+  }
 
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
@@ -2508,17 +2916,45 @@ function showExportSuccessOverlay(): void {
 
   /*
    * Close on Escape too, matching standard modal behavior.
-   * Auto-removes itself once the overlay is gone so repeated
-   * exports don't stack up listeners.
+   * Removed together with the overlay however it's closed, so
+   * repeated exports don't stack up listeners.
    */
   const handleEscape = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       removeExportSuccessOverlay();
-      document.removeEventListener("keydown", handleEscape);
     }
   };
 
   document.addEventListener("keydown", handleEscape);
+  removeOverlayKeyListener = () =>
+    document.removeEventListener("keydown", handleEscape);
+
+  const copyButton = overlay.querySelector<HTMLButtonElement>("[data-aie-copy]");
+
+  copyButton?.addEventListener("click", () => {
+    void navigator.clipboard
+      ?.writeText(FEEDBACK_EMAIL)
+      .then(() => {
+        const copied = copyButton.querySelector<HTMLElement>(".aie-copied");
+
+        if (copied) {
+          copied.hidden = false;
+          window.setTimeout(() => {
+            copied.hidden = true;
+          }, 2000);
+        }
+      })
+      .catch(() => undefined);
+  });
+
+  /*
+   * Focus the dialog itself rather than one of its buttons, so
+   * keyboard and screen reader users land inside it without a
+   * focus ring appearing on a button nobody chose yet.
+   */
+  overlay
+    .querySelector<HTMLElement>(".aie-modal")
+    ?.focus({ preventScroll: true });
 }
 
 /*
