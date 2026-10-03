@@ -235,14 +235,18 @@ describe("parseBlocks", () => {
         "````markdown\nInstall:\n\n```bash\nnpm install\n```\n````\n\nAfter the block.",
       ),
     ).toEqual([
-      { type: "code", code: "Install:\n\n```bash\nnpm install\n```" },
+      {
+        type: "code",
+        code: "Install:\n\n```bash\nnpm install\n```",
+        lang: "markdown",
+      },
       { type: "paragraph", text: "After the block." },
     ]);
   });
 
   it("still closes a ``` fence at the next ``` line", () => {
     expect(parseBlocks("```js\nlet a = 1;\n```\nafter")).toEqual([
-      { type: "code", code: "let a = 1;" },
+      { type: "code", code: "let a = 1;", lang: "js" },
       { type: "paragraph", text: "after" },
     ]);
   });

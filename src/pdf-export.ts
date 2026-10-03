@@ -38,6 +38,7 @@ import { extractMath, MATH_CLOSE, MATH_OPEN, type MathSpan } from "./math.ts";
 import type { RenderedMath } from "./math-render.ts";
 import { drawMath, type MathTextStyle } from "./svg-pdf.ts";
 import { shapeArabicText } from "./arabic-shaping.ts";
+import { highlightCode, type TokenKind } from "./code-highlight.ts";
 import {
   OBJECT_CHAR,
   bidiLevels,
@@ -595,7 +596,7 @@ export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
 type Block =
   | { type: "heading"; level: number; text: string }
   | { type: "paragraph"; text: string }
-  | { type: "code"; code: string }
+  | { type: "code"; code: string; lang?: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "table"; header: string[]; rows: string[][] }
   | { type: "blockquote"; text: string }
@@ -662,7 +663,14 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
       }
 
       i++;
-      blocks.push({ type: "code", code: codeLines.join("\n") });
+      // The info string after the opening fence (```python) names
+      // the language the block is highlighted as.
+      const lang = line.trim().slice(fenceMatch[1].length).trim();
+      blocks.push({
+        type: "code",
+        code: codeLines.join("\n"),
+        ...(lang ? { lang } : {}),
+      });
       continue;
     }
 
@@ -999,6 +1007,29 @@ type Rgb = [number, number, number];
 
 const TEXT_COLOR: Rgb = [20, 20, 20];
 const CODE_TEXT_COLOR: Rgb = [40, 40, 40];
+
+/*
+ * Syntax colors for code blocks, after GitHub's light theme: dark
+ * enough to read on the light gray block background, and still
+ * distinguishable from each other when printed in grayscale.
+ */
+const CODE_TOKEN_COLORS: Record<TokenKind, Rgb> = {
+  plain: CODE_TEXT_COLOR,
+  keyword: [207, 34, 46],
+  literal: [5, 80, 174],
+  string: [10, 48, 105],
+  comment: [110, 119, 129],
+  number: [5, 80, 174],
+  function: [130, 80, 223],
+  type: [149, 56, 0],
+  property: [5, 80, 174],
+  variable: [149, 56, 0],
+  meta: [110, 119, 129],
+  tag: [17, 99, 41],
+  attribute: [5, 80, 174],
+  inserted: [17, 99, 41],
+  deleted: [130, 7, 30],
+};
 const LINK_COLOR: Rgb = [31, 91, 199];
 const MUTED_COLOR: Rgb = [110, 110, 110];
 
@@ -1952,8 +1983,13 @@ export async function buildPdfBlob(
    * first: no DejaVu font has a tab glyph, and jsPDF drops the rest
    * of a line at the first character its font lacks, which blanked
    * every tab-indented line.
+   *
+   * Lines are syntax highlighted (see code-highlight.ts) as the
+   * fence's language, or one guessed from the code: each line is a
+   * run of colored tokens, wrapped by the same character count and
+   * drawn piece by piece.
    */
-  function renderCodeBlock(code: string): void {
+  function renderCodeBlock(code: string, lang?: string): void {
     doc.setFont(MONO_FONT, "normal");
     doc.setFontSize(codeFontSize);
 
@@ -1999,20 +2035,59 @@ export async function buildPdfBlob(
       doc.setFont(MONO_FONT, "normal");
     }
 
-    for (const rawLine of code.split("\n")) {
-      const expanded = expandTabs(rawLine);
+    /*
+     * A segment's characters drawn in their token colors, one
+     * doc.text() call per run of a single color.
+     */
+    function drawHighlighted(segment: TokenKind[], text: string): void {
+      let x = pdf.marginLeft + 2;
+      let start = 0;
+
+      for (let index = 1; index <= text.length; index++) {
+        if (index < text.length && segment[index] === segment[start]) {
+          continue;
+        }
+
+        const run = text.slice(start, index);
+        doc.setTextColor(...CODE_TOKEN_COLORS[segment[start]]);
+        doc.text(run, x, y);
+        x += doc.getTextWidth(run);
+        start = index;
+      }
+
+      doc.setTextColor(...CODE_TEXT_COLOR);
+    }
+
+    const expandedCode = code.split("\n").map((line) => expandTabs(line));
+    const highlighted = highlightCode(expandedCode.join("\n"), lang);
+
+    expandedCode.forEach((expanded, lineIndex) => {
       const rtlText = hasRtl(expanded);
-      const line = rtlText
-        ? shapeArabic(expanded)
-        : fit(expanded, MONO_FONT, "normal");
+      // The line as fitted to the font, with each character's token
+      // kind alongside; a right-to-left line is drawn uncolored.
+      let line = "";
+      const kinds: TokenKind[] = [];
+
+      if (rtlText) {
+        line = shapeArabic(expanded);
+      } else {
+        for (const token of highlighted[lineIndex] ?? []) {
+          const text = fit(token.text, MONO_FONT, "normal");
+          line += text;
+          kinds.push(...Array<TokenKind>(text.length).fill(token.kind));
+        }
+      }
+
       const segments =
         line.length === 0
           ? [""]
           : (line.match(new RegExp(`.{1,${wrapMaxChars}}`, "g")) ?? [""]);
+      let offset = 0;
 
       segments.forEach((segment, segmentIndex) => {
         const isHardWrap = segmentIndex < segments.length - 1;
-        const displayText = isHardWrap ? `${segment}${WRAP_MARKER}` : segment;
+        const segmentKinds = kinds.slice(offset, offset + segment.length);
+        offset += segment.length;
 
         ensureSpace(codeLineHeight);
         doc.setFillColor(245, 245, 245);
@@ -2031,12 +2106,15 @@ export async function buildPdfBlob(
             pdf.marginLeft + 2,
           );
         } else {
-          doc.text(displayText, pdf.marginLeft + 2, y);
+          drawHighlighted(
+            isHardWrap ? [...segmentKinds, "plain"] : segmentKinds,
+            isHardWrap ? `${segment}${WRAP_MARKER}` : segment,
+          );
         }
 
         y += codeLineHeight;
       });
-    }
+    });
 
     doc.setTextColor(...TEXT_COLOR);
     y += bodyLineHeight * 0.5;
@@ -2243,7 +2321,7 @@ export async function buildPdfBlob(
         renderParagraph(block.text);
         break;
       case "code":
-        renderCodeBlock(block.code);
+        renderCodeBlock(block.code, block.lang);
         break;
       case "list":
         renderList(block);
