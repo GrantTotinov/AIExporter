@@ -173,8 +173,36 @@ export function buildGeminiReadRequest(request: GeminiReadRequest): {
   path: string;
   body: string;
 } {
+  const rpcConversationId = request.conversationId.startsWith("c_")
+    ? request.conversationId
+    : `c_${request.conversationId}`;
+
+  return buildBatchRequest(GEMINI_READ_CONVERSATION_RPC, request, [
+    rpcConversationId,
+    PAGE_TURNS,
+    request.cursor,
+    1,
+    [1],
+    [4],
+    null,
+    1,
+  ]);
+}
+
+/*
+ * A batchexecute call of `rpcId` with `args`, the way the web
+ * app makes one.
+ */
+function buildBatchRequest(
+  rpcId: string,
+  request: Pick<
+    GeminiReadRequest,
+    "tokens" | "accountPrefix" | "sourcePath" | "requestId"
+  >,
+  args: unknown[],
+): { path: string; body: string } {
   const params = new URLSearchParams({
-    rpcids: GEMINI_READ_CONVERSATION_RPC,
+    rpcids: rpcId,
     "source-path": request.sourcePath,
   });
 
@@ -190,29 +218,8 @@ export function buildGeminiReadRequest(request: GeminiReadRequest): {
   params.set("_reqid", String(request.requestId));
   params.set("rt", "c");
 
-  const rpcConversationId = request.conversationId.startsWith("c_")
-    ? request.conversationId
-    : `c_${request.conversationId}`;
   const body = new URLSearchParams({
-    "f.req": JSON.stringify([
-      [
-        [
-          GEMINI_READ_CONVERSATION_RPC,
-          JSON.stringify([
-            rpcConversationId,
-            PAGE_TURNS,
-            request.cursor,
-            1,
-            [1],
-            [4],
-            null,
-            1,
-          ]),
-          null,
-          "generic",
-        ],
-      ],
-    ]),
+    "f.req": JSON.stringify([[[rpcId, JSON.stringify(args), null, "generic"]]]),
     at: request.tokens.at,
   });
 
@@ -267,7 +274,10 @@ function getResponseChunks(text: string): unknown[] {
   return chunks;
 }
 
-function getRpcResult(text: string): unknown {
+function getRpcResult(
+  text: string,
+  rpcId = GEMINI_READ_CONVERSATION_RPC,
+): unknown {
   for (const chunk of getResponseChunks(text)) {
     if (!Array.isArray(chunk)) {
       continue;
@@ -277,7 +287,7 @@ function getRpcResult(text: string): unknown {
       if (
         !Array.isArray(entry) ||
         entry[0] !== "wrb.fr" ||
-        entry[1] !== GEMINI_READ_CONVERSATION_RPC
+        entry[1] !== rpcId
       ) {
         continue;
       }
@@ -325,6 +335,90 @@ export function parseGeminiTurnsPage(text: string): {
 
   return {
     turns: Array.isArray(result[0]) ? result[0] : [],
+    nextCursor: typeof cursor === "string" && cursor ? cursor : null,
+  };
+}
+
+/*
+ * ---------------------------------------------------------
+ * CONVERSATION LIST
+ * ---------------------------------------------------------
+ *
+ * The sidebar's list of chats comes from RPC MaZiqc, called
+ * with [count, cursor, [pinned, null, 1]] - once for pinned
+ * chats (1) and once for the rest (0). The result has the next
+ * page's cursor at [1] and the chats at [2], each one
+ * [id, title, pinned, ..., [seconds, nanos] at [5]]; the id has
+ * the RPC's "c_" prefix, which the page URL leaves out.
+ */
+
+const GEMINI_LIST_CONVERSATIONS_RPC = "MaZiqc";
+
+export interface GeminiListRequest
+  extends Pick<
+    GeminiReadRequest,
+    "tokens" | "accountPrefix" | "sourcePath" | "requestId"
+  > {
+  pinned: boolean;
+  pageSize: number;
+  cursor: string | null;
+}
+
+export function buildGeminiListRequest(request: GeminiListRequest): {
+  path: string;
+  body: string;
+} {
+  return buildBatchRequest(GEMINI_LIST_CONVERSATIONS_RPC, request, [
+    request.pageSize,
+    request.cursor,
+    [request.pinned ? 1 : 0, null, 1],
+  ]);
+}
+
+export interface GeminiConversationSummary {
+  /* As in the page URL, without the "c_" prefix. */
+  id: string;
+  title: string;
+  /* Milliseconds since the epoch, when the chat was last used. */
+  updatedAt: number | null;
+}
+
+export function parseGeminiConversationList(text: string): {
+  conversations: GeminiConversationSummary[];
+  nextCursor: string | null;
+} {
+  const result = getRpcResult(text, GEMINI_LIST_CONVERSATIONS_RPC);
+
+  if (!Array.isArray(result)) {
+    throw new Error("Gemini returned an unexpected chat list format.");
+  }
+
+  const conversations: GeminiConversationSummary[] = [];
+
+  for (const chat of Array.isArray(result[2]) ? result[2] : []) {
+    const rawId = stringValue(at(chat, 0));
+
+    if (!rawId) {
+      continue;
+    }
+
+    const seconds = at(chat, 5, 0);
+    const nanos = at(chat, 5, 1);
+
+    conversations.push({
+      id: rawId.replace(/^c_/, ""),
+      title: stringValue(at(chat, 1))?.trim() ?? "",
+      updatedAt:
+        typeof seconds === "number"
+          ? seconds * 1000 + (typeof nanos === "number" ? nanos / 1e6 : 0)
+          : null,
+    });
+  }
+
+  const cursor = result[1];
+
+  return {
+    conversations,
     nextCursor: typeof cursor === "string" && cursor ? cursor : null,
   };
 }

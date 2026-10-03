@@ -43,6 +43,10 @@
     /^\/backend-api\/conversations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/messages)?$/i;
   const LEGACY_CONVERSATION_PATH_PATTERN =
     /^\/backend-api\/conversation\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/messages)?$/i;
+  // The sidebar's conversation list (?offset=..&limit=..).
+  const CONVERSATION_LIST_PATH_PATTERN = /^\/backend-api\/conversations\/?$/i;
+  const MAX_LIST_PAGE_SIZE = 100;
+  const MAX_LIST_OFFSET = 1_000_000;
   const MAX_CURSOR_LENGTH = 2048;
   const MAX_REQUEST_ID_LENGTH = 100;
   const FILE_ID_PATTERN = /^file[_-][A-Za-z0-9_-]{1,255}$/i;
@@ -65,7 +69,8 @@
 
       return (
         CONVERSATION_PATH_PATTERN.test(parsed.pathname) ||
-        LEGACY_CONVERSATION_PATH_PATTERN.test(parsed.pathname)
+        LEGACY_CONVERSATION_PATH_PATTERN.test(parsed.pathname) ||
+        CONVERSATION_LIST_PATH_PATTERN.test(parsed.pathname)
       );
     } catch {
       return false;
@@ -165,7 +170,45 @@
     imageUrl?: string;
   };
 
-  type BridgeRequestMessage = ApiRequestMessage | FileDownloadRequestMessage;
+  /*
+   * A page of the conversation list, for the bulk export page:
+   * the request the sidebar makes, newest first.
+   */
+  type ListRequestMessage = {
+    source: "AIExporter";
+    type: "AIExporter_LIST_REQUEST";
+    requestId: string;
+    offset: number;
+    limit: number;
+  };
+
+  type BridgeRequestMessage =
+    | ApiRequestMessage
+    | FileDownloadRequestMessage
+    | ListRequestMessage;
+
+  function isValidListPage(message: Record<string, unknown>): boolean {
+    const { offset, limit } = message;
+
+    return (
+      Number.isInteger(offset) &&
+      (offset as number) >= 0 &&
+      (offset as number) <= MAX_LIST_OFFSET &&
+      Number.isInteger(limit) &&
+      (limit as number) > 0 &&
+      (limit as number) <= MAX_LIST_PAGE_SIZE
+    );
+  }
+
+  function buildConversationListUrl(offset: number, limit: number): string {
+    const params = new URLSearchParams({
+      offset: String(offset),
+      limit: String(limit),
+      order: "updated",
+    });
+
+    return `/backend-api/conversations?${params.toString()}`;
+  }
 
   function isApiRequestMessage(
     value: unknown,
@@ -175,6 +218,15 @@
     }
 
     const message = value as Record<string, unknown>;
+
+    if (message.type === "AIExporter_LIST_REQUEST") {
+      return (
+        message.source === "AIExporter" &&
+        isValidRequestId(message.requestId) &&
+        isValidListPage(message)
+      );
+    }
+
     const hasValidCommonFields =
       message.source === "AIExporter" &&
       isValidRequestId(message.requestId) &&
@@ -440,6 +492,33 @@
   }
 
   /*
+   * When no ChatGPT request has been seen yet to copy headers
+   * from - a bulk export started from a page that hasn't loaded a
+   * conversation - the web app's own session endpoint gives the
+   * access token its requests carry.
+   */
+  async function fetchSessionHeaders(): Promise<Headers | null> {
+    try {
+      const response = await originalFetch("/api/auth/session", {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const session = (await response.json()) as { accessToken?: unknown };
+
+      return typeof session.accessToken === "string" && session.accessToken
+        ? new Headers({ Authorization: `Bearer ${session.accessToken}` })
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /*
    * ---------------------------------------------------------
    * REQUEST URL
    * ---------------------------------------------------------
@@ -583,6 +662,10 @@
          * authenticated ChatGPT conversation request.
          */
         if (!authenticatedHeaders) {
+          authenticatedHeaders = await fetchSessionHeaders();
+        }
+
+        if (!authenticatedHeaders) {
           throw new Error(
             "ChatGPT authentication context has not been observed yet. Open or reload the conversation and try again.",
           );
@@ -593,6 +676,31 @@
          * captured Headers object.
          */
         const headers = new Headers(authenticatedHeaders);
+
+        if (request.type === "AIExporter_LIST_REQUEST") {
+          const response = await originalFetch(
+            buildConversationListUrl(request.offset, request.limit),
+            { method: "GET", credentials: "include", headers },
+          );
+
+          if (!response.ok) {
+            throw new Error(
+              `ChatGPT API request failed: ${response.status} ${response.statusText}`,
+            );
+          }
+
+          window.postMessage(
+            {
+              source: "AIExporter",
+              type: "AIExporter_API_RESPONSE",
+              requestId,
+              data: await response.json(),
+            },
+            "*",
+          );
+
+          return;
+        }
 
         /*
          * Use the original fetch function.

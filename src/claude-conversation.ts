@@ -201,6 +201,70 @@ export function buildClaudeConversationPath(
 
 /*
  * ---------------------------------------------------------
+ * CONVERSATION LIST
+ * ---------------------------------------------------------
+ *
+ * The sidebar's list: an array of conversations, newest first,
+ * a page at a time (limit/offset).
+ */
+export function buildClaudeConversationListPath(
+  organizationId: string,
+  limit: number,
+  offset: number,
+): string {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+
+  return `/api/organizations/${encodeURIComponent(organizationId)}/chat_conversations?${params.toString()}`;
+}
+
+export interface ClaudeConversationSummary {
+  id: string;
+  title: string;
+  /* Milliseconds since the epoch, or null when not given. */
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
+export function parseClaudeConversationList(
+  data: unknown,
+): ClaudeConversationSummary[] {
+  // Some versions of the API wrap the page in { data: [...] }.
+  const list = Array.isArray(data)
+    ? data
+    : isRecord(data) && Array.isArray(data.data)
+      ? data.data
+      : null;
+
+  if (!list) {
+    throw new Error("Claude returned an unexpected conversation list format.");
+  }
+
+  return list.flatMap((item): ClaudeConversationSummary[] => {
+    if (!isRecord(item) || !UUID_PATTERN.test(stringValue(item.uuid) ?? "")) {
+      return [];
+    }
+
+    const time = (value: unknown): number | null => {
+      const parsed = Date.parse(stringValue(value) ?? "");
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    return [
+      {
+        id: item.uuid as string,
+        title: stringValue(item.name)?.trim() ?? "",
+        createdAt: time(item.created_at),
+        updatedAt: time(item.updated_at) ?? time(item.created_at),
+      },
+    ];
+  });
+}
+
+/*
+ * ---------------------------------------------------------
  * ACTIVE BRANCH
  * ---------------------------------------------------------
  */

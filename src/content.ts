@@ -29,8 +29,10 @@
  * claude-conversation.ts).
  */
 import {
+  buildClaudeConversationListPath,
   buildClaudeConversationPath,
   convertClaudeMessages,
+  parseClaudeConversationList,
   getClaudeChatOrganizationIds,
   getClaudeConversationId,
   getClaudeOrganizationIdFromCookie,
@@ -39,16 +41,23 @@ import {
   type ClaudeImage,
 } from "./claude-conversation.ts";
 import {
+  buildGeminiListRequest,
   buildGeminiReadRequest,
   convertGeminiTurns,
   getGeminiAccountPrefix,
   getGeminiConversationId,
   isGeminiImageUrl,
+  parseGeminiConversationList,
   parseGeminiTurnsPage,
   readGeminiPageTokens,
   type GeminiImage,
   type GeminiPageTokens,
 } from "./gemini-conversation.ts";
+import {
+  parseChatGptConversationList,
+  type ConversationListResult,
+  type ConversationSummary,
+} from "./conversation-list.ts";
 
 /*
  * ---------------------------------------------------------
@@ -1082,7 +1091,7 @@ interface BridgeResponse {
   source?: string;
   type?: string;
   requestId?: string;
-  data?: ConversationPage;
+  data?: unknown;
   imageFile?: {
     base64?: string;
     fileName?: string;
@@ -1096,6 +1105,32 @@ function fetchConversationPage(
   conversationId: string,
   cursor: string | null,
 ): Promise<ConversationPage> {
+  return sendBridgeApiRequest({
+    type: "AIExporter_API_REQUEST",
+    conversationId,
+    cursor,
+  }).then((data) => normalizeConversationPage(data as ConversationPage));
+}
+
+/*
+ * A page of the sidebar's conversation list (see LIST
+ * CONVERSATIONS below).
+ */
+function fetchChatGptListPage(offset: number, limit: number): Promise<unknown> {
+  return sendBridgeApiRequest({
+    type: "AIExporter_LIST_REQUEST",
+    offset,
+    limit,
+  });
+}
+
+/*
+ * An API request made by the page bridge, which holds ChatGPT's
+ * authentication, answered with the response's JSON.
+ */
+function sendBridgeApiRequest(
+  payload: Record<string, unknown>,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
 
@@ -1165,7 +1200,7 @@ function fetchConversationPage(
 
       cleanup();
 
-      resolve(normalizeConversationPage(data.data));
+      resolve(data.data);
     };
 
     window.addEventListener("message", handleMessage);
@@ -1173,10 +1208,8 @@ function fetchConversationPage(
     window.postMessage(
       {
         source: "AIExporter",
-        type: "AIExporter_API_REQUEST",
+        ...payload,
         requestId,
-        conversationId,
-        cursor,
       },
       "*",
     );
@@ -1386,20 +1419,26 @@ async function waitForBridge(): Promise<void> {
    */
 }
 
+/*
+ * `requestedId` names the conversation to load - the bulk export
+ * page asks for each of the person's chats in turn - and when
+ * it's left out, the one open in the tab is loaded.
+ */
 async function loadEntireConversation(
   downloadImagesLocally: boolean,
+  requestedId?: string,
 ): Promise<ConversationLoadResult> {
   if (IS_CLAUDE_SITE) {
-    return loadClaudeConversation(downloadImagesLocally);
+    return loadClaudeConversation(downloadImagesLocally, requestedId);
   }
 
   if (IS_GEMINI_SITE) {
-    return loadGeminiConversation(downloadImagesLocally);
+    return loadGeminiConversation(downloadImagesLocally, requestedId);
   }
 
   await waitForBridge();
 
-  const conversationId = getConversationIdFromUrl();
+  const conversationId = requestedId ?? getConversationIdFromUrl();
 
   if (!conversationId) {
     throw new Error(
@@ -1785,8 +1824,10 @@ async function downloadClaudeImage(
 
 async function loadClaudeConversation(
   downloadImagesLocally: boolean,
+  requestedId?: string,
 ): Promise<ConversationLoadResult> {
-  const conversationId = getClaudeConversationId(window.location.pathname);
+  const conversationId =
+    requestedId ?? getClaudeConversationId(window.location.pathname);
 
   if (!conversationId) {
     throw new Error(
@@ -2067,8 +2108,15 @@ async function downloadGeminiImage(
 
 async function loadGeminiConversation(
   downloadImagesLocally: boolean,
+  requestedId?: string,
 ): Promise<ConversationLoadResult> {
-  const { pathname } = window.location;
+  /*
+   * Another conversation than the open one is requested the way
+   * its own page would, under this tab's Google account.
+   */
+  const pathname = requestedId
+    ? `${getGeminiAccountPrefix(window.location.pathname)}/app/${requestedId}`
+    : window.location.pathname;
   const conversationId = getGeminiConversationId(pathname);
 
   if (!conversationId) {
@@ -2334,30 +2382,43 @@ window.postMessage(
 
 let inFlightLoad: {
   downloadImagesLocally: boolean;
+  conversationId: string | undefined;
   promise: Promise<ConversationLoadResult>;
 } | null = null;
 
 function loadEntireConversationSingleFlight(
   downloadImagesLocally: boolean,
+  conversationId?: string,
 ): Promise<ConversationLoadResult> {
   if (inFlightLoad) {
-    if (inFlightLoad.downloadImagesLocally === downloadImagesLocally) {
+    if (
+      inFlightLoad.downloadImagesLocally === downloadImagesLocally &&
+      inFlightLoad.conversationId === conversationId
+    ) {
       devLog("AI Exporter: reusing the in-progress conversation load");
       return inFlightLoad.promise;
     }
 
     return inFlightLoad.promise
       .catch(() => undefined)
-      .then(() => loadEntireConversationSingleFlight(downloadImagesLocally));
+      .then(() =>
+        loadEntireConversationSingleFlight(
+          downloadImagesLocally,
+          conversationId,
+        ),
+      );
   }
 
-  const run = loadEntireConversation(downloadImagesLocally).finally(() => {
+  const run = loadEntireConversation(
+    downloadImagesLocally,
+    conversationId,
+  ).finally(() => {
     if (inFlightLoad?.promise === run) {
       inFlightLoad = null;
     }
   });
 
-  inFlightLoad = { downloadImagesLocally, promise: run };
+  inFlightLoad = { downloadImagesLocally, conversationId, promise: run };
 
   return run;
 }
@@ -2959,6 +3020,269 @@ function showExportSuccessOverlay(): void {
 
 /*
  * ---------------------------------------------------------
+ * LIST CONVERSATIONS
+ * ---------------------------------------------------------
+ *
+ * Every conversation in the sidebar, newest first, for the bulk
+ * export page - fetched from the list API the sidebar itself
+ * uses, a page at a time, since the sidebar only renders the
+ * chats scrolled into view. Each site's loop stops at the end of
+ * the list, at a page with nothing new (an API that ignores the
+ * page parameters returns everything every time), or at a cap
+ * that keeps a runaway loop from hammering the site.
+ */
+
+const MAX_LISTED_CONVERSATIONS = 10_000;
+
+function collectUnique(
+  target: Map<string, ConversationSummary>,
+  page: ConversationSummary[],
+): number {
+  let added = 0;
+
+  for (const conversation of page) {
+    if (!target.has(conversation.id)) {
+      target.set(conversation.id, conversation);
+      added++;
+    }
+  }
+
+  return added;
+}
+
+async function listChatGptConversations(): Promise<ConversationSummary[]> {
+  await waitForBridge();
+
+  const PAGE_SIZE = 100;
+  const found = new Map<string, ConversationSummary>();
+
+  for (let offset = 0; offset < MAX_LISTED_CONVERSATIONS; offset += PAGE_SIZE) {
+    const page = parseChatGptConversationList(
+      await fetchChatGptListPage(offset, PAGE_SIZE),
+    );
+    const added = collectUnique(
+      found,
+      page.conversations.map((conversation) => ({
+        ...conversation,
+        url: `${window.location.origin}/c/${conversation.id}`,
+      })),
+    );
+
+    if (
+      added === 0 ||
+      page.conversations.length < PAGE_SIZE ||
+      (page.total !== null && offset + PAGE_SIZE >= page.total)
+    ) {
+      break;
+    }
+  }
+
+  return [...found.values()];
+}
+
+async function listClaudeConversations(): Promise<ConversationSummary[]> {
+  const PAGE_SIZE = 100;
+  let organizationIds: string[];
+  const lastActive = getClaudeOrganizationIdFromCookie(document.cookie);
+
+  if (lastActive) {
+    organizationIds = [lastActive];
+  } else {
+    const response = await fetchClaudeApi("/api/organizations");
+
+    if (!response.ok) {
+      throw new Error(`Claude API request failed: ${response.status}`);
+    }
+
+    organizationIds = getClaudeChatOrganizationIds(await response.json());
+  }
+
+  const found = new Map<string, ConversationSummary>();
+
+  for (const organizationId of organizationIds) {
+    for (
+      let offset = 0;
+      offset < MAX_LISTED_CONVERSATIONS;
+      offset += PAGE_SIZE
+    ) {
+      const response = await fetchClaudeApi(
+        buildClaudeConversationListPath(organizationId, PAGE_SIZE, offset),
+      );
+
+      if (!response.ok) {
+        throw new Error(`Claude API request failed: ${response.status}`);
+      }
+
+      const page = parseClaudeConversationList(await response.json());
+      const added = collectUnique(
+        found,
+        page.map((conversation) => ({
+          ...conversation,
+          url: `${window.location.origin}/chat/${conversation.id}`,
+        })),
+      );
+
+      if (added === 0 || page.length < PAGE_SIZE) {
+        break;
+      }
+    }
+  }
+
+  return [...found.values()];
+}
+
+async function listGeminiConversations(): Promise<ConversationSummary[]> {
+  const accountPrefix = getGeminiAccountPrefix(window.location.pathname);
+  const sourcePath = `${accountPrefix}/app`;
+  const found = new Map<string, ConversationSummary>();
+  let tokens = readGeminiTokensFromPage() ?? (await fetchGeminiTokens(accountPrefix));
+  let refreshedTokens = false;
+  let requestId = 10000 + Math.floor(Math.random() * 90000);
+
+  const fetchPage = async (pinned: boolean, cursor: string | null) => {
+    const request = buildGeminiListRequest({
+      tokens,
+      accountPrefix,
+      sourcePath,
+      requestId,
+      pinned,
+      pageSize: 50,
+      cursor,
+    });
+
+    requestId += 100000;
+
+    return fetch(new URL(request.path, window.location.origin), {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "X-Same-Domain": "1",
+      },
+      body: request.body,
+    });
+  };
+
+  // Pinned chats first, like the sidebar shows them.
+  for (const pinned of [true, false]) {
+    let cursor: string | null = null;
+
+    for (let page = 0; page < MAX_LISTED_CONVERSATIONS / 50; page++) {
+      let response = await fetchPage(pinned, cursor);
+
+      // The page's tokens expire when a tab stays open for long.
+      if (!response.ok && !refreshedTokens) {
+        refreshedTokens = true;
+        tokens = await fetchGeminiTokens(accountPrefix);
+        response = await fetchPage(pinned, cursor);
+      }
+
+      if (!response.ok) {
+        throw new Error(`Gemini request failed: ${response.status}`);
+      }
+
+      const result = parseGeminiConversationList(await response.text());
+      const added = collectUnique(
+        found,
+        result.conversations.map((conversation) => ({
+          id: conversation.id,
+          title: conversation.title,
+          url: `${window.location.origin}${accountPrefix}/app/${conversation.id}`,
+          createdAt: null,
+          updatedAt: conversation.updatedAt,
+        })),
+      );
+
+      if (added === 0 || !result.nextCursor || result.nextCursor === cursor) {
+        break;
+      }
+
+      cursor = result.nextCursor;
+    }
+  }
+
+  return [...found.values()];
+}
+
+/*
+ * The chats the sidebar has rendered: what's left when a site's
+ * list API can't be read. Only titles and links - no dates - and
+ * only as many as the sidebar has loaded.
+ */
+function scrapeSidebarConversations(): ConversationSummary[] {
+  const found = new Map<string, ConversationSummary>();
+  const idFromPath = IS_CLAUDE_SITE
+    ? getClaudeConversationId
+    : IS_GEMINI_SITE
+      ? getGeminiConversationId
+      : (pathname: string) =>
+          pathname.match(/^\/(?:g\/[^/]+\/)?c\/([0-9a-f-]{36})\/?$/i)?.[1] ??
+          null;
+
+  for (const link of Array.from(document.querySelectorAll("a[href]"))) {
+    const url = new URL((link as HTMLAnchorElement).href, window.location.href);
+    const id = url.origin === window.location.origin
+      ? idFromPath(url.pathname)
+      : null;
+    const title = (link.textContent ?? "").replace(/\s+/g, " ").trim();
+
+    if (id && !found.has(id)) {
+      found.set(id, {
+        id,
+        title,
+        url: url.origin + url.pathname,
+        createdAt: null,
+        updatedAt: null,
+      });
+    }
+  }
+
+  return [...found.values()];
+}
+
+async function listConversations(): Promise<ConversationListResult> {
+  try {
+    const conversations = IS_CLAUDE_SITE
+      ? await listClaudeConversations()
+      : IS_GEMINI_SITE
+        ? await listGeminiConversations()
+        : await listChatGptConversations();
+
+    return { conversations };
+  } catch (error) {
+    const scraped = scrapeSidebarConversations();
+
+    devWarn("AI Exporter: conversation list API failed", error);
+
+    if (scraped.length === 0) {
+      throw error;
+    }
+
+    return { conversations: scraped };
+  }
+}
+
+chrome.runtime.onMessage.addListener(
+  (message: { type: string }, _sender, sendResponse) => {
+    if (message.type !== "LIST_CONVERSATIONS") {
+      return false;
+    }
+
+    listConversations()
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error: unknown) =>
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+
+    return true;
+  },
+);
+
+/*
+ * ---------------------------------------------------------
  * CHROME MESSAGE HANDLER
  * ---------------------------------------------------------
  */
@@ -2968,6 +3292,7 @@ chrome.runtime.onMessage.addListener(
     message: {
       type: string;
       downloadImagesLocally?: boolean;
+      conversationId?: unknown;
     },
     _sender,
     sendResponse,
@@ -2978,7 +3303,16 @@ chrome.runtime.onMessage.addListener(
 
     devLog("AI Exporter: LOAD_CONVERSATION received");
 
-    loadEntireConversationSingleFlight(message.downloadImagesLocally === true)
+    const conversationId =
+      typeof message.conversationId === "string" &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(message.conversationId)
+        ? message.conversationId
+        : undefined;
+
+    loadEntireConversationSingleFlight(
+      message.downloadImagesLocally === true,
+      conversationId,
+    )
       .then((result) => {
         devLog("AI Exporter: sending conversation", result);
 
