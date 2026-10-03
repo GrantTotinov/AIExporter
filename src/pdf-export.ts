@@ -37,6 +37,17 @@ import { getChatSite, stripChatSiteSuffix } from "./chat-sites.ts";
 import { extractMath, MATH_CLOSE, MATH_OPEN, type MathSpan } from "./math.ts";
 import type { RenderedMath } from "./math-render.ts";
 import { drawMath, type MathTextStyle } from "./svg-pdf.ts";
+import { shapeArabicText } from "./arabic-shaping.ts";
+import {
+  OBJECT_CHAR,
+  bidiLevels,
+  hasArabic,
+  hasRtl,
+  isRtlParagraph,
+  mirrorChar,
+  toVisual,
+  visualOrder,
+} from "./bidi.ts";
 
 interface Message {
   id: string;
@@ -501,6 +512,13 @@ interface InlineRun {
   link?: string;
   /* Index of a formula placeholder (see extractMath) - text is "". */
   math?: number;
+  /*
+   * Set by the renderer, not the parser: a right-to-left word the
+   * run's own font can't draw is set upright and/or in the
+   * proportional font instead (see runForText).
+   */
+  upright?: boolean;
+  sans?: boolean;
 }
 
 type InlineStyle = Omit<InlineRun, "text">;
@@ -1065,6 +1083,47 @@ export async function buildPdfBlob(
     );
   }
 
+  /*
+   * Right-to-left text (see bidi.ts). jsPDF has two hooks of its own
+   * on every doc.text() call, and both misfire on text that's
+   * already in visual order: one joins Arabic letters - on the
+   * reversed string, so it joins the wrong neighbors (the alef and
+   * lam of "بالكتاب" became a lam-alef ligature) - and the other
+   * reorders bidi text again, with a direction it guesses once from
+   * the first string it ever sees, which reversed the letters of
+   * every other Hebrew line. Both are removed for this document;
+   * text is joined by arabic-shaping.ts instead, in reading order,
+   * and reordered by bidi.ts. The bidi hook is found by what it
+   * calls, since the function's own name doesn't survive
+   * minification.
+   */
+  const topics = doc.internal.events.getTopics();
+  const textHooks = [
+    ...Object.entries(topics.preProcessText ?? {}),
+    ...Object.entries(topics.postProcessText ?? {}),
+  ];
+
+  for (const [token, [callback]] of textHooks) {
+    if (
+      callback === doc.processArabic ||
+      String(callback).includes("doBidiReorder")
+    ) {
+      doc.internal.events.unsubscribe(token);
+    }
+  }
+
+  function shapeArabic(text: string): string {
+    return hasArabic(text) ? shapeArabicText(text) : text;
+  }
+
+  /*
+   * A plain one-line string - a title, a list marker, the footer -
+   * joined and in visual order, ready for doc.text().
+   */
+  function visualPlain(text: string, rtl = isRtlParagraph(text)): string {
+    return hasRtl(text) || rtl ? toVisual(shapeArabic(text), rtl) : text;
+  }
+
   const documentTitle = stripChatSiteSuffix(tabTitle ?? "");
 
   if (documentTitle) {
@@ -1147,11 +1206,13 @@ export async function buildPdfBlob(
   }
 
   function runFont(run: InlineStyle): [string, FontStyle] {
-    if (run.code) {
+    const italic = run.italic && !run.upright;
+
+    if (run.code && !run.sans) {
       return [MONO_FONT, run.bold ? "bold" : "normal"];
     }
 
-    if (run.bold && run.italic) {
+    if (run.bold && italic) {
       return [SANS_FONT, "bolditalic"];
     }
 
@@ -1159,7 +1220,45 @@ export async function buildPdfBlob(
       return [SANS_FONT, "bold"];
     }
 
-    return [SANS_FONT, run.italic ? "italic" : "normal"];
+    return [SANS_FONT, italic ? "italic" : "normal"];
+  }
+
+  function fontCovers(run: InlineRun, text: string): boolean {
+    const coverage = coverageByFont.get(runFont(run).join("/"));
+
+    for (const char of text) {
+      if (!/\s/.test(char) && !coverage?.has(char.codePointAt(0) ?? 0)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /*
+   * DejaVu's oblique fonts have no Arabic, and its monospace font
+   * no Hebrew, so a right-to-left word in an italic quote or in
+   * `inline code` is set upright, or in the proportional font,
+   * rather than turning into "?" boxes.
+   */
+  const fallbackRuns = new WeakMap<InlineRun, InlineRun[]>();
+
+  function runForText(run: InlineRun, text: string): InlineRun {
+    if (!hasRtl(text) || fontCovers(run, text)) {
+      return run;
+    }
+
+    let candidates = fallbackRuns.get(run);
+
+    if (!candidates) {
+      candidates = [
+        { ...run, upright: true },
+        { ...run, upright: true, sans: true },
+      ];
+      fallbackRuns.set(run, candidates);
+    }
+
+    return candidates.find((candidate) => fontCovers(candidate, text)) ?? run;
   }
 
   function setRunFont(run: InlineStyle, fontSize: number): void {
@@ -1265,6 +1364,11 @@ export async function buildPdfBlob(
         };
       }
 
+      if (hasRtl(run.text)) {
+        words.push(...tokenizeRtlRun(run, fontSize));
+        continue;
+      }
+
       // Collapse the double spaces a dropped emoji leaves behind.
       const text = fit(run.text, ...runFont(run)).replace(/ {2,}/g, " ");
       setRunFont(run, fontSize);
@@ -1277,6 +1381,100 @@ export async function buildPdfBlob(
     }
 
     return words;
+  }
+
+  /*
+   * Arabic is joined (and measured) in reading order, and each word
+   * gets a font that has its letters.
+   */
+  function tokenizeRtlRun(run: InlineRun, fontSize: number): Word[] {
+    const words: Word[] = [];
+
+    for (const part of shapeArabic(run.text).split(/(\s+)/)) {
+      const partRun = runForText(run, part);
+      const text = fit(part, ...runFont(partRun));
+      const last = words[words.length - 1];
+
+      if (text === "" || (/^\s+$/.test(text) && last && isSpace(last))) {
+        continue;
+      }
+
+      setRunFont(partRun, fontSize);
+      words.push({ text, run: partRun, width: doc.getTextWidth(text) });
+    }
+
+    return words;
+  }
+
+  /*
+   * Puts one wrapped line into visual order (see bidi.ts): each
+   * word's letters come out reversed where they read right to left,
+   * a word that mixes directions splits into pieces, and an inline
+   * formula moves as one left-to-right unit. A right-to-left line
+   * is also pushed against the right margin by a blank spacer.
+   * Lines are wrapped in reading order first, so a line holds the
+   * same words either way.
+   */
+  function visualLine(
+    line: Word[],
+    rtl: boolean,
+    maxWidth: number,
+    fontSize: number,
+  ): Word[] {
+    const plain = line.map((word) => (word.math ? OBJECT_CHAR : word.text));
+
+    if (
+      line.length === 0 ||
+      line[0].math?.display ||
+      (!rtl && !hasRtl(plain.join("")))
+    ) {
+      return line;
+    }
+
+    const chars: string[] = [];
+    const owners: number[] = [];
+
+    plain.forEach((text, index) => {
+      for (const char of text) {
+        chars.push(char);
+        owners.push(index);
+      }
+    });
+
+    const levels = bidiLevels(chars, rtl);
+    const order = visualOrder(chars, levels);
+    const visual: Word[] = [];
+
+    for (let i = 0; i < order.length; ) {
+      const owner = owners[order[i]];
+      const word = line[owner];
+
+      if (word.math) {
+        visual.push(word);
+        i++;
+        continue;
+      }
+
+      let text = "";
+
+      while (i < order.length && owners[order[i]] === owner) {
+        text += mirrorChar(chars[order[i]], levels[order[i]]);
+        i++;
+      }
+
+      setRunFont(word.run, fontSize);
+      visual.push({ text, run: word.run, width: doc.getTextWidth(text) });
+    }
+
+    if (rtl) {
+      const width = visual.reduce((sum, word) => sum + word.width, 0);
+
+      if (width < maxWidth) {
+        visual.unshift({ text: "", run: { text: "" }, width: maxWidth - width });
+      }
+    }
+
+    return visual;
   }
 
   /*
@@ -1388,7 +1586,11 @@ export async function buildPdfBlob(
       lines.push(current);
     }
 
-    return lines;
+    const rtl = isRtlParagraph(
+      words.map((word) => (word.math ? OBJECT_CHAR : word.text)).join(""),
+    );
+
+    return lines.map((line) => visualLine(line, rtl, maxWidth, fontSize));
   }
 
   /*
@@ -1564,7 +1766,7 @@ export async function buildPdfBlob(
 
       forEachSpan(
         line,
-        (word) => (word.math ? undefined : word.run),
+        (word) => (word.math || word.text === "" ? undefined : word.run),
         (first, last, run) => {
           setRunFont(run, fontSize);
           doc.setTextColor(
@@ -1674,11 +1876,14 @@ export async function buildPdfBlob(
         continue;
       }
 
+      // A right-to-left quote is indented from the right.
+      const rtl = isRtlParagraph(segment);
+
       renderInlineParagraph(
         parseInline(segment, style),
         bodyFontSize,
         bodyLineHeight,
-        pdf.marginLeft + indent,
+        pdf.marginLeft + (rtl ? 0 : indent),
         contentWidth - indent,
       );
     }
@@ -1698,7 +1903,10 @@ export async function buildPdfBlob(
     const indent = 6;
 
     block.items.forEach((itemText, index) => {
-      const prefix = block.ordered ? `${index + 1}.` : "•";
+      // A right-to-left item has its marker on the right ("1." reads
+      // ".1" there, as in a browser).
+      const rtl = isRtlParagraph(itemText);
+      const prefix = visualPlain(block.ordered ? `${index + 1}.` : "•", rtl);
       const lines = wrapWords(
         tokenizeRuns(parseInline(itemText), bodyFontSize),
         contentWidth - indent,
@@ -1712,10 +1920,16 @@ export async function buildPdfBlob(
       doc.setFont(SANS_FONT, "normal");
       doc.setFontSize(bodyFontSize);
       doc.setTextColor(20, 20, 20);
-      doc.text(prefix, pdf.marginLeft, y + above);
+      doc.text(
+        prefix,
+        rtl
+          ? pdf.marginLeft + contentWidth - doc.getTextWidth(prefix)
+          : pdf.marginLeft,
+        y + above,
+      );
       drawWrappedLines(
         lines,
-        pdf.marginLeft + indent,
+        pdf.marginLeft + (rtl ? 0 : indent),
         bodyFontSize,
         bodyLineHeight,
         true,
@@ -1752,8 +1966,45 @@ export async function buildPdfBlob(
     const wrapMaxChars = Math.max(1, maxChars - 1);
     const WRAP_MARKER = "↪";
 
+    /*
+     * Code stays left to right, but a Hebrew or Arabic comment or
+     * string in it is put into visual order, and letters the
+     * monospace font lacks (Hebrew) are drawn in the proportional
+     * one.
+     */
+    function drawCodeText(text: string, x: number): void {
+      const monoCoverage = coverageByFont.get(`${MONO_FONT}/normal`);
+      const pieces: { text: string; mono: boolean }[] = [];
+
+      for (const char of text) {
+        const mono =
+          /\s/.test(char) || Boolean(monoCoverage?.has(char.codePointAt(0) ?? 0));
+        const last = pieces[pieces.length - 1];
+
+        if (last && last.mono === mono) {
+          last.text += char;
+        } else {
+          pieces.push({ text: char, mono });
+        }
+      }
+
+      for (const piece of pieces) {
+        const family = piece.mono ? MONO_FONT : SANS_FONT;
+        const pieceText = fit(piece.text, family, "normal");
+        doc.setFont(family, "normal");
+        doc.text(pieceText, x, y);
+        x += doc.getTextWidth(pieceText);
+      }
+
+      doc.setFont(MONO_FONT, "normal");
+    }
+
     for (const rawLine of code.split("\n")) {
-      const line = fit(expandTabs(rawLine), MONO_FONT, "normal");
+      const expanded = expandTabs(rawLine);
+      const rtlText = hasRtl(expanded);
+      const line = rtlText
+        ? shapeArabic(expanded)
+        : fit(expanded, MONO_FONT, "normal");
       const segments =
         line.length === 0
           ? [""]
@@ -1773,7 +2024,16 @@ export async function buildPdfBlob(
           "F",
         );
         doc.setTextColor(...CODE_TEXT_COLOR);
-        doc.text(displayText, pdf.marginLeft + 2, y);
+
+        if (rtlText) {
+          drawCodeText(
+            `${toVisual(segment, false)}${isHardWrap ? WRAP_MARKER : ""}`,
+            pdf.marginLeft + 2,
+          );
+        } else {
+          doc.text(displayText, pdf.marginLeft + 2, y);
+        }
+
         y += codeLineHeight;
       });
     }
@@ -1815,6 +2075,9 @@ export async function buildPdfBlob(
     const cellFontSize = Math.max(6, bodyFontSize - 1);
     const cellLineHeight = mm(cellFontSize) * 1.3;
     const colWidth = contentWidth / colCount;
+    // A table whose header reads right to left has its first column
+    // on the right, as the chat page shows it.
+    const rtlTable = isRtlParagraph(block.header.join(" "));
     const innerWidth = colWidth - cellPaddingX * 2;
 
     interface RowLayout {
@@ -1934,7 +2197,8 @@ export async function buildPdfBlob(
       doc.setDrawColor(200);
 
       for (let col = 0; col < colCount; col++) {
-        const cellX = pdf.marginLeft + col * colWidth;
+        const cellX =
+          pdf.marginLeft + (rtlTable ? colCount - 1 - col : col) * colWidth;
         doc.rect(cellX, rowTop, colWidth, row.height);
 
         y = rowTop + cellPaddingY + cellLineHeight * 0.78;
@@ -2061,8 +2325,14 @@ export async function buildPdfBlob(
   ): string[] {
     doc.setFont(SANS_FONT, style);
     doc.setFontSize(fontSize);
-    return doc.splitTextToSize(fit(text, SANS_FONT, style), contentWidth);
+    return doc.splitTextToSize(
+      fit(shapeArabic(text), SANS_FONT, style),
+      contentWidth,
+    );
   }
+
+  // A Hebrew or Arabic chat title is right-aligned, like the reply.
+  const titleRtl = isRtlParagraph(documentTitle);
 
   const hasHeader = Boolean(
     documentTitle || tabUrl || settings.includeTimestamp,
@@ -2090,7 +2360,15 @@ export async function buildPdfBlob(
     doc.setTextColor(...TEXT_COLOR);
 
     for (const line of headerTitleLines) {
-      doc.text(line, pdf.marginLeft, y);
+      const visual = toVisual(line, titleRtl);
+
+      doc.text(
+        visual,
+        titleRtl
+          ? pageWidth - pdf.marginRight - doc.getTextWidth(visual)
+          : pdf.marginLeft,
+        y,
+      );
       y += titleLineHeight;
     }
 
@@ -2355,7 +2633,7 @@ export async function buildPdfBlob(
 
       if (pdf.includeUserInfo && pdf.userInfoText.trim() !== "") {
         doc.text(
-          fit(pdf.userInfoText, SANS_FONT, "normal"),
+          fit(visualPlain(pdf.userInfoText), SANS_FONT, "normal"),
           pdf.marginLeft,
           footerY,
         );

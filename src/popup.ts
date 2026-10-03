@@ -1106,9 +1106,14 @@ function renderSelectorList(messages: Message[]): void {
     role.className = "message-role";
     role.textContent = isUser ? t("popup.selector.you") : assistantName;
 
+    // <bdi> lets a Hebrew or Arabic message read right to left
+    // without flipping the role label in front of it.
+    const preview = document.createElement("bdi");
+    preview.textContent = previewText(message.content);
+
     const text = document.createElement("span");
     text.className = "message-text";
-    text.append(role, previewText(message.content));
+    text.append(role, preview);
 
     row.append(checkbox, avatar, text);
     rows.append(row);

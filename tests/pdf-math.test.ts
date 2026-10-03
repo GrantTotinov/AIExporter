@@ -33,6 +33,32 @@ async function pdfSize(url: string, reply: string): Promise<number> {
   return blob.size;
 }
 
+describe("PDF right-to-left text", () => {
+  it("lays out Hebrew and Arabic replies", async () => {
+    const size = await pdfSize(
+      "https://chatgpt.com/c/1",
+      [
+        "## כותרת",
+        "",
+        "שלום **עולם** עם [קישור](https://example.com) ו־3.14 \\(x^2\\).",
+        "",
+        "1. פריט",
+        "> *اقتباس* بالكتاب الله",
+        "",
+        "| שם | גיל |",
+        "| --- | --- |",
+        "| דנה | 34 |",
+        "",
+        "```",
+        "// הערה",
+        "```",
+      ].join("\n"),
+    );
+
+    expect(size).toBeGreaterThan(0);
+  });
+});
+
 describe("PDF math", () => {
   it("parses a formula placeholder as a math run", () => {
     expect(
