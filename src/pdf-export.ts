@@ -14,7 +14,9 @@
  * our generated Markdown into block/inline structure the
  * renderer can lay out: paragraphs, headings, code fences,
  * tables, lists and blockquotes at the block level; bold,
- * italic, inline code and links at the inline level. Links are
+ * italic, inline code, links and math formulas at the inline
+ * level (math is typeset by MathJax and drawn as vector paths -
+ * see math.ts, math-render.ts and svg-pdf.ts). Links are
  * drawn as their visible label only (with a doc.link annotation
  * over it), never as raw printed URLs, so they can never wrap
  * mid-URL. User messages are pasted input rather than authored
@@ -31,7 +33,10 @@
 import jsPDF from "jspdf";
 import type { Settings, PdfSettings } from "./settings.ts";
 import { encodeBlobBase64 } from "./zip.ts";
-import { stripChatSiteSuffix } from "./chat-sites.ts";
+import { getChatSite, stripChatSiteSuffix } from "./chat-sites.ts";
+import { extractMath, MATH_CLOSE, MATH_OPEN, type MathSpan } from "./math.ts";
+import type { RenderedMath } from "./math-render.ts";
+import { drawMath, type MathTextStyle } from "./svg-pdf.ts";
 
 interface Message {
   id: string;
@@ -494,12 +499,17 @@ interface InlineRun {
   italic?: boolean;
   code?: boolean;
   link?: string;
+  /* Index of a formula placeholder (see extractMath) - text is "". */
+  math?: number;
 }
 
 type InlineStyle = Omit<InlineRun, "text">;
 
-const INLINE_TOKEN_RE =
-  /!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))*\)|\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*\*(?=\S)([^*]+?)(?<=\S)\*\*\*|\*\*(?=\S)([^*]+?)(?<=\S)\*\*|`([^`]+)`|\*(?=\S)([^*]+?)(?<=\S)\*/g;
+const INLINE_TOKEN_RE = new RegExp(
+  `${MATH_OPEN}([0-9]+)${MATH_CLOSE}|` +
+    /!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))*\)|\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*\*(?=\S)([^*]+?)(?<=\S)\*\*\*|\*\*(?=\S)([^*]+?)(?<=\S)\*\*|`([^`]+)`|\*(?=\S)([^*]+?)(?<=\S)\*/.source,
+  "g",
+);
 
 export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
   const runs: InlineRun[] = [];
@@ -522,6 +532,7 @@ export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
 
     const [
       ,
+      mathIndex,
       linkText,
       linkUrl,
       boldItalicText,
@@ -530,7 +541,9 @@ export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
       italicText,
     ] = match;
 
-    if (linkText !== undefined) {
+    if (mathIndex !== undefined) {
+      runs.push({ ...style, text: "", math: Number(mathIndex) });
+    } else if (linkText !== undefined) {
       runs.push(
         ...parseInline(linkText, { ...style, link: normalizeText(linkUrl) }),
       );
@@ -1071,6 +1084,50 @@ export async function buildPdfBlob(
   const headingLineHeight = mm(headingFontSize) * 1.32;
   const codeLineHeight = mm(codeFontSize) * 1.3;
 
+  /*
+   * Math: each reply's formulas are swapped for placeholder tokens
+   * up front (see math.ts), so MathJax - a large module - is only
+   * loaded when the conversation has math at all, and every
+   * formula is typeset once, before layout needs its size. User
+   * messages are left alone: no chat site renders math in them.
+   * A formula MathJax can't typeset, or a failed load, prints the
+   * formula's source in code style instead.
+   */
+  const site = getChatSite(tabUrl);
+  const formulas: MathSpan[] = [];
+  const messageContents = messages.map((message) =>
+    message.role === "assistant"
+      ? extractMath(message.content, site, formulas)
+      : message.content,
+  );
+  let renderedFormulas: (RenderedMath | null)[] = [];
+
+  function mathTextFont(style: MathTextStyle): [string, FontStyle] {
+    if (style.monospace) {
+      return [MONO_FONT, style.bold ? "bold" : "normal"];
+    }
+
+    return runFont(style);
+  }
+
+  // Text inside formulas is measured in the font it's drawn in.
+  function measureMathText(text: string, style: MathTextStyle): number {
+    const [family, fontStyle] = mathTextFont(style);
+    doc.setFont(family, fontStyle);
+    return doc.getStringUnitWidth(fit(text, family, fontStyle));
+  }
+
+  if (formulas.length > 0) {
+    try {
+      const { renderTex } = await import("./math-render.ts");
+      renderedFormulas = formulas.map((formula) =>
+        renderTex(formula.tex, formula.display, measureMathText),
+      );
+    } catch {
+      renderedFormulas = [];
+    }
+  }
+
   let y = pdf.marginTop;
   const imagesByPath = new Map(images.map((image) => [image.path, image]));
   const pngCache = new Map<
@@ -1110,20 +1167,104 @@ export async function buildPdfBlob(
     doc.setFontSize(fontSize);
   }
 
+  /*
+   * A typeset formula's size on the page. `unit` is mm per viewBox
+   * unit (an em is 1000); `offset` centers a display formula on
+   * its own line.
+   */
+  interface MathLayout {
+    rendered: RenderedMath;
+    unit: number;
+    ascent: number;
+    descent: number;
+    display: boolean;
+    offset: number;
+  }
+
   interface Word {
     text: string;
     run: InlineRun;
     width: number;
+    math?: MathLayout;
   }
 
   function isSpace(word: Word): boolean {
-    return /^\s+$/.test(word.text);
+    return word.math === undefined && /^\s+$/.test(word.text);
+  }
+
+  /*
+   * TeX's Computer Modern has a much smaller x-height than DejaVu
+   * Sans, so formulas are set a little larger than the text around
+   * them to look the same size - as chat sites do too.
+   */
+  const MATH_SCALE = 1.15;
+
+  function mathWord(
+    run: InlineRun,
+    index: number,
+    rendered: RenderedMath,
+    fontSize: number,
+  ): Word {
+    const unit = (mm(fontSize) * MATH_SCALE) / 1000;
+    const [, minY, width, height] = rendered.viewBox;
+
+    return {
+      text: "",
+      run,
+      width: width * unit,
+      math: {
+        rendered,
+        unit,
+        ascent: -minY * unit,
+        descent: (minY + height) * unit,
+        display: formulas[index]?.display ?? false,
+        offset: 0,
+      },
+    };
+  }
+
+  /* Shrinks a formula wider than the line until it fits. */
+  function fitMath(word: Word, maxWidth: number): Word {
+    if (!word.math || word.width <= maxWidth) {
+      return word;
+    }
+
+    const factor = maxWidth / word.width;
+
+    return {
+      ...word,
+      width: maxWidth,
+      math: {
+        ...word.math,
+        unit: word.math.unit * factor,
+        ascent: word.math.ascent * factor,
+        descent: word.math.descent * factor,
+      },
+    };
   }
 
   function tokenizeRuns(runs: InlineRun[], fontSize: number): Word[] {
     const words: Word[] = [];
 
-    for (const run of runs) {
+    for (const original of runs) {
+      let run = original;
+
+      if (run.math !== undefined) {
+        const rendered = renderedFormulas[run.math];
+
+        if (rendered) {
+          words.push(mathWord(run, run.math, rendered, fontSize));
+          continue;
+        }
+
+        run = {
+          ...run,
+          math: undefined,
+          code: true,
+          text: (formulas[run.math]?.tex ?? "").replace(/\s*\n\s*/g, " "),
+        };
+      }
+
       // Collapse the double spaces a dropped emoji leaves behind.
       const text = fit(run.text, ...runFont(run)).replace(/ {2,}/g, " ");
       setRunFont(run, fontSize);
@@ -1202,8 +1343,29 @@ export async function buildPdfBlob(
         continue;
       }
 
-      const parts =
-        word.width > maxWidth
+      // A display formula gets a line of its own, centered.
+      if (word.math?.display) {
+        dropTrailingSpace();
+
+        if (current.length > 0) {
+          lines.push(current);
+        }
+
+        const fitted = fitMath(word, maxWidth);
+        lines.push([
+          {
+            ...fitted,
+            math: { ...fitted.math!, offset: (maxWidth - fitted.width) / 2 },
+          },
+        ]);
+        current = [];
+        currentWidth = 0;
+        continue;
+      }
+
+      const parts = word.math
+        ? [fitMath(word, maxWidth)]
+        : word.width > maxWidth
           ? splitOversizedWord(word, maxWidth, fontSize)
           : [word];
 
@@ -1221,9 +1383,65 @@ export async function buildPdfBlob(
     }
 
     dropTrailingSpace();
-    lines.push(current);
+
+    if (current.length > 0 || lines.length === 0) {
+      lines.push(current);
+    }
 
     return lines;
+  }
+
+  /*
+   * How far a line's formulas reach above and below the space a
+   * line of text normally takes (its baseline sits about three
+   * quarters of the way down), so a tall fraction gets room instead
+   * of overlapping the lines around it. A display formula also gets
+   * some air above and below.
+   */
+  function lineExtras(
+    line: Word[],
+    lineHeight: number,
+  ): { above: number; below: number } {
+    let above = 0;
+    let below = 0;
+
+    for (const { math } of line) {
+      if (!math) {
+        continue;
+      }
+
+      const pad = math.display ? lineHeight * 0.35 : 0;
+      above = Math.max(above, Math.max(0, math.ascent - lineHeight * 0.75) + pad);
+      below = Math.max(below, Math.max(0, math.descent - lineHeight * 0.25) + pad);
+    }
+
+    return { above, below };
+  }
+
+  function lineBoxHeight(line: Word[], lineHeight: number): number {
+    const { above, below } = lineExtras(line, lineHeight);
+    return lineHeight + above + below;
+  }
+
+  /*
+   * Characters MathJax has no glyph outlines for (Cyrillic, CJK...
+   * inside \text{}) come through as <text>; they're drawn with the
+   * embedded DejaVu fonts like the rest of the document.
+   */
+  function drawMathText(
+    text: string,
+    x: number,
+    baseline: number,
+    size: number,
+    style: MathTextStyle,
+    color: Rgb,
+  ): void {
+    const [family, fontStyle] = mathTextFont(style);
+
+    doc.setFont(family, fontStyle);
+    doc.setFontSize(size / PT_TO_MM);
+    doc.setTextColor(...color);
+    doc.text(fit(text, family, fontStyle), x, baseline);
   }
 
   /*
@@ -1291,12 +1509,16 @@ export async function buildPdfBlob(
     manage: boolean,
   ): void {
     for (const line of lines) {
+      const { above, below } = lineExtras(line, lineHeight);
+
       if (manage) {
-        ensureSpace(lineHeight);
+        ensureSpace(lineHeight + above + below);
       }
 
+      y += above;
+
       const starts: number[] = [];
-      let cursorX = x;
+      let cursorX = x + (line[0]?.math?.offset ?? 0);
 
       for (const word of line) {
         starts.push(cursorX);
@@ -1342,7 +1564,7 @@ export async function buildPdfBlob(
 
       forEachSpan(
         line,
-        (word) => word.run,
+        (word) => (word.math ? undefined : word.run),
         (first, last, run) => {
           setRunFont(run, fontSize);
           doc.setTextColor(
@@ -1363,8 +1585,17 @@ export async function buildPdfBlob(
         },
       );
 
+      line.forEach((word, i) => {
+        if (word.math) {
+          drawMath(doc, word.math.rendered, starts[i], y, word.math.unit, {
+            color: word.run.link ? LINK_COLOR : TEXT_COLOR,
+            drawText: drawMathText,
+          });
+        }
+      });
+
       doc.setTextColor(...TEXT_COLOR);
-      y += lineHeight;
+      y += lineHeight + below;
     }
   }
 
@@ -1468,20 +1699,26 @@ export async function buildPdfBlob(
 
     block.items.forEach((itemText, index) => {
       const prefix = block.ordered ? `${index + 1}.` : "•";
+      const lines = wrapWords(
+        tokenizeRuns(parseInline(itemText), bodyFontSize),
+        contentWidth - indent,
+        bodyFontSize,
+      );
+      // The marker sits on the first line's baseline, which a tall
+      // formula on that line pushes down.
+      const { above } = lineExtras(lines[0], bodyLineHeight);
 
-      ensureSpace(bodyLineHeight);
+      ensureSpace(lineBoxHeight(lines[0], bodyLineHeight));
       doc.setFont(SANS_FONT, "normal");
       doc.setFontSize(bodyFontSize);
       doc.setTextColor(20, 20, 20);
-      doc.text(prefix, pdf.marginLeft, y);
-
-      const runs = parseInline(itemText);
-      renderInlineParagraph(
-        runs,
+      doc.text(prefix, pdf.marginLeft, y + above);
+      drawWrappedLines(
+        lines,
+        pdf.marginLeft + indent,
         bodyFontSize,
         bodyLineHeight,
-        pdf.marginLeft + indent,
-        contentWidth - indent,
+        true,
       );
     });
 
@@ -1609,14 +1846,22 @@ export async function buildPdfBlob(
 
         return cellLines;
       });
-      const lineCount = Math.max(
-        ...lines.map((cellLines) => Math.max(1, cellLines.length)),
+      const contentHeight = Math.max(
+        ...lines.map((cellLines) =>
+          Math.max(
+            cellLineHeight,
+            cellLines.reduce(
+              (sum, line) => sum + lineBoxHeight(line, cellLineHeight),
+              0,
+            ),
+          ),
+        ),
       );
 
       return {
         cells,
         lines,
-        height: lineCount * cellLineHeight + cellPaddingY * 2,
+        height: contentHeight + cellPaddingY * 2,
       };
     }
 
@@ -1932,7 +2177,7 @@ export async function buildPdfBlob(
   for (const [index, message] of messages.entries()) {
     const roleLabel = message.role === "user" ? "User" : "Assistant";
     const isUser = message.role === "user";
-    const preprocessed = preprocessRawContent(message.content);
+    const preprocessed = preprocessRawContent(messageContents[index]);
     const hasRule = index > 0 && ruleBetweenMessages;
     const content = isUser ? fenceUserContent(preprocessed) : preprocessed;
     const blocks = parseBlocks(content, isUser);
@@ -1951,7 +2196,9 @@ export async function buildPdfBlob(
 
     tocEntries.push({
       label: roleLabel,
-      snippet: messageSnippet(preprocessed),
+      // From the text as written, so a formula in the bookmark
+      // title reads as its LaTeX instead of a placeholder token.
+      snippet: messageSnippet(preprocessRawContent(message.content)),
       page: doc.getNumberOfPages(),
       top: y - headingLineHeight,
     });

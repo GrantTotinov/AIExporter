@@ -156,6 +156,22 @@ describe("options page", () => {
       expect(byId("toast-text").textContent).toBe(en["options.saved"]);
     });
 
+    it("turns note properties for Markdown files off and on", async () => {
+      await loadOptionsPage();
+
+      const toggle = byId<HTMLInputElement>("markdownProperties");
+
+      expect(toggle.checked).toBe(true);
+      expect(byId("markdownProperties-desc").textContent?.trim()).toBe(
+        en["options.properties.desc"],
+      );
+
+      toggle.click();
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(savedSettings().markdownProperties).toBe(false);
+    });
+
     it("merges a burst of clicks into one write", async () => {
       await loadOptionsPage();
 

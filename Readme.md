@@ -22,6 +22,8 @@ On `claude.ai` it works the same way: it asks Claude's own conversation API for 
 - **Exports to five formats:** PDF, Markdown (`.md`), plain text (`.txt`), JSON, or CSV.
 - **Exports images too.** PDFs embed them on the page; Markdown, text, JSON, and CSV exports come as a ZIP with an `images/` folder. It's opt-in, see [Images](#images).
 - **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, and Greek text. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
+- **Keeps math formulas readable:** formulas are typeset in PDFs, just like on the chat site (fractions, roots, matrices, equations), and written as `$...$` and `$$...$$` in Markdown, which Obsidian, GitHub, Typora and VS Code show as math. Each site's own way of marking math is understood, so a price like "$5" stays a price.
+- **Ready for note apps:** Markdown files start with the chat's details (title, link, site, number of messages), which Obsidian and similar apps show as the note's properties. You can turn this off in **Settings → Chat contents**.
 - **Keeps artifacts and documents:** code and documents Claude wrote in an artifact, and Gemini's Canvas and Deep Research documents, are exported with the reply that made them.
 - **Copies** the whole conversation to your clipboard as Markdown in one click.
 - **Lets you pick the messages** before exporting: tick them one by one, select all, only your questions, only the answers, or swap what's selected. Shift+click selects a range, and you can show messages in full to read them.

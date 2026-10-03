@@ -11,6 +11,14 @@
  */
 export interface Settings {
   includeTimestamp: boolean;
+  /*
+   * When true, Markdown files (downloads and GitHub saves, not
+   * copied chats) start with a YAML front matter block - the
+   * chat's title, link, site and message count - which Obsidian,
+   * Logseq and similar note apps show as the note's properties and
+   * GitHub shows as a small table.
+   */
+  markdownProperties: boolean;
   headingStyle: "h2" | "bold" | "none";
   messageSeparator: "single" | "double" | "rule";
   /*
@@ -87,6 +95,7 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   includeTimestamp: false,
+  markdownProperties: true,
   headingStyle: "h2",
   messageSeparator: "double",
   askWhereToSave: true,

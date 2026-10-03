@@ -61,6 +61,10 @@ const includeTimestampInput = document.getElementById(
   "includeTimestamp",
 ) as HTMLInputElement;
 
+const markdownPropertiesInput = document.getElementById(
+  "markdownProperties",
+) as HTMLInputElement;
+
 const pdfFontSizeInput = document.getElementById(
   "pdfFontSize",
 ) as HTMLInputElement;
@@ -283,6 +287,7 @@ function readSettingsFromForm(): Settings {
       savedSettings.messageSeparator,
     ),
     includeTimestamp: includeTimestampInput.checked,
+    markdownProperties: markdownPropertiesInput.checked,
     askWhereToSave: askWhereToSaveInput.checked,
     downloadImagesLocally: downloadImagesLocallyInput.checked,
     theme: getRadioValue("theme", savedSettings.theme),
@@ -308,6 +313,7 @@ function applySettingsToForm(settings: Settings): void {
   askWhereToSaveInput.checked = settings.askWhereToSave;
   downloadImagesLocallyInput.checked = settings.downloadImagesLocally;
   includeTimestampInput.checked = settings.includeTimestamp;
+  markdownPropertiesInput.checked = settings.markdownProperties;
 
   setRadioValue("headingStyle", settings.headingStyle);
   setRadioValue("messageSeparator", settings.messageSeparator);

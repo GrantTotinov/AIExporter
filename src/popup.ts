@@ -3,6 +3,7 @@ import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
 import { createZipBlob, decodeBase64, encodeBlobBase64 } from "./zip.ts";
 import { buildPdfBlob } from "./pdf-export.ts";
+import { normalizeMathMarkdown } from "./math.ts";
 import {
   CHAT_SITE_NAMES,
   getChatSite,
@@ -704,18 +705,103 @@ function buildCsv(messages: Message[]): string {
  * ---------------------------------------------------------
  * BUILD MARKDOWN FROM MESSAGES
  * ---------------------------------------------------------
+ *
+ * Replies' math formulas are rewritten in the $...$ / $$...$$
+ * form Markdown apps render (see math.ts). With `properties`
+ * (Markdown files, when Settings.markdownProperties is on) the
+ * file starts with YAML front matter, which Obsidian and other
+ * note apps show as the note's properties; the export time, when
+ * it's included, goes there instead of into a line of its own.
  */
-async function buildMarkdownFromMessages(messages: Message[]): Promise<string> {
-  const settings = await loadSettings();
+interface MarkdownSource {
+  tabTitle: string | undefined;
+  tabUrl: string | undefined;
+  properties: boolean;
+}
 
-  const timestamp = settings.includeTimestamp
-    ? `_Exported ${new Date().toLocaleString()}_\n\n`
-    : "";
+/*
+ * A JSON string is also a valid YAML double-quoted string, so
+ * quotes, colons, "#" or a leading "-" in a chat title can't break
+ * the front matter.
+ */
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+/* "2026-10-03T14:05" - the form Obsidian reads as a date and time. */
+function localDateTime(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
 
   return (
-    timestamp +
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
+function buildFrontMatter(
+  messages: Message[],
+  source: MarkdownSource,
+  exportedAt: Date | null,
+): string {
+  const site = getChatSite(source.tabUrl);
+  const title = stripChatSiteSuffix(source.tabTitle ?? "").trim();
+  const lines = ["---"];
+
+  if (title && !SITE_ONLY_TITLE.test(title)) {
+    lines.push(`title: ${yamlString(title)}`);
+  }
+
+  if (source.tabUrl) {
+    lines.push(`source: ${yamlString(source.tabUrl)}`);
+  }
+
+  if (site) {
+    lines.push(`site: ${CHAT_SITE_NAMES[site]}`);
+  }
+
+  lines.push(`messages: ${messages.length}`);
+
+  if (exportedAt) {
+    lines.push(`exported: ${localDateTime(exportedAt)}`);
+  }
+
+  lines.push("tags:", "  - ai-chat");
+
+  if (site) {
+    lines.push(`  - ${site}`);
+  }
+
+  lines.push("---", "", "");
+  return lines.join("\n");
+}
+
+async function buildMarkdownFromMessages(
+  messages: Message[],
+  source: MarkdownSource,
+): Promise<string> {
+  const settings = await loadSettings();
+  const site = getChatSite(source.tabUrl);
+  const now = new Date();
+  const properties = source.properties && settings.markdownProperties;
+
+  const header = properties
+    ? buildFrontMatter(
+        messages,
+        source,
+        settings.includeTimestamp ? now : null,
+      )
+    : settings.includeTimestamp
+      ? `_Exported ${now.toLocaleString()}_\n\n`
+      : "";
+
+  return (
+    header +
     messages
       .map((message) => {
+        const content =
+          message.role === "assistant"
+            ? normalizeMathMarkdown(message.content, site)
+            : message.content;
         const roleLabel = message.role === "user" ? "User" : "Assistant";
 
         let heading: string;
@@ -733,7 +819,7 @@ async function buildMarkdownFromMessages(messages: Message[]): Promise<string> {
             break;
         }
 
-        return heading ? `${heading}\n\n${message.content}` : message.content;
+        return heading ? `${heading}\n\n${content}` : content;
       })
       .join(SEPARATOR_TEXT[settings.messageSeparator])
   );
@@ -884,9 +970,18 @@ copyButton.addEventListener("click", async () => {
   devLog("AI Exporter: copy clicked");
 
   try {
-    const { messages } = await loadConversationMessages(copyButton, false);
+    const { messages, tabTitle, tabUrl } = await loadConversationMessages(
+      copyButton,
+      false,
+    );
 
-    const markdown = await buildMarkdownFromMessages(messages);
+    // A pasted chat goes into a message or document, where note
+    // properties would just be clutter.
+    const markdown = await buildMarkdownFromMessages(messages, {
+      tabTitle,
+      tabUrl,
+      properties: false,
+    });
 
     const copyResponse = await chrome.runtime.sendMessage({
       type: "COPY_TO_CLIPBOARD",
@@ -1269,7 +1364,11 @@ selectorExportButton.addEventListener("click", async () => {
         currentTabUrl,
       );
     } else {
-      const markdown = await buildMarkdownFromMessages(chosen);
+      const markdown = await buildMarkdownFromMessages(chosen, {
+        tabTitle: currentTabTitle,
+        tabUrl: currentTabUrl,
+        properties: format === "md",
+      });
 
       const { content, mimeType } = buildContentForFormat(
         format,
@@ -1614,7 +1713,11 @@ async function saveToGitHub(): Promise<void> {
   setBusy(true);
 
   try {
-    const markdown = await buildMarkdownFromMessages(chosen);
+    const markdown = await buildMarkdownFromMessages(chosen, {
+      tabTitle: currentTabTitle,
+      tabUrl: currentTabUrl,
+      properties: true,
+    });
     const markdownFilename = buildFilename(
       currentTabTitle,
       currentTabUrl,

@@ -28,6 +28,7 @@ describe("settings", () => {
   it("has the expected default settings", () => {
     expect(DEFAULT_SETTINGS).toEqual({
       includeTimestamp: false,
+      markdownProperties: true,
       headingStyle: "h2",
       messageSeparator: "double",
       askWhereToSave: true,
@@ -61,6 +62,7 @@ describe("settings", () => {
   it("loads stored custom settings", async () => {
     const settings: Settings = {
       includeTimestamp: true,
+      markdownProperties: false,
       headingStyle: "bold",
       messageSeparator: "rule",
       askWhereToSave: true,
@@ -80,6 +82,7 @@ describe("settings", () => {
   it("saves settings to Chrome sync storage", async () => {
     const settings: Settings = {
       includeTimestamp: true,
+      markdownProperties: false,
       headingStyle: "none",
       messageSeparator: "single",
       askWhereToSave: true,

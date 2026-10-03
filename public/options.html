@@ -2158,6 +2158,54 @@
           </div>
 
           <div
+            class="setting setting--switch"
+            data-help="options.properties.help"
+            data-tip="options.properties.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-file-text" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="markdownProperties"
+                    data-i18n="options.properties.title"
+                    >Chat details for note apps</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="markdownProperties-desc"
+                  data-i18n="options.properties.desc"
+                >
+                  Start Markdown files with the chat's title, link and site.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="markdownProperties"
+                  aria-describedby="markdownProperties-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
             class="setting setting--stacked"
             data-help="options.headings.help"
             data-tip="options.headings.tip"

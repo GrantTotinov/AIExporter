@@ -543,6 +543,91 @@ describe("popup: save as a file", () => {
     expect(buildPdfBlob).not.toHaveBeenCalled();
   });
 
+  async function downloadAs(format: string): Promise<string> {
+    await openPopup();
+    await openExportScreen();
+
+    document
+      .querySelector<HTMLInputElement>(`input[name="format"][value="${format}"]`)!
+      .click();
+    byId<HTMLButtonElement>("selector-export").click();
+
+    await vi.waitFor(() => {
+      expect(sentMessages("DOWNLOAD_START")).toHaveLength(1);
+    });
+
+    return decodeBase64(sentMessages("DOWNLOAD_START")[0].content as string);
+  }
+
+  it("starts Markdown files with note properties", async () => {
+    const markdown = await downloadAs("md");
+
+    expect(markdown.startsWith(
+      [
+        "---",
+        'title: "Trip ideas"',
+        `source: "https://chatgpt.com/c/${UUID}"`,
+        "site: ChatGPT",
+        "messages: 3",
+        "tags:",
+        "  - ai-chat",
+        "  - chatgpt",
+        "---",
+        "",
+        "## User",
+      ].join("\n"),
+    )).toBe(true);
+  });
+
+  it("moves the export time into the note properties", async () => {
+    syncStore = { includeTimestamp: true };
+
+    const markdown = await downloadAs("md");
+
+    expect(markdown).toMatch(/\nexported: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\n/);
+    expect(markdown).not.toContain("_Exported");
+  });
+
+  it("leaves note properties out when they're turned off", async () => {
+    syncStore = { markdownProperties: false, includeTimestamp: true };
+
+    const markdown = await downloadAs("md");
+
+    expect(markdown.startsWith("_Exported ")).toBe(true);
+    expect(markdown).not.toContain("tags:");
+  });
+
+  it("leaves note properties out of text files", async () => {
+    const text = await downloadAs("txt");
+
+    expect(text).not.toContain("tags:");
+    expect(text).not.toContain("---");
+  });
+
+  it("writes ChatGPT's math the way Markdown apps show it", async () => {
+    conversation = {
+      success: true,
+      data: {
+        messages: [
+          { ...MESSAGES[0], content: "What is \\(x\\)?" },
+          {
+            ...MESSAGES[1],
+            content: "It is \\(x = \\frac{1}{2}\\), so\n\\[\nx^2 = \\tfrac14\n\\]",
+          },
+        ],
+        images: [],
+      },
+    };
+
+    const markdown = await downloadAs("md");
+
+    // Only replies are rewritten; the question stays as typed.
+    expect(markdown).toContain("## User\n\nWhat is \\(x\\)?");
+    expect(markdown).toContain(
+      "It is $x = \\frac{1}{2}$, so\n$$\nx^2 = \\tfrac14\n$$",
+    );
+  });
+
   it("starts with the file type picked last time", async () => {
     localStore.popupExportFormat = "csv";
 
@@ -630,6 +715,8 @@ describe("popup: copy", () => {
 
     expect(copy.data).toContain("## User\n\nWhere should I go in **April**?");
     expect(copy.data).toContain("## User\n\nThanks!");
+    // Note properties are for files, not for pasting.
+    expect(copy.data).not.toContain("tags:");
   });
 });
 
@@ -716,6 +803,7 @@ describe("popup: save to GitHub", () => {
 
     expect(save.fullName).toBe("me/notes");
     expect(save.binary).toBe(false);
+    expect(save.content).toMatch(/^---\ntitle: "Trip ideas"\n/);
     expect(byId<HTMLDialogElement>("github-confirm").open).toBe(false);
     expect(localStore.popupGithubRepo).toBe("me/notes");
     expect(tabsSendMessage).toHaveBeenCalledWith(7, {
