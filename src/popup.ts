@@ -1,38 +1,12 @@
 import { SEPARATOR_TEXT, loadSettings } from "./settings.ts";
 import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
-
-async function applyStoredTheme(): Promise<void> {
-  const settings = await loadSettings();
-
-  if (settings.theme === "system") {
-    delete document.documentElement.dataset.theme;
-  } else {
-    document.documentElement.dataset.theme = settings.theme;
-  }
-}
-
-void applyStoredTheme();
-
-/*
- * initI18n()'s underlying chrome.storage.sync.get() resolves
- * on the same tick the popup opens, well before a person can
- * click anything - every string below that's set dynamically
- * (toasts, button label swaps, etc.) happens later, inside
- * event handlers, so it's safe to fire this without awaiting
- * it at the top level. The update status in the footer is the
- * one exception, and is only rendered once this has resolved.
- */
-void initI18n().then(() => {
-  applyTranslations();
-  void initUpdateStatus();
-});
-
 import { stripMarkdown } from "./markdown-strip.ts";
 import { createZipBlob, decodeBase64, encodeBlobBase64 } from "./zip.ts";
 import { buildPdfBlob } from "./pdf-export.ts";
 import {
   CHAT_SITE_NAMES,
   getChatSite,
+  isChatConversationUrl,
   stripChatSiteSuffix,
 } from "./chat-sites.ts";
 import {
@@ -46,8 +20,41 @@ import {
   storeInstallsUpdates,
 } from "./updates.ts";
 
+async function applyStoredTheme(): Promise<void> {
+  const settings = await loadSettings();
+
+  if (settings.theme === "system") {
+    delete document.documentElement.dataset.theme;
+  } else {
+    document.documentElement.dataset.theme = settings.theme;
+  }
+}
+
+void applyStoredTheme();
+
 const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
 const COFFEE_URL = "https://buymeacoffee.com/granttotinov";
+const NEW_REPOSITORY_URL = "https://github.com/new";
+
+/*
+ * What the popup remembers between uses, in chrome.storage.local:
+ * the file type picked last and the GitHub repo saved to last.
+ */
+const EXPORT_FORMAT_KEY = "popupExportFormat";
+const GITHUB_REPO_KEY = "popupGithubRepo";
+
+const TOAST_MS = 2500;
+/* Errors stay up longer: there's more to read, and it matters */
+const ERROR_TOAST_MS = 6000;
+/*
+ * Error messages from the content script and background.ts are
+ * shown as they are when they're short ("Sign in to Gemini to
+ * export this conversation."). Longer ones are technical, and a
+ * plain explanation of what to do replaces them.
+ */
+const MAX_ERROR_LENGTH = 90;
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const devLog = (...args: unknown[]): void => {
   if (import.meta.env.DEV) {
@@ -85,20 +92,69 @@ interface ExportImageFile {
 type ExportFormat = "md" | "txt" | "json" | "csv" | "pdf";
 type FilenameExtension = ExportFormat | "zip";
 
+const EXPORT_FORMATS: readonly ExportFormat[] = [
+  "pdf",
+  "md",
+  "txt",
+  "json",
+  "csv",
+];
+
+const FORMAT_ICONS: Record<ExportFormat, string> = {
+  pdf: "i-file-text",
+  md: "i-hash",
+  txt: "i-text",
+  json: "i-braces",
+  csv: "i-table",
+};
+
+/* The fields of a GitHub repo the popup uses (see github.ts) */
+interface GithubRepoOption {
+  full_name: string;
+  private?: boolean;
+}
+
 /*
  * ---------------------------------------------------------
  * DOM REFERENCES
  * ---------------------------------------------------------
  */
 
-const copyButton = document.getElementById("copy") as HTMLButtonElement;
-const exportButton = document.getElementById("export") as HTMLButtonElement;
+/* Main screen */
+const mainView = document.getElementById("main-view") as HTMLDivElement;
 const optionsLink = document.getElementById(
   "options-link",
-) as HTMLAnchorElement;
+) as HTMLButtonElement;
+const chatCard = document.getElementById("chat-card") as HTMLElement;
+const chatCardIcon = chatCard.querySelector(
+  "#chat-card-icon use",
+) as SVGUseElement;
+const chatReady = document.getElementById("chat-ready") as HTMLDivElement;
+const chatSiteLabel = document.getElementById(
+  "chat-site-label",
+) as HTMLParagraphElement;
+const chatTitle = document.getElementById("chat-title") as HTMLParagraphElement;
+const chatOpenHint = document.getElementById(
+  "chat-open-hint",
+) as HTMLDivElement;
+const chatOpenText = document.getElementById(
+  "chat-open-text",
+) as HTMLParagraphElement;
+const chatUnsupported = document.getElementById(
+  "chat-unsupported",
+) as HTMLDivElement;
+const siteLinksRow = document.getElementById("site-links") as HTMLDivElement;
+const siteLinks = Array.from(
+  siteLinksRow.querySelectorAll<HTMLButtonElement>("[data-site-url]"),
+);
+const exportButton = document.getElementById("export") as HTMLButtonElement;
+const copyButton = document.getElementById("copy") as HTMLButtonElement;
 const githubStarButton = document.getElementById(
   "github-star",
 ) as HTMLButtonElement;
+const githubStarLabel = document.getElementById(
+  "github-star-label",
+) as HTMLSpanElement;
 const buyCoffeeButton = document.getElementById(
   "buy-coffee",
 ) as HTMLButtonElement;
@@ -124,78 +180,119 @@ const updateStatusText = document.getElementById(
   "update-status-text",
 ) as HTMLSpanElement;
 
-/* Loading overlay (covers the whole popup while messages load) */
-const loadingOverlay = document.getElementById(
-  "loading-overlay",
-) as HTMLDivElement;
-const loadingOverlayMessage = document.getElementById(
-  "loading-overlay-message",
-) as HTMLParagraphElement;
-
-/* Toast (on-screen feedback for button actions) */
-const toast = document.getElementById("toast") as HTMLDivElement;
-
-/* Message selector / export panel */
-const selectorOverlay = document.getElementById(
-  "selector-overlay",
-) as HTMLDivElement;
-const selectorPanelMessage = document.getElementById(
-  "selector-panel-message",
-) as HTMLParagraphElement;
-const selectorList = document.getElementById("selector-list") as HTMLDivElement;
-const selectorFilterAllButton = document.getElementById(
-  "selector-filter-all",
+/* "Save as a file" screen: pick messages and a file type */
+const exportView = document.getElementById("export-view") as HTMLElement;
+const selectorCancelButton = document.getElementById(
+  "selector-cancel",
 ) as HTMLButtonElement;
+const exportTitle = document.getElementById(
+  "export-title",
+) as HTMLHeadingElement;
+const exportSubtitle = document.getElementById(
+  "export-subtitle",
+) as HTMLParagraphElement;
+const selectorCount = document.getElementById(
+  "selector-count",
+) as HTMLSpanElement;
+const selectAllCheckbox = document.getElementById(
+  "selector-select-all",
+) as HTMLInputElement;
 const selectorFilterQuestionsButton = document.getElementById(
   "selector-filter-questions",
 ) as HTMLButtonElement;
 const selectorFilterAnswersButton = document.getElementById(
   "selector-filter-answers",
 ) as HTMLButtonElement;
-const selectorFilterNoneButton = document.getElementById(
-  "selector-filter-none",
-) as HTMLButtonElement;
 const selectorFilterInvertButton = document.getElementById(
   "selector-filter-invert",
 ) as HTMLButtonElement;
+const selectorList = document.getElementById("selector-list") as HTMLDivElement;
 const selectorExpandToggle = document.getElementById(
   "selector-expand-toggle",
 ) as HTMLInputElement;
-const selectorCount = document.getElementById(
-  "selector-count",
+const formatInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="format"]'),
+);
+const formatHintIcon = document.getElementById(
+  "format-hint-icon",
+) as unknown as SVGUseElement;
+const formatHintText = document.getElementById(
+  "format-hint-text",
 ) as HTMLSpanElement;
-const selectorFormatSelect = document.getElementById(
-  "selector-format-select",
-) as HTMLSelectElement;
-const selectorGithubButton = document.getElementById(
-  "selector-github-button",
-) as HTMLButtonElement;
-const selectorCancelButton = document.getElementById(
-  "selector-cancel",
-) as HTMLButtonElement;
 const selectorExportButton = document.getElementById(
   "selector-export",
 ) as HTMLButtonElement;
-
-/* GitHub repo picker panel (opened from selectorGithubButton) */
-const githubPanel = document.getElementById("github-panel") as HTMLDivElement;
-const githubPanelMessage = document.getElementById(
-  "github-panel-message",
-) as HTMLParagraphElement;
-const githubRepoSelect = document.getElementById(
-  "github-repo-select",
-) as HTMLSelectElement;
-const githubPanelSaveButton = document.getElementById(
-  "github-panel-save",
+const selectorExportLabel = document.getElementById(
+  "selector-export-label",
+) as HTMLSpanElement;
+const selectorGithubButton = document.getElementById(
+  "selector-github-button",
 ) as HTMLButtonElement;
+
+/* "Save to GitHub" screen */
+const githubView = document.getElementById("github-view") as HTMLElement;
 const githubPanelCancelButton = document.getElementById(
   "github-panel-cancel",
 ) as HTMLButtonElement;
+const githubTitle = document.getElementById(
+  "github-title",
+) as HTMLHeadingElement;
+const githubState = document.getElementById("github-state") as HTMLDivElement;
+const githubStateSpinner = document.getElementById(
+  "github-state-spinner",
+) as HTMLSpanElement;
+const githubStateIcon = document.getElementById(
+  "github-state-icon",
+) as unknown as SVGSVGElement;
+const githubStateIconUse = document.getElementById(
+  "github-state-icon-use",
+) as unknown as SVGUseElement;
+const githubStateTitle = document.getElementById(
+  "github-state-title",
+) as HTMLParagraphElement;
+const githubStateText = document.getElementById(
+  "github-state-text",
+) as HTMLParagraphElement;
+const githubStateAction = document.getElementById(
+  "github-state-action",
+) as HTMLButtonElement;
+const githubStateActionIcon = document.getElementById(
+  "github-state-action-icon",
+) as unknown as SVGUseElement;
+const githubStateActionLabel = document.getElementById(
+  "github-state-action-label",
+) as HTMLSpanElement;
+const githubStateSecondary = document.getElementById(
+  "github-state-secondary",
+) as HTMLButtonElement;
+const githubForm = document.getElementById("github-form") as HTMLDivElement;
+const githubRepoSelect = document.getElementById(
+  "github-repo-select",
+) as HTMLSelectElement;
+const githubVisibility = document.getElementById(
+  "github-visibility",
+) as HTMLParagraphElement;
+const githubVisibilityIcon = document.getElementById(
+  "github-visibility-icon",
+) as unknown as SVGUseElement;
+const githubVisibilityText = document.getElementById(
+  "github-visibility-text",
+) as HTMLSpanElement;
+const githubFileName = document.getElementById(
+  "github-file-name",
+) as HTMLSpanElement;
+const githubFooter = document.getElementById("github-footer") as HTMLElement;
+const githubPanelSaveButton = document.getElementById(
+  "github-panel-save",
+) as HTMLButtonElement;
+const githubSaveLabel = document.getElementById(
+  "github-save-label",
+) as HTMLSpanElement;
 
-/* GitHub export confirmation modal */
-const githubConfirmOverlay = document.getElementById(
-  "github-confirm-overlay",
-) as HTMLDivElement;
+/* Confirmation before saving into a public repository */
+const githubConfirm = document.getElementById(
+  "github-confirm",
+) as HTMLDialogElement;
 const githubConfirmCancelButton = document.getElementById(
   "github-confirm-cancel",
 ) as HTMLButtonElement;
@@ -203,134 +300,331 @@ const githubConfirmExportButton = document.getElementById(
   "github-confirm-export",
 ) as HTMLButtonElement;
 
-const allButtons = [
-  copyButton,
-  exportButton,
-  githubStarButton,
-  buyCoffeeButton,
-  selectorExportButton,
-  selectorGithubButton,
-  githubPanelSaveButton,
-  updateApplyButton,
-];
+/* Toast (on-screen feedback for button actions) */
+const toast = document.getElementById("toast") as HTMLDivElement;
+const toastText = document.getElementById("toast-text") as HTMLSpanElement;
 
-optionsLink.addEventListener("click", (event) => {
-  event.preventDefault();
+/*
+ * ---------------------------------------------------------
+ * STATE
+ * ---------------------------------------------------------
+ */
+
+/*
+ * What the current tab is:
+ *   loading     - not known yet (the first few milliseconds)
+ *   ready       - a conversation on a supported site
+ *   open-chat   - a supported site, but not a conversation
+ *   unsupported - any other page
+ */
+type ChatState = "loading" | "ready" | "open-chat" | "unsupported";
+
+let chatState: ChatState = "loading";
+/* A conversation is loading, or a file is being made or saved */
+let busy = false;
+let starring = false;
+let installingUpdate = false;
+let selectedCount = 0;
+
+/* The conversation loaded for the export screens */
+let currentMessages: Message[] = [];
+let currentImages: ExportImageFile[] = [];
+let currentTabTitle: string | undefined;
+let currentTabUrl: string | undefined;
+let currentTabId: number | undefined;
+let lastShiftAnchorIndex: number | null = null;
+
+let githubRepos: GithubRepoOption[] = [];
+/* Ignores a repo list that arrives after the person left */
+let githubLoadId = 0;
+let githubStateActionHandler: (() => void) | null = null;
+let githubStateSecondaryHandler: (() => void) | null = null;
+
+/*
+ * ---------------------------------------------------------
+ * SCREENS
+ * ---------------------------------------------------------
+ *
+ * The popup has three screens: the main one, "Save as a file"
+ * (pick the messages and a file type) and "Save to GitHub".
+ * One shows at a time. The last two take the popup's full
+ * height (body.is-full), so a long message list scrolls inside
+ * them while their buttons stay in view.
+ */
+type ScreenName = "main" | "export" | "github";
+
+const screens: Record<ScreenName, HTMLElement> = {
+  main: mainView,
+  export: exportView,
+  github: githubView,
+};
+
+let currentScreen: ScreenName = "main";
+
+function showScreen(name: ScreenName): void {
+  for (const [screenName, screen] of Object.entries(screens)) {
+    screen.hidden = screenName !== name;
+  }
+
+  document.body.classList.toggle("is-full", name !== "main");
+  currentScreen = name;
+
+  /* Keyboard and screen reader users land on the new screen */
+  const focusTarget =
+    name === "export"
+      ? exportTitle
+      : name === "github"
+        ? githubTitle
+        : exportButton;
+
+  focusTarget.focus({ preventScroll: true });
+}
+
+selectorCancelButton.addEventListener("click", () => {
+  showScreen("main");
+});
+
+githubPanelCancelButton.addEventListener("click", () => {
+  githubLoadId++;
+  showScreen("export");
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || busy || githubConfirm.open) {
+    return;
+  }
+
+  if (currentScreen === "github") {
+    event.preventDefault();
+    githubLoadId++;
+    showScreen("export");
+  } else if (currentScreen === "export") {
+    event.preventDefault();
+    showScreen("main");
+  }
+});
+
+optionsLink.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
 
 /*
  * ---------------------------------------------------------
- * TOAST (on-screen feedback, replaces button textContent
- * swaps like "Copied!"/"Downloaded!")
+ * TOAST
  * ---------------------------------------------------------
  */
 let toastTimeoutId: number | undefined;
 
-function showToast(message: string, ms = 2000): void {
-  toast.textContent = message;
-  toast.classList.add("visible");
+function showToast(
+  message: string,
+  tone: "success" | "error" = "success",
+): void {
+  toastText.textContent = message;
+  toast.dataset.tone = tone;
+  toast.classList.add("is-visible");
 
-  if (toastTimeoutId !== undefined) {
-    window.clearTimeout(toastTimeoutId);
-  }
+  window.clearTimeout(toastTimeoutId);
 
-  toastTimeoutId = window.setTimeout(() => {
-    toast.classList.remove("visible");
-  }, ms);
+  toastTimeoutId = window.setTimeout(
+    () => {
+      toast.classList.remove("is-visible");
+    },
+    tone === "error" ? ERROR_TOAST_MS : TOAST_MS,
+  );
+}
+
+function errorMessage(error: unknown, fallbackKey: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return message && message.length <= MAX_ERROR_LENGTH
+    ? message
+    : t(fallbackKey);
+}
+
+function showErrorToast(error: unknown, fallbackKey: string): void {
+  showToast(errorMessage(error, fallbackKey), "error");
+}
+
+function isMac(): boolean {
+  return navigator.userAgent.includes("Mac");
 }
 
 /*
  * ---------------------------------------------------------
- * BUSY STATE
- * ---------------------------------------------------------
- */
-function setBusy(busy: boolean): void {
-  for (const button of allButtons) {
-    button.disabled = busy;
-  }
-}
-
-function resetButtons(): void {
-  setBusy(false);
-}
-
-/*
- * ---------------------------------------------------------
- * OVERLAY SIZE TRACKING
+ * BUTTON STATE
  * ---------------------------------------------------------
  *
- * The popup's <body> stays sized to its small, normal content
- * (Copy/Export buttons only) until an overlay needs the full
- * 600px Chrome popup height to show a scrollable list/modal.
- * body.overlay-open is what triggers that larger fixed height
- * in CSS. A count (not a boolean) because overlays can stack
- * - e.g. the GitHub confirm modal opens on top of the GitHub
- * repo panel - so the small size should only return once
- * every open overlay has closed, not as soon as the top one
- * does.
+ * One place decides which buttons can be pressed, from the
+ * current tab, the selection and whatever is in progress -
+ * a second click mid-load used to start a second, overlapping
+ * fetch.
  */
-let openOverlayCount = 0;
+function updateButtons(): void {
+  const chatAvailable = chatState === "loading" || chatState === "ready";
 
-function markOverlayOpened(): void {
-  openOverlayCount++;
-  document.body.classList.add("overlay-open");
+  exportButton.disabled = busy || !chatAvailable;
+  copyButton.disabled = busy || !chatAvailable;
+  selectorExportButton.disabled = busy || selectedCount === 0;
+  selectorGithubButton.disabled = busy || selectedCount === 0;
+  githubPanelSaveButton.disabled = busy || githubRepoSelect.value === "";
+  selectorCancelButton.disabled = busy;
+  githubPanelCancelButton.disabled = busy;
+  githubStarButton.disabled = busy || starring;
+  buyCoffeeButton.disabled = busy;
+  updateApplyButton.disabled = busy || installingUpdate;
 }
 
-function markOverlayClosed(): void {
-  openOverlayCount = Math.max(0, openOverlayCount - 1);
+function setBusy(value: boolean): void {
+  busy = value;
+  updateButtons();
+}
 
-  if (openOverlayCount === 0) {
-    document.body.classList.remove("overlay-open");
-  }
+/*
+ * Lets the browser paint a "Preparing…" label before work that
+ * can keep the page busy for a while (building a long PDF).
+ */
+function waitForPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
 }
 
 /*
  * ---------------------------------------------------------
- * LOADING OVERLAY
+ * PROGRESS ON THE MAIN SCREEN'S BUTTONS
  * ---------------------------------------------------------
  *
- * Covers the entire popup with a dimmed, non-interactive
- * layer while the conversation is being fetched from the
- * page. Prevents the person from clicking other buttons
- * mid-load (which previously could kick off a second,
- * overlapping fetch) and makes it visually obvious that
- * something is happening rather than the popup looking
- * unresponsive.
+ * While a conversation loads, the button that was pressed
+ * shows a spinner and, in place of its description, what's
+ * happening ("Reading the chat… 120 messages so far"). The
+ * other buttons are disabled meanwhile.
  */
-function showLoadingOverlay(message: string): void {
-  loadingOverlayMessage.textContent = message;
-  loadingOverlay.classList.add("open");
-  markOverlayOpened();
+let progressButton: HTMLButtonElement | null = null;
+
+function startProgress(button: HTMLButtonElement, message: string): void {
+  progressButton = button;
+  button.classList.add("is-busy");
+  setProgressMessage(message);
   setBusy(true);
 }
 
-function hideLoadingOverlay(): void {
-  loadingOverlay.classList.remove("open");
-  markOverlayClosed();
+function setProgressMessage(message: string): void {
+  const description =
+    progressButton?.querySelector<HTMLElement>(".action-desc");
+
+  if (description) {
+    description.textContent = message;
+  }
+}
+
+function stopProgress(): void {
+  if (progressButton) {
+    progressButton.classList.remove("is-busy");
+
+    const description =
+      progressButton.querySelector<HTMLElement>(".action-desc");
+
+    if (description?.dataset.i18n) {
+      description.textContent = t(description.dataset.i18n);
+    }
+
+    progressButton = null;
+  }
+
   setBusy(false);
 }
 
 /*
- * ---------------------------------------------------------
- * LIVE PROGRESS
- * ---------------------------------------------------------
- *
- * The content script sends EXPORT_PROGRESS messages while
- * it paginates through the conversation. Reflect that on the
- * loading overlay so long conversations don't look frozen.
+ * The content script sends EXPORT_PROGRESS messages while it
+ * pages through the conversation, so long conversations don't
+ * look frozen.
  */
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== "EXPORT_PROGRESS") {
+  if (message?.type !== "EXPORT_PROGRESS" || !progressButton) {
     return;
   }
 
-  if (!loadingOverlay.classList.contains("open")) {
-    return;
-  }
-
-  loadingOverlayMessage.textContent = `${t("popup.loading.default")} (${message.collected})`;
+  setProgressMessage(
+    t("popup.loading.progress", { count: Number(message.collected) || 0 }),
+  );
 });
+
+/*
+ * ---------------------------------------------------------
+ * THE CURRENT CHAT
+ * ---------------------------------------------------------
+ *
+ * The card at the top says which conversation the buttons will
+ * save, or - on another page - what to do first, instead of
+ * letting an export fail with an error.
+ */
+async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
+  const [tab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
+
+  return tab;
+}
+
+/* Before a new chat gets its title, the tab shows only the site */
+const SITE_ONLY_TITLE = /^(?:ChatGPT|Claude|(?:Google\s+)?Gemini)$/i;
+
+function chatTitleFor(tabTitle: string | undefined): string {
+  const title = stripChatSiteSuffix(tabTitle ?? "");
+
+  return title && !SITE_ONLY_TITLE.test(title)
+    ? title
+    : t("popup.chat.untitled");
+}
+
+function renderChatCard(tab: chrome.tabs.Tab | undefined): void {
+  const site = getChatSite(tab?.url);
+
+  chatState =
+    site === null
+      ? "unsupported"
+      : isChatConversationUrl(tab?.url)
+        ? "ready"
+        : "open-chat";
+
+  chatCard.dataset.state = chatState;
+  chatReady.hidden = chatState !== "ready";
+  chatOpenHint.hidden = chatState !== "open-chat";
+  chatUnsupported.hidden = chatState !== "unsupported";
+  siteLinksRow.hidden = chatState !== "unsupported";
+  chatCardIcon.setAttribute(
+    "href",
+    chatState === "ready" ? "#i-chat" : "#i-compass",
+  );
+
+  if (site !== null) {
+    const siteName = CHAT_SITE_NAMES[site];
+
+    chatSiteLabel.textContent = t("popup.chat.label", { site: siteName });
+    chatTitle.textContent = chatTitleFor(tab?.title);
+    chatOpenText.textContent = t("popup.chat.openText", { site: siteName });
+  }
+
+  updateButtons();
+}
+
+for (const link of siteLinks) {
+  link.addEventListener("click", () => {
+    void chrome.tabs.create({ url: link.dataset.siteUrl });
+  });
+}
+
+function labelSiteLinks(): void {
+  for (const link of siteLinks) {
+    const label = t("popup.chat.openSite", {
+      site: link.dataset.siteName ?? "",
+    });
+
+    link.setAttribute("aria-label", label);
+    link.title = label;
+  }
+}
 
 /*
  * ---------------------------------------------------------
@@ -478,11 +772,12 @@ function buildContentForFormat(
  * ---------------------------------------------------------
  *
  * Fetches the raw message list from the content script, with
- * no formatting applied. Shows the loading overlay for the
- * full duration so the person can't click anything else in
- * the popup mid-fetch.
+ * no formatting applied. `trigger` - the button that was
+ * pressed - shows the progress the whole time, and every other
+ * button stays disabled until it's done.
  */
 async function loadConversationMessages(
+  trigger: HTMLButtonElement,
   downloadImagesLocally: boolean,
 ): Promise<{
   messages: Message[];
@@ -491,15 +786,12 @@ async function loadConversationMessages(
   tabUrl: string | undefined;
   tabId: number | undefined;
 }> {
-  showLoadingOverlay(t("popup.loading.default"));
+  startProgress(trigger, t("popup.loading.default"));
 
   try {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
+    const tab = await getActiveTab();
 
-    if (!tab.id) {
+    if (!tab?.id) {
       throw new Error(t("popup.error.noActiveTab"));
     }
 
@@ -519,20 +811,25 @@ async function loadConversationMessages(
         downloadImagesLocally,
       });
     } catch (sendError) {
+      /*
+       * No content script in the tab: it was opened before AI
+       * Exporter was installed or updated. Reloading the tab
+       * brings one in.
+       */
       devWarn(
         "AI Exporter: no content script, reloading tab and retrying",
         sendError,
       );
 
-      loadingOverlayMessage.textContent = t("popup.loading.reconnecting", {
-        site: CHAT_SITE_NAMES[site],
-      });
+      setProgressMessage(
+        t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
+      );
 
       await chrome.tabs.reload(tab.id);
 
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      loadingOverlayMessage.textContent = t("popup.loading.default");
+      setProgressMessage(t("popup.loading.default"));
 
       response = await chrome.tabs.sendMessage(tab.id, {
         type: "LOAD_CONVERSATION",
@@ -569,7 +866,7 @@ async function loadConversationMessages(
       tabId: tab.id,
     };
   } finally {
-    hideLoadingOverlay();
+    stopProgress();
   }
 }
 
@@ -581,13 +878,13 @@ async function loadConversationMessages(
  * Copy always uses the full conversation - no message
  * selection step, matching the one-click "quick copy" role
  * this button has always had. Message selection is reserved
- * for Export.
+ * for saving a file.
  */
 copyButton.addEventListener("click", async () => {
   devLog("AI Exporter: copy clicked");
 
   try {
-    const { messages } = await loadConversationMessages(false);
+    const { messages } = await loadConversationMessages(copyButton, false);
 
     const markdown = await buildMarkdownFromMessages(messages);
 
@@ -604,203 +901,264 @@ copyButton.addEventListener("click", async () => {
       );
     }
 
-    showToast(t("popup.toast.copied"));
+    showToast(
+      t("popup.toast.copied", {
+        shortcut: isMac() ? "⌘V" : t("popup.pasteShortcut"),
+      }),
+    );
   } catch (error) {
     devError("AI Exporter: copy failed", error);
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    showToast(
-      message.length < 60 ? message : t("popup.toast.copyFailed"),
-      3000,
-    );
+    showErrorToast(error, "popup.toast.copyFailed");
   }
 });
 
 /*
  * ---------------------------------------------------------
- * MESSAGE SELECTOR / EXPORT PANEL
+ * "SAVE AS A FILE" SCREEN
  * ---------------------------------------------------------
  *
- * Export always opens this panel first, every time. It loads
- * the full conversation, lets the person narrow it down with
- * checkboxes/filters/Shift+Click range select and an "expand"
- * toggle to read full message text, then either downloads the
- * chosen format directly or opens the GitHub repo picker for
- * a Markdown save.
+ * Opened by the main screen's first button, every time. It
+ * loads the whole conversation and lists it, so the person can
+ * leave messages out (Select all, the Questions/Answers quick
+ * picks, Shift+Click to tick a range, and a switch to read
+ * messages in full), then picks a file type and downloads it,
+ * or moves on to saving it to GitHub.
  */
-let currentMessages: Message[] = [];
-let currentImages: ExportImageFile[] = [];
-let currentTabTitle: string | undefined;
-let currentTabUrl: string | undefined;
-let currentTabId: number | undefined;
-let lastShiftAnchorIndex: number | null = null;
-
-function closeSelectorOverlay(): void {
-  selectorOverlay.classList.remove("open");
-  markOverlayClosed();
+function messageCheckboxes(): HTMLInputElement[] {
+  return Array.from(
+    selectorList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+  );
 }
 
 function getSelectedMessages(): Message[] {
-  const checkboxes = Array.from(
-    selectorList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
-  );
-
-  return checkboxes
+  return messageCheckboxes()
     .filter((box) => box.checked)
     .map((box) => currentMessages[Number(box.dataset.index)])
     .filter((message): message is Message => Boolean(message));
 }
 
 function updateSelectorCount(): void {
-  const checkboxes = selectorList.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
+  const checkboxes = messageCheckboxes();
+  const total = checkboxes.length;
+
+  selectedCount = checkboxes.filter((box) => box.checked).length;
+
+  selectorCount.textContent =
+    selectedCount === 0
+      ? t("popup.selector.noneSelected")
+      : t("popup.selector.count", { checked: selectedCount, total });
+  selectorCount.classList.toggle("is-warning", selectedCount === 0);
+
+  selectAllCheckbox.checked = total > 0 && selectedCount === total;
+  selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < total;
+
+  updateFormatHint();
+  updateButtons();
+}
+
+function createIcon(name: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  const use = document.createElementNS(SVG_NS, "use");
+
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  use.setAttribute("href", `#${name}`);
+  svg.append(use);
+
+  return svg;
+}
+
+/*
+ * The list shows a message as it reads, not as Markdown: no
+ * ## or ** marks, and links and images without their
+ * addresses.
+ */
+function previewText(content: string): string {
+  const imageLabel = `[${t("popup.selector.image")}]`;
+
+  const text = stripMarkdown(
+    content
+      .replace(/!\[[^\]]*\]\((?:<[^>]+>|[^)]+)\)/g, () => imageLabel)
+      .replace(/\[([^\]]*)\]\((?:<[^>]+>|[^)]+)\)/g, "$1"),
   );
 
-  const checked = Array.from(checkboxes).filter((box) => box.checked).length;
-
-  selectorCount.textContent = t("popup.selector.count", {
-    checked,
-    total: checkboxes.length,
-  });
-
-  const hasSelection = checked > 0;
-  selectorExportButton.disabled = !hasSelection;
-  selectorGithubButton.disabled = !hasSelection;
+  return text || t("popup.selector.noText");
 }
 
 function renderSelectorList(messages: Message[]): void {
-  selectorList.innerHTML = "";
-  lastShiftAnchorIndex = null;
+  const site = getChatSite(currentTabUrl);
+  const assistantName = site
+    ? CHAT_SITE_NAMES[site]
+    : t("popup.selector.assistant");
+  const rows = document.createDocumentFragment();
 
   messages.forEach((message, index) => {
+    const isUser = message.role === "user";
+
     const row = document.createElement("label");
-    row.className = "selector-row";
+    row.className = "message";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = true;
     checkbox.dataset.index = String(index);
 
-    const roleIcon = document.createElement("span");
-    roleIcon.className = "selector-role-icon";
-    roleIcon.textContent = message.role === "user" ? "🧑" : "🤖";
+    const avatar = document.createElement("span");
+    avatar.className = `avatar avatar--${isUser ? "user" : "assistant"}`;
+    avatar.append(createIcon(isUser ? "i-user" : "i-sparkle"));
 
-    const preview = document.createElement("span");
-    preview.className = "selector-preview";
-    preview.dataset.full = message.content;
-    preview.dataset.short =
-      message.content.length > 70
-        ? `${message.content.slice(0, 70)}…`
-        : message.content;
-    preview.textContent = preview.dataset.short;
+    const role = document.createElement("span");
+    role.className = "message-role";
+    role.textContent = isUser ? t("popup.selector.you") : assistantName;
 
-    row.append(checkbox, roleIcon, preview);
-    selectorList.appendChild(row);
+    const text = document.createElement("span");
+    text.className = "message-text";
+    text.append(role, previewText(message.content));
 
-    checkbox.addEventListener("click", (event) => {
-      const mouseEvent = event as MouseEvent;
-
-      if (mouseEvent.shiftKey && lastShiftAnchorIndex !== null) {
-        const start = Math.min(lastShiftAnchorIndex, index);
-        const end = Math.max(lastShiftAnchorIndex, index);
-
-        const allCheckboxes = selectorList.querySelectorAll<HTMLInputElement>(
-          'input[type="checkbox"]',
-        );
-
-        for (let i = start; i <= end; i++) {
-          const box = allCheckboxes[i];
-
-          if (box) {
-            box.checked = checkbox.checked;
-          }
-        }
-      }
-
-      lastShiftAnchorIndex = index;
-      updateSelectorCount();
-    });
+    row.append(checkbox, avatar, text);
+    rows.append(row);
   });
+
+  selectorList.replaceChildren(rows);
+  selectorList.scrollTop = 0;
+  lastShiftAnchorIndex = null;
 
   applyExpandState();
   updateSelectorCount();
 }
 
+/* Shift+Click ticks or unticks every message in between */
+selectorList.addEventListener("click", (event) => {
+  const checkbox = event.target;
+
+  if (!(checkbox instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const index = Number(checkbox.dataset.index);
+
+  if (event.shiftKey && lastShiftAnchorIndex !== null) {
+    const start = Math.min(lastShiftAnchorIndex, index);
+    const end = Math.max(lastShiftAnchorIndex, index);
+    const checkboxes = messageCheckboxes();
+
+    for (let i = start; i <= end; i++) {
+      const box = checkboxes[i];
+
+      if (box) {
+        box.checked = checkbox.checked;
+      }
+    }
+  }
+
+  lastShiftAnchorIndex = index;
+  updateSelectorCount();
+});
+
 /*
- * "Expand" toggle: when on, every message preview shows full
- * text (wrapped, scrollable within the list) instead of a
- * truncated one-line preview.
+ * "Show full messages": every message shows its whole text
+ * (the list scrolls) instead of its first two lines.
  */
 function applyExpandState(): void {
-  const previews =
-    selectorList.querySelectorAll<HTMLSpanElement>(".selector-preview");
-
-  previews.forEach((preview) => {
-    preview.textContent = selectorExpandToggle.checked
-      ? (preview.dataset.full ?? "")
-      : (preview.dataset.short ?? "");
-  });
-
-  selectorList.classList.toggle("expanded", selectorExpandToggle.checked);
+  selectorList.classList.toggle("is-expanded", selectorExpandToggle.checked);
 }
 
 selectorExpandToggle.addEventListener("change", applyExpandState);
 
-function setAllCheckboxes(checked: boolean): void {
-  const checkboxes = selectorList.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-
-  checkboxes.forEach((box) => {
-    box.checked = checked;
-  });
+function setCheckboxes(
+  isChecked: (message: Message | undefined) => boolean,
+): void {
+  for (const box of messageCheckboxes()) {
+    box.checked = isChecked(currentMessages[Number(box.dataset.index)]);
+  }
 
   updateSelectorCount();
 }
 
-selectorFilterAllButton.addEventListener("click", () => setAllCheckboxes(true));
-selectorFilterNoneButton.addEventListener("click", () =>
-  setAllCheckboxes(false),
-);
+selectAllCheckbox.addEventListener("change", () => {
+  const checked = selectAllCheckbox.checked;
+
+  setCheckboxes(() => checked);
+});
 
 selectorFilterQuestionsButton.addEventListener("click", () => {
-  const checkboxes = selectorList.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-
-  checkboxes.forEach((box) => {
-    const index = Number(box.dataset.index);
-    box.checked = currentMessages[index]?.role === "user";
-  });
-
-  updateSelectorCount();
+  setCheckboxes((message) => message?.role === "user");
 });
 
 selectorFilterAnswersButton.addEventListener("click", () => {
-  const checkboxes = selectorList.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-
-  checkboxes.forEach((box) => {
-    const index = Number(box.dataset.index);
-    box.checked = currentMessages[index]?.role === "assistant";
-  });
-
-  updateSelectorCount();
+  setCheckboxes((message) => message?.role === "assistant");
 });
 
 selectorFilterInvertButton.addEventListener("click", () => {
-  const checkboxes = selectorList.querySelectorAll<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-
-  checkboxes.forEach((box) => {
+  for (const box of messageCheckboxes()) {
     box.checked = !box.checked;
-  });
+  }
 
   updateSelectorCount();
 });
+
+/*
+ * File type. Picked as radio buttons with a line below that
+ * says, in plain words, what the chosen one is good for. The
+ * choice is remembered for next time; PDF until then.
+ */
+function getSelectedFormat(): ExportFormat {
+  const value = formatInputs.find((input) => input.checked)?.value;
+
+  return EXPORT_FORMATS.find((format) => format === value) ?? "pdf";
+}
+
+function setSelectedFormat(format: ExportFormat): void {
+  for (const input of formatInputs) {
+    input.checked = input.value === format;
+  }
+}
+
+function updateFormatHint(): void {
+  const format = getSelectedFormat();
+  const zipped =
+    format !== "pdf" &&
+    getSelectedImageFiles(getSelectedMessages()).length > 0;
+
+  formatHintIcon.setAttribute(
+    "href",
+    `#${zipped ? "i-archive" : FORMAT_ICONS[format]}`,
+  );
+  formatHintText.textContent = zipped
+    ? `${t(`popup.formatHint.${format}`)} ${t("popup.formatHint.zip")}`
+    : t(`popup.formatHint.${format}`);
+
+  if (!selectorExportButton.classList.contains("is-busy")) {
+    selectorExportLabel.textContent = t(`popup.download.${format}`);
+  }
+}
+
+for (const input of formatInputs) {
+  input.addEventListener("change", () => {
+    updateFormatHint();
+
+    void chrome.storage.local
+      .set({ [EXPORT_FORMAT_KEY]: getSelectedFormat() })
+      .catch((error: unknown) => {
+        devWarn("AI Exporter: couldn't remember the file type", error);
+      });
+  });
+}
+
+async function restoreExportFormat(): Promise<void> {
+  try {
+    const stored = await chrome.storage.local.get(EXPORT_FORMAT_KEY);
+    const value = stored[EXPORT_FORMAT_KEY];
+
+    setSelectedFormat(
+      EXPORT_FORMATS.find((format) => format === value) ?? "pdf",
+    );
+  } catch (error) {
+    devWarn("AI Exporter: couldn't read the last file type", error);
+  }
+
+  updateFormatHint();
+}
 
 function getSelectedImageFiles(messages: Message[]): ExportImageFile[] {
   const selectedPaths = new Set(
@@ -838,12 +1196,8 @@ function createExportZipBlob(
   return createZipBlob(entries);
 }
 
-selectorCancelButton.addEventListener("click", () => {
-  closeSelectorOverlay();
-});
-
 /*
- * Main "Export" button: always opens the selector panel,
+ * The main "Save as a file" button: always opens this screen,
  * every time - it never skips straight to a download.
  */
 exportButton.addEventListener("click", async () => {
@@ -852,7 +1206,10 @@ exportButton.addEventListener("click", async () => {
   try {
     const settings = await loadSettings();
     const { messages, images, tabTitle, tabUrl, tabId } =
-      await loadConversationMessages(settings.downloadImagesLocally);
+      await loadConversationMessages(
+        exportButton,
+        settings.downloadImagesLocally,
+      );
 
     currentMessages = messages;
     currentImages = images;
@@ -860,28 +1217,20 @@ exportButton.addEventListener("click", async () => {
     currentTabUrl = tabUrl;
     currentTabId = tabId;
 
-    selectorPanelMessage.textContent = t("popup.selector.subtitle");
+    exportSubtitle.textContent = chatTitleFor(tabTitle);
     selectorExpandToggle.checked = false;
 
     renderSelectorList(messages);
-
-    selectorOverlay.classList.add("open");
-    markOverlayOpened();
+    showScreen("export");
   } catch (error) {
     devError("AI Exporter: failed to load messages for export", error);
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    showToast(
-      message.length < 60 ? message : t("popup.error.loadConversationFailed"),
-      3000,
-    );
+    showErrorToast(error, "popup.error.loadConversationFailed");
   }
 });
 
 /*
  * ---------------------------------------------------------
- * DOWNLOAD FROM SELECTOR
+ * DOWNLOAD
  * ---------------------------------------------------------
  */
 selectorExportButton.addEventListener("click", async () => {
@@ -891,12 +1240,15 @@ selectorExportButton.addEventListener("click", async () => {
     return;
   }
 
-  const format = selectorFormatSelect.value as ExportFormat;
+  const format = getSelectedFormat();
 
-  closeSelectorOverlay();
+  selectorExportButton.classList.add("is-busy");
+  selectorExportLabel.textContent = t("popup.download.preparing");
   setBusy(true);
 
   try {
+    await waitForPaint();
+
     const settings = await loadSettings();
     const filename = buildFilename(currentTabTitle, currentTabUrl, format);
     let downloadFilename = filename;
@@ -959,153 +1311,307 @@ selectorExportButton.addEventListener("click", async () => {
     });
 
     if (!downloadResponse?.success) {
-      throw new Error(downloadResponse?.error ?? "Download failed.");
+      throw new Error(
+        downloadResponse?.error ?? t("popup.toast.downloadFailed"),
+      );
     }
 
-    const downloadId = downloadResponse.data.downloadId;
-
-    devLog("AI Exporter: download started", downloadId);
+    devLog("AI Exporter: download started", downloadResponse.data.downloadId);
 
     showToast(t("popup.toast.downloadStarted"));
   } catch (error) {
     devError("AI Exporter: download failed", error);
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    showToast(
-      message.length < 60 ? message : t("popup.toast.downloadFailed"),
-      3000,
-    );
+    showErrorToast(error, "popup.toast.downloadFailed");
   } finally {
-    resetButtons();
+    selectorExportButton.classList.remove("is-busy");
+    updateFormatHint();
+    setBusy(false);
   }
 });
 
 /*
  * ---------------------------------------------------------
- * SAVE TO GITHUB (from selector)
+ * "SAVE TO GITHUB" SCREEN
  * ---------------------------------------------------------
  *
- * Opens the existing repo-picker panel. Saves Markdown for
- * text-only conversations and a ZIP when selected messages
- * include image files.
+ * Saves Markdown for text-only conversations and a ZIP when
+ * the selected messages include image files, into the
+ * exports/ folder of a repo the person picks. Without a
+ * connected account, or with no repos, the screen says what to
+ * do instead of showing an empty list.
  */
-async function openGithubPanel(): Promise<void> {
-  closeSelectorOverlay();
-  githubPanel.classList.add("open");
-  markOverlayOpened();
+type GithubState =
+  | { kind: "loading" }
+  | { kind: "not-connected" }
+  | { kind: "error"; message: string }
+  | { kind: "empty" }
+  | { kind: "saved"; filename: string; repo: string; url: string | null };
 
-  githubPanelMessage.textContent = t("popup.github.loadingRepos");
-  githubRepoSelect.innerHTML = "";
-  githubRepoSelect.disabled = true;
-  githubPanelSaveButton.disabled = true;
+interface GithubStateAction {
+  icon: string;
+  label: string;
+  run: () => void;
+}
 
-  const statusResponse = await chrome.runtime.sendMessage({
-    type: "GITHUB_GET_STATUS",
-  });
+function openTab(url: string): void {
+  void chrome.tabs.create({ url });
+}
 
-  if (!statusResponse?.success || !statusResponse.data?.connected) {
-    githubPanelMessage.innerHTML = t("popup.github.notConnectedHtml");
+function githubStateContent(state: GithubState): {
+  icon: string;
+  title: string;
+  text: string;
+  action?: GithubStateAction;
+  secondary?: { label: string; run: () => void };
+} {
+  switch (state.kind) {
+    case "loading":
+      return { icon: "", title: t("popup.github.loadingRepos"), text: "" };
+    case "not-connected":
+      return {
+        icon: "i-github",
+        title: t("popup.github.notConnectedTitle"),
+        text: t("popup.github.notConnectedText"),
+        action: {
+          icon: "i-settings",
+          label: t("popup.github.openSettings"),
+          run: () => openTab(chrome.runtime.getURL("options.html#github")),
+        },
+      };
+    case "error":
+      return {
+        icon: "i-alert",
+        title: t("popup.github.failedTitle"),
+        text: state.message || t("popup.github.failedToLoad"),
+        action: {
+          icon: "i-retry",
+          label: t("popup.github.retry"),
+          run: () => void loadGithubRepos(),
+        },
+      };
+    case "empty":
+      return {
+        icon: "i-github",
+        title: t("popup.github.noReposTitle"),
+        text: t("popup.github.noRepos"),
+        action: {
+          icon: "i-plus",
+          label: t("popup.github.createRepo"),
+          run: () => openTab(NEW_REPOSITORY_URL),
+        },
+      };
+    case "saved": {
+      const { url } = state;
 
-    const settingsLink = document.getElementById("github-panel-settings-link");
+      return {
+        icon: "i-check-circle",
+        title: t("popup.github.savedTitle"),
+        text: t("popup.github.savedText", {
+          file: state.filename,
+          repo: state.repo,
+        }),
+        action: url
+          ? {
+              icon: "i-external",
+              label: t("popup.github.view"),
+              run: () => openTab(url),
+            }
+          : undefined,
+        secondary: {
+          label: t("popup.github.done"),
+          run: () => showScreen("main"),
+        },
+      };
+    }
+  }
+}
 
-    settingsLink?.addEventListener("click", (event) => {
-      event.preventDefault();
-      chrome.runtime.openOptionsPage();
+function showGithubState(state: GithubState): void {
+  const content = githubStateContent(state);
+  const loading = state.kind === "loading";
+
+  githubState.hidden = false;
+  githubForm.hidden = true;
+  githubFooter.hidden = true;
+  githubState.dataset.tone =
+    state.kind === "error" ? "error" : state.kind === "saved" ? "success" : "";
+
+  githubStateSpinner.hidden = !loading;
+  githubStateIcon.toggleAttribute("hidden", loading);
+  githubStateIconUse.setAttribute("href", `#${content.icon}`);
+  githubStateTitle.textContent = content.title;
+  githubStateText.textContent = content.text;
+  githubStateText.hidden = content.text === "";
+
+  githubStateAction.hidden = !content.action;
+  githubStateActionHandler = content.action?.run ?? null;
+
+  if (content.action) {
+    githubStateActionIcon.setAttribute("href", `#${content.action.icon}`);
+    githubStateActionLabel.textContent = content.action.label;
+  }
+
+  githubStateSecondary.hidden = !content.secondary;
+  githubStateSecondaryHandler = content.secondary?.run ?? null;
+  githubStateSecondary.textContent = content.secondary?.label ?? "";
+}
+
+githubStateAction.addEventListener("click", () => {
+  githubStateActionHandler?.();
+});
+
+githubStateSecondary.addEventListener("click", () => {
+  githubStateSecondaryHandler?.();
+});
+
+function selectedRepo(): GithubRepoOption | undefined {
+  return githubRepos.find((repo) => repo.full_name === githubRepoSelect.value);
+}
+
+/* Markdown, or a ZIP when the selected messages have images */
+function githubExportFilename(): string {
+  const zipped = getSelectedImageFiles(getSelectedMessages()).length > 0;
+
+  return buildFilename(currentTabTitle, currentTabUrl, zipped ? "zip" : "md");
+}
+
+/*
+ * A public repo is readable by anyone on the internet, so the
+ * screen says which kind the chosen one is. A repo whose
+ * visibility isn't known counts as public.
+ */
+function updateGithubVisibility(): void {
+  const isPublic = selectedRepo()?.private !== true;
+
+  githubVisibility.dataset.visibility = isPublic ? "public" : "private";
+  githubVisibilityIcon.setAttribute("href", isPublic ? "#i-globe" : "#i-lock");
+  githubVisibilityText.textContent = t(
+    isPublic ? "popup.github.public" : "popup.github.private",
+  );
+}
+
+githubRepoSelect.addEventListener("change", () => {
+  updateGithubVisibility();
+  updateButtons();
+});
+
+async function rememberedRepo(): Promise<string | undefined> {
+  try {
+    const stored = await chrome.storage.local.get(GITHUB_REPO_KEY);
+    const value = stored[GITHUB_REPO_KEY];
+
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadGithubRepos(): Promise<void> {
+  const loadId = ++githubLoadId;
+  const isStale = (): boolean =>
+    loadId !== githubLoadId || currentScreen !== "github";
+
+  githubRepos = [];
+  githubRepoSelect.replaceChildren();
+  showGithubState({ kind: "loading" });
+
+  try {
+    const statusResponse = await chrome.runtime.sendMessage({
+      type: "GITHUB_GET_STATUS",
     });
 
-    return;
+    if (isStale()) {
+      return;
+    }
+
+    if (!statusResponse?.success || !statusResponse.data?.connected) {
+      showGithubState({ kind: "not-connected" });
+
+      return;
+    }
+
+    const reposResponse = await chrome.runtime.sendMessage({
+      type: "GITHUB_LIST_REPOS",
+    });
+
+    if (isStale()) {
+      return;
+    }
+
+    if (!reposResponse?.success) {
+      showGithubState({
+        kind: "error",
+        message: errorMessage(
+          reposResponse?.error ?? "",
+          "popup.github.failedToLoad",
+        ),
+      });
+
+      return;
+    }
+
+    const repos = reposResponse.data as GithubRepoOption[];
+
+    if (repos.length === 0) {
+      showGithubState({ kind: "empty" });
+
+      return;
+    }
+
+    const lastRepo = await rememberedRepo();
+
+    if (isStale()) {
+      return;
+    }
+
+    githubRepos = repos;
+    githubRepoSelect.replaceChildren(
+      ...repos.map((repo) => new Option(repo.full_name, repo.full_name)),
+    );
+
+    if (lastRepo && repos.some((repo) => repo.full_name === lastRepo)) {
+      githubRepoSelect.value = lastRepo;
+    }
+
+    updateGithubVisibility();
+    githubFileName.textContent = `exports/${githubExportFilename()}`;
+
+    githubState.hidden = true;
+    githubForm.hidden = false;
+    githubFooter.hidden = false;
+    updateButtons();
+  } catch (error) {
+    devError("AI Exporter: loading GitHub repos failed", error);
+
+    if (!isStale()) {
+      showGithubState({
+        kind: "error",
+        message: errorMessage(error, "popup.github.failedToLoad"),
+      });
+    }
   }
-
-  const reposResponse = await chrome.runtime.sendMessage({
-    type: "GITHUB_LIST_REPOS",
-  });
-
-  if (!reposResponse?.success) {
-    githubPanelMessage.textContent =
-      reposResponse?.error ?? t("popup.github.failedToLoad");
-
-    return;
-  }
-
-  const repos = reposResponse.data as { full_name: string }[];
-
-  if (repos.length === 0) {
-    githubPanelMessage.textContent = t("popup.github.noRepos");
-
-    return;
-  }
-
-  githubPanelMessage.textContent = t("popup.github.chooseRepo");
-
-  for (const repo of repos) {
-    const option = document.createElement("option");
-    option.value = repo.full_name;
-    option.textContent = repo.full_name;
-    githubRepoSelect.appendChild(option);
-  }
-
-  githubRepoSelect.disabled = false;
-  githubPanelSaveButton.disabled = false;
 }
 
 selectorGithubButton.addEventListener("click", () => {
-  const chosen = getSelectedMessages();
-
-  if (chosen.length === 0) {
+  if (getSelectedMessages().length === 0) {
     return;
   }
 
-  void openGithubPanel();
-});
-
-function closeGithubPanel(): void {
-  githubPanel.classList.remove("open");
-  markOverlayClosed();
-}
-
-githubPanelCancelButton.addEventListener("click", () => {
-  closeGithubPanel();
-});
-
-function closeGithubConfirm(): void {
-  githubConfirmOverlay.classList.remove("open");
-  githubConfirmExportButton.disabled = false;
-  githubConfirmExportButton.textContent = t("popup.githubConfirm.export");
-  markOverlayClosed();
-}
-
-function openGithubConfirm(): void {
-  githubConfirmOverlay.classList.add("open");
-  markOverlayOpened();
-}
-
-githubConfirmCancelButton.addEventListener("click", () => {
-  closeGithubConfirm();
-});
-
-githubConfirmOverlay.addEventListener("click", (event) => {
-  if (event.target === githubConfirmOverlay) {
-    closeGithubConfirm();
-  }
+  showScreen("github");
+  void loadGithubRepos();
 });
 
 async function saveToGitHub(): Promise<void> {
   const fullName = githubRepoSelect.value;
-
-  if (!fullName) {
-    return;
-  }
-
   const chosen = getSelectedMessages();
 
-  if (chosen.length === 0) {
+  if (!fullName || chosen.length === 0) {
     return;
   }
 
-  closeGithubConfirm();
+  githubPanelSaveButton.classList.add("is-busy");
+  githubSaveLabel.textContent = t("popup.github.saving");
   setBusy(true);
-  githubPanelSaveButton.textContent = t("popup.github.saving");
 
   try {
     const markdown = await buildMarkdownFromMessages(chosen);
@@ -1144,61 +1650,86 @@ async function saveToGitHub(): Promise<void> {
 
     devLog("AI Exporter: saved to GitHub", saveResponse.data);
 
-    closeGithubPanel();
-    showToast(t("popup.toast.githubSaved"));
+    const htmlUrl = saveResponse.data?.htmlUrl;
+
+    showGithubState({
+      kind: "saved",
+      filename: `exports/${filename}`,
+      repo: fullName,
+      url:
+        typeof htmlUrl === "string" && htmlUrl.startsWith("https://github.com/")
+          ? htmlUrl
+          : null,
+    });
+    githubStateAction.focus({ preventScroll: true });
+
+    void chrome.storage.local
+      .set({ [GITHUB_REPO_KEY]: fullName })
+      .catch(() => undefined);
+
     openExportSuccess();
   } catch (error) {
     devError("AI Exporter: GitHub save failed", error);
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    showToast(
-      message.length < 60 ? message : t("popup.toast.githubSaveFailed"),
-      3000,
-    );
+    showErrorToast(error, "popup.toast.githubSaveFailed");
   } finally {
-    resetButtons();
-    githubPanelSaveButton.textContent = t("popup.github.save");
+    githubPanelSaveButton.classList.remove("is-busy");
+    githubSaveLabel.textContent = t("popup.github.save");
+    setBusy(false);
   }
 }
 
 githubPanelSaveButton.addEventListener("click", () => {
-  devLog("AI Exporter: GitHub save confirmation requested");
+  const repo = selectedRepo();
 
-  if (!githubRepoSelect.value) {
+  if (!repo) {
     return;
   }
 
-  openGithubConfirm();
+  if (repo.private === true) {
+    void saveToGitHub();
+
+    return;
+  }
+
+  githubConfirm.showModal();
+  githubConfirmCancelButton.focus();
+});
+
+githubConfirmCancelButton.addEventListener("click", () => {
+  githubConfirm.close();
 });
 
 githubConfirmExportButton.addEventListener("click", () => {
+  githubConfirm.close();
   void saveToGitHub();
+});
+
+/* A click on the dimmed backdrop around the dialog cancels it */
+githubConfirm.addEventListener("click", (event) => {
+  if (event.target === githubConfirm) {
+    githubConfirm.close();
+  }
 });
 
 /*
  * ---------------------------------------------------------
- * EXPORT SUCCESS OVERLAY (shown on the ChatGPT page)
+ * EXPORT SUCCESS OVERLAY (shown on the chat page)
  * ---------------------------------------------------------
  *
- * The success overlay is NOT rendered in the popup anymore -
- * Chrome closes the popup automatically the moment focus
- * moves anywhere outside it, which happens routinely right
- * when a download finishes (e.g. a native Save As dialog
- * stealing focus, or the person just clicking back onto the
- * page). Instead, this sends a message to content.ts running
- * on the active ChatGPT tab, which injects and shows the
- * overlay directly on the page, where it survives the popup
- * closing.
+ * The success overlay is NOT rendered in the popup - Chrome
+ * closes the popup automatically the moment focus moves
+ * anywhere outside it, which happens routinely right when a
+ * download finishes (e.g. a native Save As dialog stealing
+ * focus, or the person just clicking back onto the page).
+ * Instead, this sends a message to content.ts running on the
+ * active chat tab, which injects and shows the overlay
+ * directly on the page, where it survives the popup closing.
  */
 function openExportSuccess(): void {
   void (async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
+    const tab = await getActiveTab();
 
-    if (!tab.id) {
+    if (!tab?.id) {
       return;
     }
 
@@ -1207,7 +1738,7 @@ function openExportSuccess(): void {
       .catch(() => {
         /*
          * Content script may not be running in this tab (e.g.
-         * the person navigated away from chatgpt.com after
+         * the person navigated away from the chat after
          * starting the export) - nothing to show it on, so
          * just drop it silently. The file was still saved
          * successfully either way.
@@ -1217,56 +1748,60 @@ function openExportSuccess(): void {
 }
 
 /*
- * Note: the download success overlay is NOT triggered from here
- * anymore. background.ts sends SHOW_EXPORT_SUCCESS to the
- * ChatGPT tab directly once a tracked download actually
- * completes (see the DOWNLOAD_START handler and the comment
- * above trackedDownloadIds in background.ts) - the popup is
- * usually long closed by then (Firefox closes it the instant
- * the native Save As dialog steals focus), so a popup-local
- * listener for DOWNLOAD_COMPLETE can't be relied on to still be
- * around to relay it.
+ * Note: the download success overlay is NOT triggered from here.
+ * background.ts sends SHOW_EXPORT_SUCCESS to the chat tab
+ * directly once a tracked download actually completes (see the
+ * DOWNLOAD_START handler and the comment above
+ * trackedDownloadIds in background.ts) - the popup is usually
+ * long closed by then (Firefox closes it the instant the native
+ * Save As dialog steals focus), so a popup-local listener for
+ * DOWNLOAD_COMPLETE can't be relied on to still be around to
+ * relay it.
  */
 
 /*
  * ---------------------------------------------------------
- * GITHUB STAR
+ * SUPPORT: GITHUB STAR, BUY ME A COFFEE
  * ---------------------------------------------------------
  */
-githubStarButton.addEventListener("click", async () => {
-  githubStarButton.disabled = true;
-  githubStarButton.textContent = t("popup.star.opening");
-
+async function starProjectDirectly(): Promise<boolean> {
   try {
     const response = await chrome.runtime.sendMessage({
       type: "GITHUB_STAR_PROJECT",
     });
 
-    if (response?.success) {
+    return response?.success === true;
+  } catch (error) {
+    devWarn("AI Exporter: direct GitHub star failed", error);
+
+    return false;
+  }
+}
+
+githubStarButton.addEventListener("click", async () => {
+  starring = true;
+  githubStarLabel.textContent = t("popup.star.opening");
+  updateButtons();
+
+  try {
+    if (await starProjectDirectly()) {
       showToast(t("popup.toast.starThanks"));
-      githubStarButton.disabled = false;
-      githubStarButton.textContent = t("popup.support.star");
 
       return;
     }
-  } catch (error) {
-    devWarn("AI Exporter: direct GitHub star failed", error);
+
+    await chrome.tabs.create({
+      url: `https://github.com/${PROJECT_REPOSITORY}`,
+    });
+
+    showToast(t("popup.toast.openedGithub"));
+  } finally {
+    starring = false;
+    githubStarLabel.textContent = t("popup.support.star");
+    updateButtons();
   }
-
-  await chrome.tabs.create({
-    url: `https://github.com/${PROJECT_REPOSITORY}`,
-  });
-
-  showToast(t("popup.toast.openedGithub"));
-  githubStarButton.disabled = false;
-  githubStarButton.textContent = t("popup.support.star");
 });
 
-/*
- * ---------------------------------------------------------
- * BUY ME A COFFEE
- * ---------------------------------------------------------
- */
 buyCoffeeButton.addEventListener("click", () => {
   void chrome.tabs.create({ url: COFFEE_URL });
 });
@@ -1294,7 +1829,6 @@ const installsUpdates = storeInstallsUpdates();
 let updateState: UpdateState = {};
 let updateCheckRunning = false;
 let showUpdateCheckProgress = false;
-let installingUpdate = false;
 
 appVersionLabel.textContent = `v${runningVersion}`;
 
@@ -1321,7 +1855,7 @@ function formatTimeAgo(timestamp: number): string {
 
 /* The shortcut that opens Firefox's Add-ons Manager. */
 function addonsManagerShortcut(): string {
-  return navigator.userAgent.includes("Mac") ? "⌘⇧A" : "Ctrl+Shift+A";
+  return isMac() ? "⌘⇧A" : "Ctrl+Shift+A";
 }
 
 function updateStatusLabel(view: UpdateView): string {
@@ -1396,9 +1930,9 @@ function reportUpdateCheck(result: string | undefined): void {
   ) {
     showToast(t("popup.update.upToDateToast"));
   } else if (result === "throttled") {
-    showToast(t("popup.update.throttled"), 3000);
+    showToast(t("popup.update.throttled"));
   } else {
-    showToast(t("popup.update.checkFailed"), 3000);
+    showToast(t("popup.update.checkFailed"), "error");
   }
 }
 
@@ -1462,7 +1996,7 @@ async function showUpdateNotice(): Promise<void> {
   await chrome.storage.local.remove(UPDATE_NOTICE_KEY);
 
   if (notice === runningVersion) {
-    showToast(t("popup.update.updatedToast", { version: runningVersion }), 3000);
+    showToast(t("popup.update.updatedToast", { version: runningVersion }));
   }
 }
 
@@ -1483,8 +2017,8 @@ updateStatusButton.addEventListener("click", () => {
 
 updateApplyButton.addEventListener("click", async () => {
   installingUpdate = true;
-  updateApplyButton.disabled = true;
   updateApplyButton.textContent = t("popup.update.installing");
+  updateButtons();
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -1496,7 +2030,7 @@ updateApplyButton.addEventListener("click", async () => {
       return;
     }
 
-    showToast(t("popup.update.installLater"), 3000);
+    showToast(t("popup.update.installLater"));
   } catch {
     /*
      * The reload can take this popup down before the answer
@@ -1506,7 +2040,7 @@ updateApplyButton.addEventListener("click", async () => {
   }
 
   installingUpdate = false;
-  updateApplyButton.disabled = false;
+  updateButtons();
   renderUpdateStatus();
 });
 
@@ -1519,4 +2053,29 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   updateState = (change.newValue as UpdateState | undefined) ?? {};
   renderUpdateStatus();
+});
+
+/*
+ * ---------------------------------------------------------
+ * STARTUP
+ * ---------------------------------------------------------
+ *
+ * initI18n()'s underlying chrome.storage.sync.get() resolves
+ * right after the popup opens, well before a person can click
+ * anything - every string set later (toasts, progress, button
+ * labels) happens inside event handlers, after it. What the
+ * popup shows about the current tab and updates waits for it.
+ */
+const activeTab = getActiveTab().catch((error: unknown) => {
+  devWarn("AI Exporter: couldn't read the active tab", error);
+
+  return undefined;
+});
+
+void initI18n().then(async () => {
+  applyTranslations();
+  labelSiteLinks();
+  void restoreExportFormat();
+  void initUpdateStatus();
+  renderChatCard(await activeTab);
 });

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getChatSite, stripChatSiteSuffix } from "../src/chat-sites";
+import {
+  getChatSite,
+  isChatConversationUrl,
+  stripChatSiteSuffix,
+} from "../src/chat-sites";
+import { getClaudeConversationId } from "../src/claude-conversation";
+import { getGeminiConversationId } from "../src/gemini-conversation";
 
 describe("getChatSite", () => {
   it("recognizes ChatGPT and Claude conversation URLs", () => {
@@ -82,5 +88,69 @@ describe("stripChatSiteSuffix", () => {
     );
     expect(stripChatSiteSuffix("Trip ideas - Gemini")).toBe("Trip ideas");
     expect(stripChatSiteSuffix("\u{200E}Google Gemini")).toBe("Google Gemini");
+  });
+});
+
+describe("isChatConversationUrl", () => {
+  const UUID = "0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
+
+  it("recognizes ChatGPT conversations, in GPTs and projects too", () => {
+    expect(isChatConversationUrl(`https://chatgpt.com/c/${UUID}`)).toBe(true);
+    expect(
+      isChatConversationUrl(
+        `https://chatgpt.com/g/g-abc123-trip-helper/c/${UUID}`,
+      ),
+    ).toBe(true);
+    expect(
+      isChatConversationUrl(
+        `https://chatgpt.com/g/g-p-6812ab/project/c/${UUID}?model=gpt-5`,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects ChatGPT pages that aren't a conversation", () => {
+    expect(isChatConversationUrl("https://chatgpt.com/")).toBe(false);
+    expect(isChatConversationUrl("https://chatgpt.com/gpts")).toBe(false);
+    expect(isChatConversationUrl(`https://chatgpt.com/share/${UUID}`)).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    `/chat/${UUID}`,
+    `/chat/${UUID}/`,
+    "/chat/not-a-uuid",
+    "/chat/------------------------------------",
+    "/new",
+    "/recents",
+    `/project/${UUID}`,
+    "/",
+  ])("agrees with the content script on claude.ai%s", (pathname) => {
+    expect(isChatConversationUrl(`https://claude.ai${pathname}`)).toBe(
+      getClaudeConversationId(pathname) !== null,
+    );
+  });
+
+  it.each([
+    "/app/e87b6c6ac16404a5",
+    "/app/e87b6c6ac16404a5/",
+    "/u/1/app/e87b6c6ac16404a5",
+    "/gem/coding-partner/e87b6c6ac16404a5",
+    "/u/2/gem/coding-partner/e87b6c6ac16404a5",
+    "/app",
+    "/app/",
+    "/gems/view",
+    "/u/1/app",
+    "/",
+  ])("agrees with the content script on gemini.google.com%s", (pathname) => {
+    expect(isChatConversationUrl(`https://gemini.google.com${pathname}`)).toBe(
+      getGeminiConversationId(pathname) !== null,
+    );
+  });
+
+  it("rejects other sites and missing URLs", () => {
+    expect(isChatConversationUrl(`https://example.com/c/${UUID}`)).toBe(false);
+    expect(isChatConversationUrl(undefined)).toBe(false);
+    expect(isChatConversationUrl("not a url")).toBe(false);
   });
 });

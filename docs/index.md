@@ -80,7 +80,7 @@ The GitHub access token is stored locally in Chrome extension storage on the use
 It is removed when the user disconnects GitHub through the extension or when the token is detected to be invalid or revoked.
 Extension settings
 
-Export preferences, such as heading style, timestamp preference, message spacing, and export format, are stored using Chrome's extension storage so that the selected preferences can be used across browser sessions.
+Export preferences, such as heading style, timestamp preference, message spacing, and export format, are stored using Chrome's extension storage so that the selected preferences can be used across browser sessions. The name of the GitHub repository an export was last saved to is kept in the extension's local storage, so that the popup can suggest it again.
 Update status
 
 The version number of the newest AIExporter release and the time of the last update check are stored in the extension's local storage, so that the popup can show whether the installed version is up to date. 5. Data Sharing

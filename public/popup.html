@@ -8,20 +8,36 @@
       :root {
         color-scheme: light;
 
-        --surface: #ffffff;
-        --canvas: #f6f8fa;
-        --border: #d0d7de;
+        --bg: #ffffff;
+        --card: #f6f8fa;
+        --card-border: #d8dee4;
+        --border: #c9d1d9;
+        --divider: #eaeef2;
+        --tile: #eef1f4;
         --text: #1b1f24;
-        --text-muted: #636c76;
+        --text-muted: #57606a;
         --accent: #10a37f;
-        --accent-hover: #0d8e6d;
-        --accent-soft: rgba(16, 163, 127, 0.08);
-        --github: #24292e;
-        --github-hover: #1b1f23;
-        --github-text: #ffffff;
-        --radius: 6px;
+        --accent-text: #0b7a5f;
+        --accent-soft: rgba(16, 163, 127, 0.1);
+        --accent-ring: rgba(16, 163, 127, 0.35);
+        /* Filled buttons: darker than --accent so white text
+           on them stays readable (4.6:1) */
+        --primary: #0d8466;
+        --primary-hover: #0b7359;
+        --hover: rgba(31, 35, 40, 0.06);
+        --switch-off: #afb8c1;
+        --danger: #cf222e;
+        --danger-surface: #fff1f0;
+        --warning-text: #7d4e00;
+        --warning-surface: #fff8c5;
+        --warning-border: #eed888;
+        --heart: #e5534b;
+        --star: #bf8700;
+        --coffee: #9a6700;
         --overlay: rgba(0, 0, 0, 0.4);
-        --loading-overlay: rgba(255, 255, 255, 0.85);
+        --toast-bg: #1f2328;
+        --toast-text: #f0f6fc;
+        --shadow-lg: 0 12px 32px rgba(31, 35, 40, 0.24);
       }
 
       :root[data-theme="light"] {
@@ -30,37 +46,67 @@
 
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --surface: #0d1117;
-        --canvas: #161b22;
-        --border: #30363d;
+        --bg: #0d1117;
+        --card: #161b22;
+        --card-border: #30363d;
+        --border: #3d444d;
+        --divider: #21262d;
+        --tile: #21262d;
         --text: #f0f6fc;
-        --text-muted: #8b949e;
+        --text-muted: #9198a1;
         --accent: #10a37f;
-        --accent-hover: #12b886;
-        --accent-soft: rgba(16, 163, 127, 0.14);
-        --github: #21262d;
-        --github-hover: #30363d;
-        --github-text: #f0f6fc;
+        --accent-text: #2fbf8f;
+        --accent-soft: rgba(16, 163, 127, 0.16);
+        --accent-ring: rgba(16, 163, 127, 0.45);
+        --primary: #0d8466;
+        --primary-hover: #0f9675;
+        --hover: rgba(240, 246, 252, 0.06);
+        --switch-off: #484f58;
+        --danger: #f85149;
+        --danger-surface: #2d1114;
+        --warning-text: #e3b341;
+        --warning-surface: rgba(187, 128, 9, 0.15);
+        --warning-border: rgba(187, 128, 9, 0.4);
+        --heart: #f47067;
+        --star: #e3b341;
+        --coffee: #e3b341;
         --overlay: rgba(0, 0, 0, 0.6);
-        --loading-overlay: rgba(13, 17, 23, 0.9);
+        --toast-bg: #2d333b;
+        --toast-text: #f0f6fc;
+        --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
       }
 
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme]) {
           color-scheme: dark;
-          --surface: #0d1117;
-          --canvas: #161b22;
-          --border: #30363d;
+          --bg: #0d1117;
+          --card: #161b22;
+          --card-border: #30363d;
+          --border: #3d444d;
+          --divider: #21262d;
+          --tile: #21262d;
           --text: #f0f6fc;
-          --text-muted: #8b949e;
+          --text-muted: #9198a1;
           --accent: #10a37f;
-          --accent-hover: #12b886;
-          --accent-soft: rgba(16, 163, 127, 0.14);
-          --github: #21262d;
-          --github-hover: #30363d;
-          --github-text: #f0f6fc;
+          --accent-text: #2fbf8f;
+          --accent-soft: rgba(16, 163, 127, 0.16);
+          --accent-ring: rgba(16, 163, 127, 0.45);
+          --primary: #0d8466;
+          --primary-hover: #0f9675;
+          --hover: rgba(240, 246, 252, 0.06);
+          --switch-off: #484f58;
+          --danger: #f85149;
+          --danger-surface: #2d1114;
+          --warning-text: #e3b341;
+          --warning-surface: rgba(187, 128, 9, 0.15);
+          --warning-border: rgba(187, 128, 9, 0.4);
+          --heart: #f47067;
+          --star: #e3b341;
+          --coffee: #e3b341;
           --overlay: rgba(0, 0, 0, 0.6);
-          --loading-overlay: rgba(13, 17, 23, 0.9);
+          --toast-bg: #2d333b;
+          --toast-text: #f0f6fc;
+          --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
         }
       }
 
@@ -68,166 +114,254 @@
         box-sizing: border-box;
       }
 
-      html {
-        background: var(--surface);
-        width: 340px;
-        overflow: hidden;
+      [hidden] {
+        display: none !important;
       }
 
-      body.overlay-open {
-        height: 600px;
+      html {
+        background: var(--bg);
+        overflow-x: hidden;
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        font-size: 13px;
-        color: var(--text);
-        width: 340px;
-        padding: 14px;
+        width: 360px;
         margin: 0;
-        background: var(--surface);
-        min-height: min-content;
-        position: relative;
-        border-radius: 8px;
+        color: var(--text);
+        background: var(--bg);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /*
+       * The export and GitHub screens take the popup's full
+       * height (browsers cap popups at 600px), so their message
+       * list can scroll while the buttons stay in view. The
+       * main screen is only as tall as its content.
+       */
+      body.is-full {
+        height: 600px;
         overflow: hidden;
       }
 
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+
       button {
-        display: block;
-        width: 100%;
-        padding: 10px 10px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        color: var(--text);
         cursor: pointer;
-        font-family: inherit;
-        font-size: 13px;
-        font-weight: 500;
-        transition: background 0.12s ease;
       }
 
-      button:hover:not(:disabled) {
-        background: var(--canvas);
+      p {
+        margin: 0;
       }
 
-      button:disabled {
-        cursor: default;
-        opacity: 0.6;
-      }
-
-      button:focus-visible {
+      :focus-visible {
         outline: 2px solid var(--accent);
-        outline-offset: 1px;
+        outline-offset: 2px;
+      }
+
+      .icon {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .spinner {
+        display: none;
+        width: 18px;
+        height: 18px;
+        flex: none;
+        border: 2.5px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .is-busy .spinner {
+        display: block;
+      }
+
+      .is-busy > .icon,
+      .is-busy .action-icon .icon {
+        display: none;
       }
 
       /*
        * ---------------------------------------------------
-       * MAIN POPUP BODY - just Copy + Export
+       * BUTTONS
        * ---------------------------------------------------
        */
 
-      #copy {
-        margin-bottom: 8px;
-      }
-
-      #export {
-        background: var(--accent);
-        color: var(--github-text);
-        border-color: var(--accent);
-        margin-bottom: 8px;
-      }
-
-      #export:hover:not(:disabled) {
-        background: var(--accent-hover);
-      }
-
-      .support-card {
-        margin: 4px 0 12px;
-        padding: 12px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: var(--canvas);
-        text-align: center;
-      }
-
-      .support-card p {
-        margin: 0 0 4px;
-        color: var(--text);
-        font-size: 12.5px;
-        font-weight: 600;
-      }
-
-      .support-subtitle {
-        margin: 0 0 10px !important;
-        color: var(--text-muted);
-        font-size: 11px;
-        font-weight: 400 !important;
-        line-height: 1.4;
-      }
-
-      .support-row {
-        display: flex;
-        gap: 8px;
-      }
-
-      .support-row button {
-        flex: 1;
-        padding: 8px 6px;
-        font-size: 12px;
-        border-radius: 7px;
-        display: flex;
+      .button {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 5px;
-      }
-
-      #github-star {
-        background: var(--github);
-        color: var(--github-text);
-        border-color: var(--github);
-      }
-
-      #github-star:hover:not(:disabled) {
-        background: var(--github-hover);
-      }
-
-      #buy-coffee {
-        background: #ffdd00;
-        color: #1b1f24;
-        border-color: #ffdd00;
+        gap: 8px;
+        height: 40px;
+        padding: 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        font-size: 14px;
         font-weight: 600;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
       }
 
-      #buy-coffee:hover:not(:disabled) {
-        background: #f0d100;
-        border-color: #f0d100;
+      .button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+      .button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .button.is-busy:disabled {
+        cursor: progress;
+        opacity: 0.85;
+      }
+
+      .button .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      .button--primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: #ffffff;
+      }
+
+      .button--primary:hover:not(:disabled) {
+        border-color: var(--primary-hover);
+        background: var(--primary-hover);
+      }
+
+      .button--large {
+        height: 46px;
+        font-size: 15px;
+      }
+
+      .button--block {
+        width: 100%;
+      }
+
+      .button--quiet {
+        height: 34px;
+        border-color: transparent;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .button--quiet:hover:not(:disabled) {
+        color: var(--text);
       }
 
       /*
        * ---------------------------------------------------
-       * UPDATE BANNER
+       * MAIN SCREEN
        * ---------------------------------------------------
-       *
-       * Only there when there's something to act on: an
-       * update that's downloaded and waiting, or (in
-       * Firefox) a newer version on the store.
        */
 
-      #update-banner {
+      #main-view {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 0 16px 12px;
+      }
+
+      .app-header {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 0 0 12px;
-        padding: 10px 12px;
+        padding-top: 14px;
+      }
+
+      .app-logo {
+        width: 28px;
+        height: 28px;
+        flex: none;
+        border-radius: 8px;
+      }
+
+      .app-name {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .header-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 13px;
+        font-weight: 600;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .header-button:hover {
+        background: var(--hover);
+        color: var(--text);
+      }
+
+      .header-button .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      /* Update banner: a downloaded update, or (in Firefox) a
+         newer version on the store */
+      #update-banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
         border: 1px solid var(--accent);
-        border-radius: 10px;
+        border-radius: 12px;
         background: var(--accent-soft);
       }
 
-      #update-banner[hidden],
-      #update-apply[hidden] {
-        display: none;
+      #update-banner > .icon {
+        color: var(--accent-text);
       }
 
       .update-banner-text {
@@ -236,58 +370,298 @@
       }
 
       #update-banner-title {
-        margin: 0;
-        font-size: 12.5px;
-        font-weight: 600;
-        color: var(--text);
+        font-size: 13.5px;
+        font-weight: 700;
       }
 
       #update-banner-message {
-        margin: 2px 0 0;
-        font-size: 11px;
-        line-height: 1.4;
+        margin-top: 2px;
         color: var(--text-muted);
+        font-size: 12.5px;
+        line-height: 1.4;
       }
 
       #update-apply {
-        flex-shrink: 0;
-        width: auto;
-        padding: 7px 12px;
-        border-color: var(--accent);
-        background: var(--accent);
-        color: var(--github-text);
-        font-size: 12px;
-        font-weight: 600;
-        white-space: nowrap;
+        height: 34px;
+        padding: 0 12px;
+        font-size: 13px;
       }
 
-      #update-apply:hover:not(:disabled) {
-        background: var(--accent-hover);
-      }
-
-      /*
-       * ---------------------------------------------------
-       * FOOTER - version and update status, Settings
-       * ---------------------------------------------------
-       */
-
-      .popup-footer {
+      /* The chat the buttons below will save */
+      .chat-card {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-top: 2px;
-        padding-top: 9px;
-        border-top: 1px solid var(--border);
-        font-size: 11px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--card);
+      }
+
+      .tile {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        flex: none;
+        border-radius: 10px;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .chat-card:not([data-state="ready"]) .tile {
+        background: var(--tile);
         color: var(--text-muted);
       }
 
-      .update-status {
-        display: flex;
+      .chat-card-text {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .chat-card-label {
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .chat-card-title {
+        display: -webkit-box;
+        margin-top: 1px;
+        overflow: hidden;
+        font-size: 14.5px;
+        font-weight: 700;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .chat-card-heading {
+        font-size: 14.5px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .chat-card-desc {
+        margin-top: 3px;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      /* Under the tile and the text, across the whole card */
+      .site-links {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+      }
+
+      .site-link {
+        display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 5px;
         min-width: 0;
+        height: 32px;
+        padding: 0 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--bg);
+        font-size: 13px;
+        font-weight: 600;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .site-link .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+      }
+
+      .site-link:hover {
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+
+      /* Save as a file / Copy */
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .action {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        min-height: 64px;
+        padding: 11px 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--bg);
+        text-align: left;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+
+      .action:hover:not(:disabled) {
+        border-color: var(--border);
+        background: var(--hover);
+      }
+
+      .action:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .action.is-busy:disabled {
+        cursor: progress;
+        opacity: 1;
+      }
+
+      .action-icon {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        flex: none;
+        border-radius: 10px;
+        background: var(--tile);
+      }
+
+      .action-text {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .action-title {
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .action-desc {
+        color: var(--text-muted);
+        font-size: 12.5px;
+        line-height: 1.4;
+      }
+
+      .action-chevron {
+        width: 18px;
+        height: 18px;
+      }
+
+      .action--primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: #ffffff;
+      }
+
+      .action--primary:hover:not(:disabled) {
+        border-color: var(--primary-hover);
+        background: var(--primary-hover);
+      }
+
+      .action--primary .action-icon {
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .action--primary .action-desc {
+        color: #ffffff;
+      }
+
+      /* Support - kept below the actions, so it never comes
+         between a person and what they opened the popup for */
+      .support {
+        padding-top: 12px;
+        border-top: 1px solid var(--divider);
+      }
+
+      .support-text {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-bottom: 8px;
+        color: var(--text-muted);
+        font-size: 12.5px;
+      }
+
+      .support-text .icon {
+        width: 15px;
+        height: 15px;
+        margin-top: 2px;
+        fill: var(--heart);
+        stroke: var(--heart);
+      }
+
+      .support-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .support-button {
+        display: inline-flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        height: 34px;
+        padding: 0 8px;
+        border: 1px solid var(--card-border);
+        border-radius: 9px;
+        background: var(--bg);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: background 0.15s;
+      }
+
+      .support-button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+      .support-button:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+
+      .support-button span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .support-button .icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      #github-star .icon {
+        fill: var(--star);
+        stroke: var(--star);
+      }
+
+      #buy-coffee .icon {
+        color: var(--coffee);
+      }
+
+      /* Footer: version and update status */
+      .popup-footer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-width: 0;
+        color: var(--text-muted);
+        font-size: 12px;
       }
 
       #app-version {
@@ -299,19 +673,16 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        width: auto;
         min-width: 0;
-        padding: 0;
+        padding: 2px 4px;
         border: 0;
-        border-radius: 3px;
+        border-radius: 4px;
         background: none;
         color: var(--text-muted);
-        font-size: 11px;
-        font-weight: 400;
+        font-size: 12px;
       }
 
       #update-status:hover:not(:disabled) {
-        background: none;
         color: var(--text);
       }
 
@@ -326,9 +697,9 @@
       }
 
       #update-status-text {
-        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .update-status-icon {
@@ -366,682 +737,1369 @@
         background: var(--accent);
       }
 
-      .footer-link {
-        flex-shrink: 0;
-        font-size: 11px;
-        color: var(--text-muted);
-        text-decoration: none;
-      }
-
-      .footer-link:hover {
-        color: var(--text);
-        text-decoration: underline;
-      }
-
       /*
        * ---------------------------------------------------
-       * LOADING OVERLAY
+       * EXPORT AND GITHUB SCREENS
        * ---------------------------------------------------
-       *
-       * Grays out and covers the entire popup while messages
-       * are being fetched, so the person can't click anything
-       * else mid-load and can see something is happening.
        */
 
-      #loading-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 2000;
+      .screen {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      .screen-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 16px 10px 8px;
+        border-bottom: 1px solid var(--divider);
+      }
+
+      .back-button {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        flex: none;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        transition: background 0.15s;
+      }
+
+      .back-button:hover {
+        background: var(--hover);
+      }
+
+      .screen-heading {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .screen-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .screen-title:focus {
+        outline: none;
+      }
+
+      .screen-subtitle {
+        overflow: hidden;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .screen-body {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+        padding: 12px 16px 14px;
+      }
+
+      .screen-footer {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 16px 10px;
+        border-top: 1px solid var(--divider);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 26px;
+        margin-bottom: 8px;
+      }
+
+      .section-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .section-meta {
+        color: var(--text-muted);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+
+      .section-meta.is-warning {
+        color: var(--danger);
+        font-weight: 600;
+      }
+
+      /* Quick picks next to the "Messages" title, then the list
+         with a Select all row on top */
+      .quick-picks {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .message-box {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 150px;
+        overflow: hidden;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+      }
+
+      .message-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 38px;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--card);
+      }
+
+      .check-all {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        margin: 0;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .chip {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: var(--loading-overlay);
-        backdrop-filter: blur(1px);
+        gap: 5px;
+        height: 26px;
+        padding: 0 10px;
+        border: 1px solid var(--card-border);
+        border-radius: 999px;
+        background: var(--bg);
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
 
-      #loading-overlay.open {
+      .chip:hover {
+        border-color: var(--border);
+        background: var(--hover);
+      }
+
+      .chip .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+      }
+
+      .chip--icon {
+        width: 26px;
+        padding: 0;
+      }
+
+      .message-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .message {
         display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider);
+        cursor: pointer;
       }
 
-      #loading-overlay-content {
+      .message:last-child {
+        border-bottom: 0;
+      }
+
+      .message:hover {
+        background: var(--hover);
+      }
+
+      .message input {
+        margin-top: 2px;
+      }
+
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        flex: none;
+        margin-top: -1px;
+        border-radius: 50%;
+        transition: opacity 0.15s;
+      }
+
+      .avatar .icon {
+        width: 14px;
+        height: 14px;
+        stroke-width: 2;
+      }
+
+      .avatar--user {
+        background: var(--tile);
+        color: var(--text-muted);
+      }
+
+      .avatar--assistant {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      /* Who wrote it, then the first two lines of the message */
+      .message-text {
+        display: -webkit-box;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        font-size: 13px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        transition: opacity 0.15s;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .message-role {
+        margin-right: 6px;
+        color: var(--text-muted);
+        font-weight: 700;
+      }
+
+      .message-list.is-expanded .message-text {
+        display: block;
+        white-space: pre-wrap;
+        -webkit-line-clamp: none;
+      }
+
+      /* Left out of the export: faded, so it's obvious */
+      .message:has(input:not(:checked)) .avatar,
+      .message:has(input:not(:checked)) .message-text {
+        opacity: 0.45;
+      }
+
+      .switch-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .switch {
+        position: relative;
+        display: inline-flex;
+        width: 34px;
+        height: 20px;
+        flex: none;
+      }
+
+      .switch input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 1;
+      }
+
+      .switch-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: var(--switch-off);
+        transition: background 0.2s;
+      }
+
+      .switch-track::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s;
+      }
+
+      .switch input:checked + .switch-track {
+        background: var(--accent);
+      }
+
+      .switch input:checked + .switch-track::after {
+        transform: translateX(14px);
+      }
+
+      .switch input:focus-visible + .switch-track {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* File type */
+      .format-section {
+        margin-top: 14px;
+      }
+
+      .formats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .format {
+        position: relative;
+        display: flex;
+        flex: 1 1 auto;
+      }
+
+      .format input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .format-face {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 34px;
+        padding: 0 10px;
+        border: 1.5px solid var(--card-border);
+        border-radius: 9px;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .format:hover .format-face {
+        border-color: var(--text-muted);
+      }
+
+      .format input:checked + .format-face {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      .format input:focus-visible + .format-face {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .format-hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 8px;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        line-height: 1.4;
+      }
+
+      .format-hint .icon {
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+      }
+
+      /* GitHub screen */
+      .state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        margin: auto 0;
+        padding: 12px 4px 20px;
         text-align: center;
       }
 
-      #loading-overlay-spinner {
-        width: 28px;
-        height: 28px;
-        margin: 0 auto 14px auto;
-        border: 3px solid var(--border);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
+      .state-icon {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 6px;
+        border-radius: 14px;
+        background: var(--tile);
+        color: var(--text-muted);
       }
 
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
+      .state-icon .icon {
+        width: 26px;
+        height: 26px;
       }
 
-      #loading-overlay-message {
+      .state-icon .spinner {
+        display: block;
+        width: 24px;
+        height: 24px;
+        color: var(--accent);
+      }
+
+      [data-tone="success"] .state-icon {
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+
+      [data-tone="error"] .state-icon {
+        background: var(--danger-surface);
+        color: var(--danger);
+      }
+
+      [data-tone="warning"] .state-icon {
+        background: var(--warning-surface);
+        color: var(--warning-text);
+      }
+
+      .state-title {
         margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .state-text {
+        max-width: 290px;
+        color: var(--text-muted);
         font-size: 13px;
-        font-weight: 500;
+        overflow-wrap: anywhere;
+      }
+
+      .state-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .field-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .select {
+        position: relative;
+        display: block;
+      }
+
+      .select select {
+        width: 100%;
+        height: 42px;
+        padding: 0 38px 0 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        font-size: 14px;
+        cursor: pointer;
+        appearance: none;
+      }
+
+      .select select:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .select .icon {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        width: 18px;
+        height: 18px;
+        color: var(--text-muted);
+        pointer-events: none;
+        transform: translateY(-50%);
+      }
+
+      .visibility {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-top: 8px;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        line-height: 1.4;
+      }
+
+      .visibility .icon {
+        width: 15px;
+        height: 15px;
+        margin-top: 1px;
+      }
+
+      .visibility[data-visibility="public"] {
+        color: var(--warning-text);
+        font-weight: 600;
+      }
+
+      .field-label--spaced {
+        margin-top: 16px;
+      }
+
+      /* The file the save will create, e.g. exports/….md */
+      .file-name {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 9px 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 10px;
+        background: var(--card);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .file-name .icon {
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+        color: var(--text-muted);
+      }
+
+      .notice {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+        padding: 10px 12px;
+        border: 1px solid var(--warning-border);
+        border-radius: 10px;
+        background: var(--warning-surface);
+        color: var(--warning-text);
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+
+      .notice .icon {
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+      }
+
+      /*
+       * Confirmation before saving into a public repository.
+       * A modal <dialog>: the browser keeps focus inside it and
+       * closes it with Escape. Its padding sits on .dialog-body,
+       * so a click whose target is the <dialog> itself can only
+       * be one on the backdrop around it.
+       */
+      .dialog {
+        width: calc(100% - 40px);
+        max-width: 320px;
+        padding: 0;
+        border: 1px solid var(--card-border);
+        border-radius: 14px;
+        background: var(--bg);
         color: var(--text);
+        box-shadow: var(--shadow-lg);
+        text-align: center;
+      }
+
+      .dialog::backdrop {
+        background: var(--overlay);
+      }
+
+      .dialog-body {
+        padding: 20px 18px 18px;
+      }
+
+      .dialog .state-icon {
+        margin: 0 auto 10px;
+      }
+
+      .dialog-title {
+        margin: 0 0 4px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .dialog-text {
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .dialog-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .dialog-actions .button {
+        flex: 1;
+        min-width: 0;
       }
 
       /*
        * ---------------------------------------------------
        * TOAST
        * ---------------------------------------------------
-       *
-       * On-screen feedback for quick actions (Copied!,
-       * Download started, errors) - replaces swapping a
-       * button's own text, which is easy to miss and
-       * conflicts with disabling buttons during busy state.
        */
 
       #toast {
         position: fixed;
+        bottom: 16px;
         left: 50%;
-        bottom: 14px;
-        transform: translateX(-50%) translateY(8px);
-        max-width: calc(100% - 28px);
-        padding: 9px 14px;
-        border-radius: var(--radius);
-        background: var(--github);
-        color: var(--github-text);
-        font-size: 12.5px;
-        font-weight: 500;
-        text-align: center;
-        opacity: 0;
-        pointer-events: none;
-        transition:
-          opacity 0.15s ease,
-          transform 0.15s ease;
-        z-index: 3000;
-        box-shadow: 0 8px 20px rgba(27, 31, 36, 0.3);
-      }
-
-      #toast.visible {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-      }
-
-      /*
-       * ---------------------------------------------------
-       * MESSAGE SELECTOR / EXPORT PANEL
-       * ---------------------------------------------------
-       */
-
-      #selector-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-        padding: 14px;
-        background: var(--overlay);
-      }
-
-      #selector-overlay.open {
-        display: flex;
-      }
-
-      #selector-modal {
-        width: 100%;
-        max-height: 572px;
-        display: flex;
-        flex-direction: column;
-        padding: 14px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        box-shadow: 0 8px 24px rgba(27, 31, 36, 0.25);
-        overflow-y: auto;
-      }
-
-      #selector-title {
-        margin: 0 0 4px;
-        font-size: 14px;
-        font-weight: 600;
-      }
-
-      #selector-panel-message {
-        margin: 0 0 10px;
-        font-size: 12px;
-        color: var(--text-muted);
-        line-height: 1.4;
-      }
-
-      .selector-filter-row {
-        display: flex;
-        gap: 4px;
-        margin-bottom: 8px;
-      }
-
-      .selector-filter-row button {
-        flex: 1;
-        padding: 6px 4px;
-        font-size: 11px;
-      }
-
-      .selector-expand-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 8px;
-        font-size: 12px;
-        color: var(--text);
-        cursor: pointer;
-      }
-
-      #selector-list {
-        flex: 1;
-        min-height: 140px;
-        max-height: 280px;
-        overflow-y: auto;
-        overflow-x: hidden;
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        background: var(--canvas);
-        margin-bottom: 8px;
-      }
-
-      .selector-row {
+        z-index: 200;
         display: flex;
         align-items: flex-start;
-        gap: 6px;
-        padding: 7px 8px;
-        font-size: 12px;
-        cursor: pointer;
-        border-bottom: 1px solid var(--border);
-      }
-
-      .selector-row:last-child {
-        border-bottom: none;
-      }
-
-      .selector-row:hover {
-        background: var(--surface);
-      }
-
-      .selector-row input[type="checkbox"] {
-        margin-top: 2px;
-        flex-shrink: 0;
-      }
-
-      .selector-role-icon {
-        flex-shrink: 0;
-      }
-
-      .selector-preview {
-        color: var(--text);
-        line-height: 1.4;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      /*
-       * When expanded, previews wrap their full text and the
-       * list becomes a normal scrollable, readable column
-       * instead of truncated one-liners.
-       */
-      #selector-list.expanded .selector-preview {
-        white-space: pre-wrap;
-        word-break: break-word;
-        overflow: visible;
-        text-overflow: unset;
-      }
-
-      .selector-footer-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
         gap: 8px;
-        margin-bottom: 8px;
-      }
-
-      #selector-count {
-        font-size: 11px;
-        color: var(--text-muted);
-        white-space: nowrap;
-      }
-
-      .selector-action-row {
-        display: flex;
-        gap: 8px;
-      }
-
-      #selector-format-select {
-        flex: 1;
-        font-family: inherit;
+        width: max-content;
+        max-width: calc(100% - 32px);
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: var(--toast-bg);
+        color: var(--toast-text);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
         font-size: 13px;
-        padding: 8px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-        background: var(--surface);
-        color: var(--text);
-      }
-
-      .selector-action-row button {
-        width: auto;
-        white-space: nowrap;
-      }
-
-      #selector-export {
-        flex: 1;
-        background: var(--accent);
-        color: var(--github-text);
-        border-color: var(--accent);
-      }
-
-      #selector-export:hover:not(:disabled) {
-        background: var(--accent-hover);
-      }
-
-      #selector-github-button {
-        flex: 1;
-        background: var(--github);
-        color: var(--github-text);
-        border-color: var(--github);
-      }
-
-      #selector-github-button:hover:not(:disabled) {
-        background: var(--github-hover);
-      }
-
-      #selector-cancel {
-        margin-top: 8px;
-        font-size: 12px;
-        padding: 7px 10px;
-      }
-
-      /*
-       * ---------------------------------------------------
-       * GITHUB REPO PANEL
-       * ---------------------------------------------------
-       */
-
-      #github-panel {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 1100;
-        align-items: center;
-        justify-content: center;
-        padding: 14px;
-        background: var(--overlay);
-      }
-
-      #github-panel.open {
-        display: flex;
-      }
-
-      #github-panel-modal {
-        width: 100%;
-        padding: 14px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        box-shadow: 0 8px 24px rgba(27, 31, 36, 0.25);
-      }
-
-      #github-panel-message {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin: 0 0 10px 0;
-        line-height: 1.4;
-      }
-
-      #github-panel-message a {
-        color: var(--accent);
-        font-weight: 500;
-      }
-
-      #github-repo-select {
-        width: 100%;
-        font-family: inherit;
-        font-size: 13px;
-        padding: 8px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-        margin-bottom: 8px;
-        box-sizing: border-box;
-        background: var(--surface);
-        color: var(--text);
-      }
-
-      #github-panel-save {
-        background: var(--github);
-        color: var(--github-text);
-        border-color: var(--github);
-        margin-bottom: 6px;
-      }
-
-      #github-panel-save:hover:not(:disabled) {
-        background: var(--github-hover);
-      }
-
-      #github-panel-cancel {
-        font-size: 12px;
-        padding: 7px 10px;
-      }
-
-      /*
-       * ---------------------------------------------------
-       * GITHUB EXPORT CONFIRMATION MODAL
-       * ---------------------------------------------------
-       */
-
-      #github-confirm-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 1200;
-        align-items: center;
-        justify-content: center;
-        padding: 14px;
-        background: var(--overlay);
-      }
-
-      #github-confirm-overlay.open {
-        display: flex;
-      }
-
-      #github-confirm-modal {
-        width: 100%;
-        padding: 14px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        box-shadow: 0 8px 24px rgba(27, 31, 36, 0.2);
-      }
-
-      #github-confirm-title {
-        margin: 0 0 8px;
-        font-size: 14px;
         font-weight: 600;
-      }
-
-      #github-confirm-message {
-        margin: 0 0 8px;
-        color: var(--text);
-        font-size: 12px;
-        line-height: 1.45;
-      }
-
-      #github-confirm-private {
-        margin: 0 0 12px;
-        color: var(--text-muted);
-        font-size: 11px;
         line-height: 1.4;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, 8px);
+        transition:
+          opacity 0.15s,
+          transform 0.15s;
       }
 
-      .github-confirm-actions {
-        display: flex;
-        gap: 8px;
+      #toast.is-visible {
+        opacity: 1;
+        transform: translate(-50%, 0);
       }
 
-      .github-confirm-actions button {
-        flex: 1;
+      #toast .icon {
+        width: 18px;
+        height: 18px;
+        stroke-width: 2.2;
       }
 
-      #github-confirm-export {
-        background: var(--github);
-        color: var(--github-text);
-        border-color: var(--github);
+      .toast-icon-success {
+        color: #3fd8a5;
       }
 
-      #github-confirm-export:hover:not(:disabled) {
-        background: var(--github-hover);
+      .toast-icon-error {
+        display: none;
+        color: #ff8182;
+      }
+
+      #toast[data-tone="error"] .toast-icon-success {
+        display: none;
+      }
+
+      #toast[data-tone="error"] .toast-icon-error {
+        display: block;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+        }
       }
     </style>
   </head>
   <body>
-    <!-- Update banner: an update is ready, or (Firefox) available -->
-    <div id="update-banner" role="status" hidden>
-      <div class="update-banner-text">
-        <p id="update-banner-title"></p>
-        <p id="update-banner-message"></p>
-      </div>
-      <button id="update-apply" type="button" hidden></button>
-    </div>
+    <!--
+      Icon set, drawn like the settings page's: a 24x24 grid
+      with a 1.8px round stroke (see .icon). Use one with
+      <svg class="icon"><use href="#i-name" /></svg>.
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <path
+          d="M10.36 4.89 10.68 2.59A9.5 9.5 0 0 1 13.32 2.59L13.64 4.89A7.3 7.3 0 0 1 15.87 5.81L17.72 4.41A9.5 9.5 0 0 1 19.59 6.28L18.19 8.13A7.3 7.3 0 0 1 19.11 10.36L21.41 10.68A9.5 9.5 0 0 1 21.41 13.32L19.11 13.64A7.3 7.3 0 0 1 18.19 15.87L19.59 17.72A9.5 9.5 0 0 1 17.72 19.59L15.87 18.19A7.3 7.3 0 0 1 13.64 19.11L13.32 21.41A9.5 9.5 0 0 1 10.68 21.41L10.36 19.11A7.3 7.3 0 0 1 8.13 18.19L6.28 19.59A9.5 9.5 0 0 1 4.41 17.72L5.81 15.87A7.3 7.3 0 0 1 4.89 13.64L2.59 13.32A9.5 9.5 0 0 1 2.59 10.68L4.89 10.36A7.3 7.3 0 0 1 5.81 8.13L4.41 6.28A9.5 9.5 0 0 1 6.28 4.41L8.13 5.81A7.3 7.3 0 0 1 10.36 4.89z"
+        />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path
+          d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+        />
+      </symbol>
+      <symbol id="i-compass" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="m15.5 8.5-2 5-5 2 2-5z" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5" />
+        <path
+          d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2"
+        />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="8.5" y="8.5" width="12" height="12" rx="2.5" />
+        <path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5" />
+      </symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24">
+        <path d="m9 6 6 6-6 6" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6" />
+      </symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24">
+        <path d="M19.5 12h-15M10.5 6l-6 6 6 6" />
+      </symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 16.5v-9M8 11l4-4 4 4" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M14 4h6v6M20 4l-8.5 8.5" />
+        <path
+          d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"
+        />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
+      </symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24">
+        <path
+          d="M12 3.5c.6 4.8 3.7 7.9 8.5 8.5-4.8.6-7.9 3.7-8.5 8.5-.6-4.8-3.7-7.9-8.5-8.5 4.8-.6 7.9-3.7 8.5-8.5z"
+        />
+      </symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24">
+        <path d="M7.5 4 4 7.5 7.5 11M4 7.5h12.5M16.5 13l3.5 3.5-3.5 3.5M20 16.5H7.5" />
+      </symbol>
+      <symbol id="i-file-text" viewBox="0 0 24 24">
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        />
+        <path d="M14 3v5h5M9 13h6M9 17h4" />
+      </symbol>
+      <symbol id="i-hash" viewBox="0 0 24 24">
+        <path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18" />
+      </symbol>
+      <symbol id="i-text" viewBox="0 0 24 24">
+        <path d="M4 6h16M4 10h16M4 14h16M4 18h10" />
+      </symbol>
+      <symbol id="i-braces" viewBox="0 0 24 24">
+        <path
+          d="M8 4H7a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1-2 2.5 2.5 2.5 0 0 1 2 2.5V18a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v3.5a2.5 2.5 0 0 0 2 2.5 2.5 2.5 0 0 0-2 2.5V18a2 2 0 0 1-2 2h-1"
+        />
+      </symbol>
+      <symbol id="i-table" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <rect x="3.5" y="4" width="17" height="4.5" rx="1.5" />
+        <path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5M10 12.5h4" />
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 16 16">
+        <path
+          fill="currentColor"
+          stroke="none"
+          d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"
+        />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect x="5" y="10.5" width="14" height="10" rx="2" />
+        <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path
+          d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"
+        />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5M12 16.5v.01" />
+      </symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24">
+        <path
+          d="M10.3 4.2 2.9 17.2A2 2 0 0 0 4.6 20h14.8a2 2 0 0 0 1.7-2.8L13.7 4.2a2 2 0 0 0-3.4 0z"
+        />
+        <path d="M12 9.5v4M12 16.8v.01" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12.5 4.5 4.5L19 7.5" />
+      </symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8 12.5 3 3 5.5-6" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="i-retry" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v4h-4" />
+      </symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24">
+        <path
+          d="M12 20.5s-8-4.9-8-10.6A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 2.9c0 5.7-8 10.6-8 10.6z"
+        />
+      </symbol>
+      <symbol id="i-star" viewBox="0 0 24 24">
+        <path
+          d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"
+        />
+      </symbol>
+      <symbol id="i-coffee" viewBox="0 0 24 24">
+        <path d="M4.5 9h11v4.5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z" />
+        <path d="M15.5 10.5h1.3a2.7 2.7 0 0 1 0 5.4h-1.6" />
+        <path d="M8 3.5c-.7.9-.7 1.6 0 2.5M11.5 3.5c-.7.9-.7 1.6 0 2.5" />
+        <path d="M3.5 21h14" />
+      </symbol>
+    </svg>
 
-    <div class="support-card">
-      <p data-i18n="popup.support.enjoying">❤️ Support the developer ❤️</p>
-      <p class="support-subtitle" data-i18n="popup.support.subtitle">
-        Help me keep AI Exporter free.
-      </p>
-      <div class="support-row">
-        <button id="github-star" data-i18n="popup.support.star">
-          ★ Star on GitHub
+    <!-- ===================== MAIN ===================== -->
+    <div id="main-view">
+      <header class="app-header">
+        <img
+          class="app-logo"
+          src="icons/icon48.png"
+          alt=""
+          width="28"
+          height="28"
+        />
+        <h1 class="app-name">AI Exporter</h1>
+        <button type="button" class="header-button" id="options-link">
+          <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
+          <span data-i18n="popup.settings">Settings</span>
         </button>
-        <button id="buy-coffee" data-i18n="popup.support.coffee">
-          ☕ Buy Me a Coffee
+      </header>
+
+      <!-- An update is ready, or (Firefox) available -->
+      <div id="update-banner" role="status" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-arrow-up" /></svg>
+        <div class="update-banner-text">
+          <p id="update-banner-title"></p>
+          <p id="update-banner-message"></p>
+        </div>
+        <button
+          id="update-apply"
+          class="button button--primary"
+          type="button"
+          hidden
+        ></button>
+      </div>
+
+      <!-- The chat on the current tab, or what to do to get one -->
+      <section class="chat-card" id="chat-card" data-state="loading">
+        <span class="tile" aria-hidden="true">
+          <svg class="icon" id="chat-card-icon"><use href="#i-chat" /></svg>
+        </span>
+        <div class="chat-card-text" id="chat-ready">
+          <p class="chat-card-label" id="chat-site-label"></p>
+          <p class="chat-card-title" id="chat-title"></p>
+        </div>
+        <div class="chat-card-text" id="chat-open-hint" hidden>
+          <p class="chat-card-heading" data-i18n="popup.chat.openTitle">
+            Open a chat first
+          </p>
+          <p class="chat-card-desc" id="chat-open-text"></p>
+        </div>
+        <div class="chat-card-text" id="chat-unsupported" hidden>
+          <p class="chat-card-heading" data-i18n="popup.chat.unsupportedTitle">
+            Open a chat to get started
+          </p>
+          <p class="chat-card-desc" data-i18n="popup.chat.unsupportedText">
+            AI Exporter saves chats from ChatGPT, Claude and Gemini. Open one
+            there, then click AI Exporter again.
+          </p>
+        </div>
+        <div class="site-links" id="site-links" hidden>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://chatgpt.com/"
+            data-site-name="ChatGPT"
+          >
+            ChatGPT
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://claude.ai/"
+            data-site-name="Claude"
+          >
+            Claude
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://gemini.google.com/"
+            data-site-name="Gemini"
+          >
+            Gemini
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button type="button" class="action action--primary" id="export">
+          <span class="action-icon" aria-hidden="true">
+            <svg class="icon"><use href="#i-download" /></svg>
+            <span class="spinner"></span>
+          </span>
+          <span class="action-text">
+            <span class="action-title" data-i18n="popup.export"
+              >Save as a file</span
+            >
+            <span
+              class="action-desc"
+              data-i18n="popup.exportDesc"
+              aria-live="polite"
+              >PDF, Markdown, text, JSON or CSV</span
+            >
+          </span>
+          <svg class="icon action-chevron" aria-hidden="true">
+            <use href="#i-chevron-right" />
+          </svg>
+        </button>
+
+        <button type="button" class="action" id="copy">
+          <span class="action-icon" aria-hidden="true">
+            <svg class="icon"><use href="#i-copy" /></svg>
+            <span class="spinner"></span>
+          </span>
+          <span class="action-text">
+            <span class="action-title" data-i18n="popup.copy"
+              >Copy the whole chat</span
+            >
+            <span
+              class="action-desc"
+              data-i18n="popup.copyDesc"
+              aria-live="polite"
+              >Then paste it into a document or email</span
+            >
+          </span>
         </button>
       </div>
-    </div>
 
-    <button id="export" data-i18n="popup.export">Export ▾</button>
-    <button id="copy" data-i18n="popup.copy">Copy Conversation</button>
+      <section class="support">
+        <p class="support-text">
+          <svg class="icon" aria-hidden="true"><use href="#i-heart" /></svg>
+          <span data-i18n="popup.support.title"
+            >Like AI Exporter? Help keep it free.</span
+          >
+        </p>
+        <div class="support-row">
+          <button type="button" class="support-button" id="github-star">
+            <svg class="icon" aria-hidden="true"><use href="#i-star" /></svg>
+            <span id="github-star-label" data-i18n="popup.support.star"
+              >Star on GitHub</span
+            >
+          </button>
+          <button type="button" class="support-button" id="buy-coffee">
+            <svg class="icon" aria-hidden="true"><use href="#i-coffee" /></svg>
+            <span data-i18n="popup.support.coffee">Buy me a coffee</span>
+          </button>
+        </div>
+      </section>
 
-    <footer class="popup-footer">
-      <div class="update-status">
+      <footer class="popup-footer">
         <span id="app-version"></span>
         <span aria-hidden="true">·</span>
         <button id="update-status" type="button">
           <span class="update-status-icon" aria-hidden="true"></span>
           <span id="update-status-text">Check for updates</span>
         </button>
-      </div>
-      <a
-        class="footer-link"
-        id="options-link"
-        href="#"
-        data-i18n="popup.settingsLink"
-        >Settings</a
-      >
-    </footer>
-
-    <!-- Loading overlay: covers the popup while messages fetch -->
-    <div id="loading-overlay">
-      <div id="loading-overlay-content">
-        <div
-          id="loading-overlay-spinner"
-          role="status"
-          aria-label="Loading"
-          data-i18n-aria-label="popup.loading.aria"
-        ></div>
-        <p id="loading-overlay-message" data-i18n="popup.loading.default">
-          Loading messages...
-        </p>
-      </div>
+      </footer>
     </div>
 
-    <!-- On-screen toast for quick action feedback -->
-    <div id="toast" role="status" aria-live="polite"></div>
-
-    <!-- Message selector / export panel -->
-    <div
-      id="selector-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="selector-title"
+    <!-- ============ SAVE AS A FILE (pick messages) ============ -->
+    <section
+      class="screen"
+      id="export-view"
+      aria-labelledby="export-title"
+      hidden
     >
-      <div id="selector-modal">
-        <p id="selector-title" data-i18n="popup.selector.title">
-          Select Messages
-        </p>
-        <p id="selector-panel-message" data-i18n="popup.selector.subtitle">
-          Choose which messages to include, then pick a format.
-        </p>
+      <header class="screen-header">
+        <button
+          type="button"
+          class="back-button"
+          id="selector-cancel"
+          aria-label="Back"
+          data-i18n-aria-label="popup.back"
+          data-i18n-title="popup.back"
+        >
+          <svg class="icon" aria-hidden="true">
+            <use href="#i-arrow-left" />
+          </svg>
+        </button>
+        <div class="screen-heading">
+          <h2
+            class="screen-title"
+            id="export-title"
+            tabindex="-1"
+            data-i18n="popup.selector.title"
+          >
+            Save as a file
+          </h2>
+          <p class="screen-subtitle" id="export-subtitle"></p>
+        </div>
+      </header>
 
-        <div class="selector-filter-row">
-          <button
-            id="selector-filter-all"
-            type="button"
-            data-i18n="popup.selector.filterAll"
+      <div class="screen-body">
+        <div class="section-head">
+          <h3
+            class="section-title"
+            id="messages-title"
+            data-i18n="popup.selector.messages"
           >
-            All
-          </button>
-          <button
-            id="selector-filter-questions"
-            type="button"
-            data-i18n="popup.selector.filterQuestions"
-          >
-            Questions
-          </button>
-          <button
-            id="selector-filter-answers"
-            type="button"
-            data-i18n="popup.selector.filterAnswers"
-          >
-            Answers
-          </button>
-          <button
-            id="selector-filter-none"
-            type="button"
-            data-i18n="popup.selector.filterNone"
-          >
-            None
-          </button>
-          <button
-            id="selector-filter-invert"
-            type="button"
-            data-i18n="popup.selector.filterInvert"
-          >
-            Invert
-          </button>
+            Messages
+          </h3>
+          <div class="quick-picks">
+            <button
+              type="button"
+              class="chip"
+              id="selector-filter-questions"
+              title="Select only your questions"
+              data-i18n="popup.selector.filterQuestions"
+              data-i18n-title="popup.selector.filterQuestionsHint"
+            >
+              Questions
+            </button>
+            <button
+              type="button"
+              class="chip"
+              id="selector-filter-answers"
+              title="Select only the answers"
+              data-i18n="popup.selector.filterAnswers"
+              data-i18n-title="popup.selector.filterAnswersHint"
+            >
+              Answers
+            </button>
+            <button
+              type="button"
+              class="chip chip--icon"
+              id="selector-filter-invert"
+              aria-label="Swap selected and unselected"
+              title="Swap selected and unselected"
+              data-i18n-aria-label="popup.selector.filterInvert"
+              data-i18n-title="popup.selector.filterInvert"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#i-swap" /></svg>
+            </button>
+          </div>
         </div>
 
-        <label class="selector-expand-row">
-          <input type="checkbox" id="selector-expand-toggle" />
-          <span data-i18n="popup.selector.expand"
-            >Expand messages (show full text)</span
-          >
+        <div class="message-box">
+          <div class="message-toolbar">
+            <label class="check-all">
+              <input type="checkbox" id="selector-select-all" />
+              <span data-i18n="popup.selector.selectAll">Select all</span>
+            </label>
+            <span class="section-meta" id="selector-count" aria-live="polite"
+            ></span>
+          </div>
+          <div
+            class="message-list"
+            id="selector-list"
+            role="group"
+            aria-labelledby="messages-title"
+          ></div>
+        </div>
+
+        <label class="switch-row">
+          <span class="switch">
+            <input type="checkbox" role="switch" id="selector-expand-toggle" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+          <span data-i18n="popup.selector.expand">Show full messages</span>
         </label>
 
-        <div id="selector-list"></div>
-
-        <div class="selector-footer-row">
-          <span id="selector-count">0/0 selected</span>
+        <div class="format-section">
+          <div class="section-head">
+            <h3
+              class="section-title"
+              id="format-title"
+              data-i18n="popup.selector.format"
+            >
+              File type
+            </h3>
+          </div>
+          <div class="formats" role="radiogroup" aria-labelledby="format-title">
+            <label class="format">
+              <input type="radio" name="format" value="pdf" checked />
+              <span class="format-face">PDF</span>
+            </label>
+            <label class="format">
+              <input type="radio" name="format" value="md" />
+              <span class="format-face">Markdown</span>
+            </label>
+            <label class="format">
+              <input type="radio" name="format" value="txt" />
+              <span class="format-face" data-i18n="popup.format.txt">Text</span>
+            </label>
+            <label class="format">
+              <input type="radio" name="format" value="json" />
+              <span class="format-face">JSON</span>
+            </label>
+            <label class="format">
+              <input type="radio" name="format" value="csv" />
+              <span class="format-face">CSV</span>
+            </label>
+          </div>
+          <p class="format-hint" id="format-hint" aria-live="polite">
+            <svg class="icon" aria-hidden="true">
+              <use id="format-hint-icon" href="#i-file-text" />
+            </svg>
+            <span id="format-hint-text"></span>
+          </p>
         </div>
-
-        <div class="selector-action-row">
-          <select id="selector-format-select">
-            <option value="md" data-i18n="popup.selector.formatMd">
-              Markdown (.md)
-            </option>
-            <option value="txt" data-i18n="popup.selector.formatTxt">
-              Plain text (.txt)
-            </option>
-            <option value="json" data-i18n="popup.selector.formatJson">
-              JSON (.json)
-            </option>
-            <option value="csv" data-i18n="popup.selector.formatCsv">
-              CSV (.csv)
-            </option>
-            <option value="pdf" data-i18n="popup.selector.formatPdf">
-              PDF (.pdf)
-            </option>
-          </select>
-          <button
-            id="selector-export"
-            type="button"
-            data-i18n="popup.selector.export"
-          >
-            Export
-          </button>
-          <button
-            id="selector-github-button"
-            type="button"
-            data-i18n="popup.selector.github"
-          >
-            GitHub
-          </button>
-        </div>
-
-        <button
-          id="selector-cancel"
-          type="button"
-          data-i18n="popup.selector.cancel"
-        >
-          Cancel
-        </button>
       </div>
-    </div>
 
-    <!-- GitHub repo picker panel -->
-    <div
-      id="github-panel"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="github-panel-message"
-    >
-      <div id="github-panel-modal">
-        <p id="github-panel-message" data-i18n="popup.github.chooseRepo">
-          Choose a repo to save into.
-        </p>
-        <select id="github-repo-select"></select>
-        <button id="github-panel-save" data-i18n="popup.github.save">
-          Save to exports/
+      <footer class="screen-footer">
+        <button
+          type="button"
+          class="button button--primary button--large button--block"
+          id="selector-export"
+        >
+          <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="selector-export-label"></span>
         </button>
         <button
+          type="button"
+          class="button button--quiet button--block"
+          id="selector-github-button"
+        >
+          <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
+          <span data-i18n="popup.selector.github">Save to GitHub instead</span>
+        </button>
+      </footer>
+    </section>
+
+    <!-- ================ SAVE TO GITHUB ================ -->
+    <section
+      class="screen"
+      id="github-view"
+      aria-labelledby="github-title"
+      hidden
+    >
+      <header class="screen-header">
+        <button
+          type="button"
+          class="back-button"
           id="github-panel-cancel"
-          type="button"
-          data-i18n="popup.github.cancel"
+          aria-label="Back"
+          data-i18n-aria-label="popup.back"
+          data-i18n-title="popup.back"
         >
-          Cancel
+          <svg class="icon" aria-hidden="true">
+            <use href="#i-arrow-left" />
+          </svg>
         </button>
+        <div class="screen-heading">
+          <h2
+            class="screen-title"
+            id="github-title"
+            tabindex="-1"
+            data-i18n="popup.github.title"
+          >
+            Save to GitHub
+          </h2>
+          <p class="screen-subtitle" data-i18n="popup.github.subtitle">
+            As a Markdown file in the exports folder
+          </p>
+        </div>
+      </header>
+
+      <div class="screen-body">
+        <!-- Loading, not connected, an error, no repos, or saved -->
+        <div class="state" id="github-state" role="status">
+          <span class="state-icon" aria-hidden="true">
+            <span class="spinner" id="github-state-spinner"></span>
+            <svg class="icon" id="github-state-icon">
+              <use id="github-state-icon-use" href="#i-github" />
+            </svg>
+          </span>
+          <p class="state-title" id="github-state-title"></p>
+          <p class="state-text" id="github-state-text"></p>
+          <div class="state-actions">
+            <button
+              type="button"
+              class="button button--primary"
+              id="github-state-action"
+              hidden
+            >
+              <svg class="icon" aria-hidden="true">
+                <use id="github-state-action-icon" href="#i-settings" />
+              </svg>
+              <span id="github-state-action-label"></span>
+            </button>
+            <button
+              type="button"
+              class="button"
+              id="github-state-secondary"
+              hidden
+            ></button>
+          </div>
+        </div>
+
+        <div id="github-form" hidden>
+          <label
+            class="field-label"
+            for="github-repo-select"
+            data-i18n="popup.github.repo"
+            >Repository</label
+          >
+          <span class="select">
+            <select id="github-repo-select"></select>
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-chevron-down" />
+            </svg>
+          </span>
+          <p class="visibility" id="github-visibility">
+            <svg class="icon" aria-hidden="true">
+              <use id="github-visibility-icon" href="#i-lock" />
+            </svg>
+            <span id="github-visibility-text"></span>
+          </p>
+          <p
+            class="field-label field-label--spaced"
+            data-i18n="popup.github.file"
+          >
+            File
+          </p>
+          <p class="file-name">
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-file-text" />
+            </svg>
+            <span id="github-file-name"></span>
+          </p>
+          <div class="notice">
+            <svg class="icon" aria-hidden="true"><use href="#i-warning" /></svg>
+            <p data-i18n="popup.github.privacy">
+              Check that the chat has no passwords or private details: everyone
+              who can open this repository can read it.
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- GitHub export confirmation modal -->
-    <div
-      id="github-confirm-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="github-confirm-title"
-    >
-      <div id="github-confirm-modal">
-        <p id="github-confirm-title" data-i18n="popup.githubConfirm.title">
-          ⚠ Warning
-        </p>
-        <p id="github-confirm-message" data-i18n="popup.githubConfirm.message">
-          This action will export this chat directly to your GitHub repository.
-        </p>
-        <p id="github-confirm-private" data-i18n="popup.githubConfirm.private">
-          Make sure the conversation does not contain sensitive or private
-          information.
-        </p>
-
-        <p
-          id="github-confirm-message"
-          data-i18n="popup.githubConfirm.confirmQuestion"
+      <footer class="screen-footer" id="github-footer" hidden>
+        <button
+          type="button"
+          class="button button--primary button--large button--block"
+          id="github-panel-save"
         >
-          Are you sure you want to continue?
-        </p>
+          <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="github-save-label" data-i18n="popup.github.save"
+            >Save to GitHub</span
+          >
+        </button>
+      </footer>
+    </section>
 
-        <div class="github-confirm-actions">
+    <!-- Saving into a public repository needs a second yes -->
+    <dialog
+      class="dialog"
+      id="github-confirm"
+      role="alertdialog"
+      aria-labelledby="github-confirm-title"
+      aria-describedby="github-confirm-message"
+    >
+      <div class="dialog-body" data-tone="warning">
+        <span class="state-icon" aria-hidden="true">
+          <svg class="icon"><use href="#i-globe" /></svg>
+        </span>
+        <h2
+          class="dialog-title"
+          id="github-confirm-title"
+          data-i18n="popup.githubConfirm.title"
+        >
+          This repository is public
+        </h2>
+        <p
+          class="dialog-text"
+          id="github-confirm-message"
+          data-i18n="popup.githubConfirm.message"
+        >
+          Anyone on the internet will be able to read this chat. Save it
+          anyway?
+        </p>
+        <div class="dialog-actions">
           <button
-            id="github-confirm-cancel"
             type="button"
+            class="button"
+            id="github-confirm-cancel"
             data-i18n="popup.githubConfirm.cancel"
           >
             Cancel
           </button>
           <button
-            id="github-confirm-export"
             type="button"
+            class="button button--primary"
+            id="github-confirm-export"
             data-i18n="popup.githubConfirm.export"
           >
-            Export to GitHub
+            Save anyway
           </button>
         </div>
       </div>
+    </dialog>
+
+    <!-- Feedback for quick actions -->
+    <div id="toast" role="status" aria-live="polite">
+      <svg class="icon toast-icon-success" aria-hidden="true">
+        <use href="#i-check" />
+      </svg>
+      <svg class="icon toast-icon-error" aria-hidden="true">
+        <use href="#i-alert" />
+      </svg>
+      <span id="toast-text"></span>
     </div>
 
     <script type="module" src="/popup.js"></script>

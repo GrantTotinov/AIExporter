@@ -24,7 +24,7 @@ On `claude.ai` it works the same way: it asks Claude's own conversation API for 
 - **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, and Greek text. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
 - **Keeps artifacts and documents:** code and documents Claude wrote in an artifact, and Gemini's Canvas and Deep Research documents, are exported with the reply that made them.
 - **Copies** the whole conversation to your clipboard as Markdown in one click.
-- **Lets you pick the messages** before exporting: everything, only your questions, only the answers, none, or the inverse of what's selected. Shift+click selects a range, and you can expand messages to read them in full.
+- **Lets you pick the messages** before exporting: tick them one by one, select all, only your questions, only the answers, or swap what's selected. Shift+click selects a range, and you can show messages in full to read them.
 - **Saves straight to a GitHub repo** (see below) instead of downloading.
 - **Fits your preferences:** heading style, spacing between messages, an optional export timestamp, and whether to ask where to save each file.
 - Light, Dark, or System theme.
@@ -62,14 +62,14 @@ Any time you pull new changes, rebuild and then reload the extension (the reload
 ## Using it
 
 1. Open any conversation on `chatgpt.com`, `claude.ai` or `gemini.google.com`.
-2. Click the AI Exporter icon.
-3. Pick **Copy Conversation**, or open **Export ▾** to choose which messages to include and a format: PDF, Markdown, plain text, JSON, or CSV.
+2. Click the AI Exporter icon. The popup names the conversation it's about to save; on any other page it says what to open first.
+3. Pick **Copy the whole chat**, or **Save as a file** to choose which messages to include and a file type: PDF, Markdown, plain text, JSON, or CSV. Each file type has a one-line explanation, and the popup remembers the one you used last.
 
 Files are named after the site, the conversation, and the date, for example `claude-export-trip-ideas-2026-10-02.pdf`.
 
 ### Settings
 
-Click **Settings** at the bottom of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Chat contents**, **PDF documents**, and **GitHub**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
+Click **Settings** at the top of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Chat contents**, **PDF documents**, and **GitHub**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
 
 ### Images
 
@@ -90,7 +90,7 @@ AI Exporter can commit an export directly into a repo instead of downloading it 
 
 1. Open the extension's **Settings** page and click **Connect GitHub**.
 2. You'll get a short code and a new tab pointing at `github.com/login/device`. Enter the code there and approve access.
-3. Back in the popup, the **GitHub** button next to Export now lets you pick a repo and save the selected messages as Markdown. Files land in an `exports/` folder at the root of whichever repo you choose. With image bundling enabled, selected images are saved in a ZIP with the Markdown file and its `images/` folder.
+3. Back in the popup, choose **Save as a file**, then **Save to GitHub instead** to pick a repo and save the selected messages as Markdown. Files land in an `exports/` folder at the root of whichever repo you choose. With image bundling enabled, selected images are saved in a ZIP with the Markdown file and its `images/` folder. The popup shows whether the repo is public or private, and asks again before saving into a public one.
 
 This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the GitHub CLI use to sign in. No password or personal access token ever touches the extension, just a short-lived code you type into GitHub's own site. Your access token is stored locally in your browser and never leaves your machine except to talk to `api.github.com`.
 
