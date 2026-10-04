@@ -55,17 +55,47 @@ let activeTab: typeof CHATGPT_TAB | { id: number; url: string; title: string };
 let conversation: Response | Promise<Response>;
 let githubStatus: Response;
 let githubRepos: Response;
+let notionStatus: Response;
+let notionPages: Response;
 let messageListeners: ((message: unknown) => void)[] = [];
+/* Whether the tab has a content script to answer the popup */
+let contentScriptReady: boolean;
+/* The page reloads - and loses its content script - as the chat is asked for */
+let reloadOnLoad: boolean;
+
+const NO_RECEIVER = "Could not establish connection. Receiving end does not exist.";
 
 const tabsSendMessage = vi.fn(
   async (_tabId: number, message: { type: string }) => {
+    if (!contentScriptReady) {
+      throw new Error(NO_RECEIVER);
+    }
+
+    if (message.type === "AIEXPORTER_PING") {
+      return { ok: true };
+    }
+
     if (message.type === "LOAD_CONVERSATION") {
+      if (reloadOnLoad) {
+        reloadOnLoad = false;
+        contentScriptReady = false;
+        throw new Error(NO_RECEIVER);
+      }
+
       return conversation;
     }
 
     return { success: true };
   },
 );
+
+/* Putting content.js into the tab, which then answers */
+const executeScript = vi.fn(async () => {
+  contentScriptReady = true;
+  return [{ documentId: "doc", frameId: 0, result: undefined }];
+});
+
+const tabsReload = vi.fn(async () => undefined);
 
 const runtimeSendMessage = vi.fn(
   async (message: { type: string; filename?: string }) => {
@@ -85,6 +115,15 @@ const runtimeSendMessage = vi.fn(
           data: {
             htmlUrl: `https://github.com/me/notes/blob/main/exports/${message.filename}`,
           },
+        };
+      case "NOTION_GET_STATUS":
+        return notionStatus;
+      case "NOTION_LIST_PAGES":
+        return notionPages;
+      case "NOTION_SAVE_PAGE":
+        return {
+          success: true,
+          data: { url: "https://www.notion.so/Trip-ideas-0b2f7a52" },
         };
       case "DOWNLOAD_START":
         return { success: true, data: { downloadId: 1 } };
@@ -159,8 +198,9 @@ async function openPopup(): Promise<void> {
       query: vi.fn(async () => [activeTab]),
       sendMessage: tabsSendMessage,
       create: tabsCreate,
-      reload: vi.fn(async () => undefined),
+      reload: tabsReload,
     },
+    scripting: { executeScript },
     i18n: { getUILanguage: () => "en-US" },
   });
 
@@ -183,6 +223,18 @@ async function openExportScreen(): Promise<void> {
 
   await vi.waitFor(() => {
     expect(byId("export-view").hidden).toBe(false);
+  });
+}
+
+async function openNotionScreen(): Promise<void> {
+  await openExportScreen();
+  byId<HTMLButtonElement>("selector-notion-button").click();
+
+  await vi.waitFor(() => {
+    expect(byId("notion-view").hidden).toBe(false);
+    expect(
+      !byId("notion-form").hidden || byId("notion-state-spinner").hidden,
+    ).toBe(true);
   });
 }
 
@@ -227,7 +279,20 @@ beforeEach(() => {
       { full_name: "me/notes", private: true },
     ],
   };
+  notionStatus = {
+    success: true,
+    data: { connected: true, workspaceName: "Home" },
+  };
+  notionPages = {
+    success: true,
+    data: [
+      { id: "page-trips", title: "Trips" },
+      { id: "page-notes", title: "Notes", icon: "N" },
+    ],
+  };
   messageListeners = [];
+  contentScriptReady = true;
+  reloadOnLoad = false;
 });
 
 afterEach(() => {
@@ -299,6 +364,127 @@ describe("popup: the current chat", () => {
     byId<HTMLButtonElement>("options-link").click();
 
     expect(openOptionsPage).toHaveBeenCalled();
+  });
+});
+
+describe("popup: DeepSeek, Grok and Perplexity", () => {
+  const DEEPSEEK_TAB = {
+    id: 9,
+    url: "https://chat.deepseek.com/a/chat/s/abc123",
+    title: "Rice - DeepSeek",
+  };
+
+  /* The calls the popup made to the tab and into it, in order */
+  function tabCalls(): string[] {
+    return [
+      ...tabsSendMessage.mock.calls.map(([, message], index) => ({
+        order: tabsSendMessage.mock.invocationCallOrder[index],
+        name: (message as { type: string }).type,
+      })),
+      ...executeScript.mock.calls.map((_call, index) => ({
+        order: executeScript.mock.invocationCallOrder[index],
+        name: "executeScript",
+      })),
+    ]
+      .sort((a, b) => a.order - b.order)
+      .map((call) => call.name);
+  }
+
+  it("names the chat after the site", async () => {
+    activeTab = { ...DEEPSEEK_TAB };
+
+    await openPopup();
+
+    expect(byId("chat-card").dataset.state).toBe("ready");
+    expect(byId("chat-site-label").textContent).toBe("DeepSeek chat");
+    expect(byId("chat-title").textContent).toBe("Rice");
+  });
+
+  it("puts the content script into the tab before asking for the chat", async () => {
+    activeTab = { ...DEEPSEEK_TAB };
+    contentScriptReady = false;
+
+    await openPopup();
+    await openExportScreen();
+
+    expect(executeScript).toHaveBeenCalledWith({
+      target: { tabId: 9 },
+      files: ["content.js"],
+    });
+    expect(tabCalls()).toEqual([
+      "AIEXPORTER_PING",
+      "executeScript",
+      "LOAD_CONVERSATION",
+    ]);
+    expect(tabsReload).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("doesn't put it in twice", async () => {
+    activeTab = {
+      id: 9,
+      url: "https://grok.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+      title: "Cats - Grok",
+    };
+
+    await openPopup();
+    await openExportScreen();
+
+    expect(executeScript).not.toHaveBeenCalled();
+    expect(tabCalls()).toEqual(["AIEXPORTER_PING", "LOAD_CONVERSATION"]);
+  });
+
+  it("puts it in again when the page reloaded in between, instead of reloading the tab", async () => {
+    activeTab = {
+      id: 9,
+      url: "https://www.perplexity.ai/search/rice-abc",
+      title: "Rice - Perplexity",
+    };
+    reloadOnLoad = true;
+
+    await openPopup();
+    await openExportScreen();
+
+    expect(tabCalls()).toEqual([
+      "AIEXPORTER_PING",
+      "LOAD_CONVERSATION",
+      "AIEXPORTER_PING",
+      "executeScript",
+      "LOAD_CONVERSATION",
+    ]);
+    expect(tabsReload).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("puts it in before opening Save many chats", async () => {
+    activeTab = { ...DEEPSEEK_TAB, index: 2 } as typeof activeTab;
+    contentScriptReady = false;
+    vi.spyOn(window, "close").mockImplementation(() => undefined);
+
+    await openPopup();
+    byId<HTMLButtonElement>("bulk-export").click();
+
+    await vi.waitFor(() => {
+      expect(tabsCreate).toHaveBeenCalledWith({
+        url: "chrome-extension://test-id/bulk.html?tab=9&site=deepseek",
+        index: 3,
+      });
+    });
+    expect(executeScript).toHaveBeenCalledWith({
+      target: { tabId: 9 },
+      files: ["content.js"],
+    });
+    expect(executeScript.mock.invocationCallOrder[0]).toBeLessThan(
+      tabsCreate.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("leaves ChatGPT, Claude and Gemini to the manifest's content script", async () => {
+    await openPopup();
+    await openExportScreen();
+
+    expect(executeScript).not.toHaveBeenCalled();
+    expect(tabCalls()).toEqual(["LOAD_CONVERSATION"]);
   });
 });
 
@@ -559,6 +745,48 @@ describe("popup: save as a file", () => {
     return decodeBase64(sentMessages("DOWNLOAD_START")[0].content as string);
   }
 
+  it("downloads a Word document", async () => {
+    await openPopup();
+    await openExportScreen();
+
+    document
+      .querySelector<HTMLInputElement>('input[name="format"][value="docx"]')!
+      .click();
+
+    expect(byId("selector-export-label").textContent).toBe(
+      en["popup.download.docx"],
+    );
+
+    byId<HTMLButtonElement>("selector-export").click();
+
+    await vi.waitFor(() => {
+      expect(sentMessages("DOWNLOAD_START")).toHaveLength(1);
+    });
+
+    const download = sentMessages("DOWNLOAD_START")[0];
+
+    expect(download.filename).toMatch(/^chatgpt-export-trip-ideas-.*\.docx$/);
+    expect(download.mimeType).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    // A ZIP, starting with Word's content types part
+    expect(decodeBase64(download.content as string)).toMatch(
+      /^PK[\s\S]*\[Content_Types\]\.xml/,
+    );
+    expect(buildPdfBlob).not.toHaveBeenCalled();
+  });
+
+  it("downloads a web page", async () => {
+    const html = await downloadAs("html");
+
+    expect(sentMessages("DOWNLOAD_START")[0].filename).toMatch(/\.html$/);
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("<title>Trip ideas</title>");
+    expect(html).toContain(
+      '<a href="https://example.com/sakura">cherry blossoms</a>',
+    );
+  });
+
   it("starts Markdown files with note properties", async () => {
     const markdown = await downloadAs("md");
 
@@ -717,6 +945,88 @@ describe("popup: copy", () => {
     expect(copy.data).toContain("## User\n\nThanks!");
     // Note properties are for files, not for pasting.
     expect(copy.data).not.toContain("tags:");
+  });
+});
+
+describe("popup: save to Notion", () => {
+  it("asks to connect Notion first", async () => {
+    notionStatus = { success: true, data: { connected: false } };
+
+    await openPopup();
+    await openNotionScreen();
+
+    expect(byId("notion-state-title").textContent).toBe(
+      en["popup.notion.notConnectedTitle"],
+    );
+    expect(byId("notion-footer").hidden).toBe(true);
+
+    byId<HTMLButtonElement>("notion-state-action").click();
+
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: "chrome-extension://test-id/options.html#notion",
+    });
+  });
+
+  it("explains how to share a page when there are none", async () => {
+    notionPages = { success: true, data: [] };
+
+    await openPopup();
+    await openNotionScreen();
+
+    expect(byId("notion-state-title").textContent).toBe(
+      en["popup.notion.noPagesTitle"],
+    );
+    expect(byId("notion-state-text").textContent).toBe(
+      en["popup.notion.noPages"],
+    );
+  });
+
+  it("saves the chat as a page inside the chosen one", async () => {
+    localStore.popupNotionPage = "page-notes";
+
+    await openPopup();
+    await openNotionScreen();
+
+    const select = byId<HTMLSelectElement>("notion-page-select");
+
+    expect(select.value).toBe("page-notes");
+    expect(select.selectedOptions[0].textContent).toBe("N Notes");
+    expect(byId("notion-page-name").textContent).toBe("Trip ideas");
+
+    byId<HTMLButtonElement>("notion-panel-save").click();
+
+    await vi.waitFor(() => {
+      expect(byId("notion-state-title").textContent).toBe(
+        en["popup.notion.savedTitle"],
+      );
+    });
+
+    const [save] = sentMessages("NOTION_SAVE_PAGE");
+    const blocks = save.blocks as { type: string }[];
+
+    expect(save.parentId).toBe("page-notes");
+    expect(save.title).toBe("Trip ideas");
+    expect(blocks.map((block) => block.type)).toContain("heading_3");
+    expect(byId("notion-state-text").textContent).toBe(
+      "The chat is now a page inside Notes.",
+    );
+    expect(localStore.popupNotionPage).toBe("page-notes");
+
+    byId<HTMLButtonElement>("notion-state-action").click();
+
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: "https://www.notion.so/Trip-ideas-0b2f7a52",
+    });
+  });
+
+  it("goes back to picking messages", async () => {
+    await openPopup();
+    await openNotionScreen();
+
+    byId<HTMLButtonElement>("notion-panel-cancel").click();
+
+    expect(byId("export-view").hidden).toBe(false);
+    expect(byId("notion-view").hidden).toBe(true);
   });
 });
 

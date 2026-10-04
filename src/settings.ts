@@ -33,12 +33,31 @@ export interface Settings {
    * browsers implement the same way.
    */
   askWhereToSave: boolean;
+  /*
+   * How exported files are named (see file-names.ts): "" for AI
+   * Exporter's standard name ("chatgpt-export-trip-ideas-
+   * 2026-10-04"), or a pattern with {title}, {site}, {date} and
+   * {time} in it, such as "{date} {title}".
+   */
+  fileNameTemplate: string;
   /**
    * When enabled, image-bearing exports download image assets and bundle them
    * with the conversation file. The default preserves the original text-only
    * behavior and omits image attachments from the Markdown.
    */
   downloadImagesLocally: boolean;
+  /*
+   * When true, the places in an answer that came from the web are
+   * numbered and the pages listed under it, the way the chat site
+   * shows them (see source-notes.ts). Off, the answer reads as
+   * plain text.
+   */
+  includeSources: boolean;
+  /*
+   * When true, the reasoning some AI models do before they answer
+   * ("thinking") is exported too, ahead of the answer itself.
+   */
+  includeThinking: boolean;
   theme: "system" | "light" | "dark";
   /*
    * "auto" detects a supported language from the browser's
@@ -99,7 +118,10 @@ export const DEFAULT_SETTINGS: Settings = {
   headingStyle: "h2",
   messageSeparator: "double",
   askWhereToSave: true,
+  fileNameTemplate: "",
   downloadImagesLocally: false,
+  includeSources: true,
+  includeThinking: false,
   theme: "system",
   language: "auto",
   pdf: DEFAULT_PDF_SETTINGS,

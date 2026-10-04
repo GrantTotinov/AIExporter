@@ -269,6 +269,8 @@ describe("content.ts on claude.ai", () => {
               "**Artifact: Fibonacci**\n\n```python\ndef fib(n):\n    return n\n```",
             imagePaths: [],
             order: 1,
+            // Kept apart from the reply; exported only when asked for
+            thinking: "Looks like a recursion tree.",
           },
           {
             id: "00000000-0000-4000-8000-000000000004",

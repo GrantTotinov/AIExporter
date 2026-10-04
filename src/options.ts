@@ -7,6 +7,14 @@ import {
   saveSettings,
 } from "./settings.ts";
 import { initI18n, applyTranslations, t } from "./i18n.ts";
+import { NOTION_HOST_PERMISSION } from "./notion.ts";
+import {
+  FILE_NAME_PRESETS,
+  STANDARD_FILE_NAME,
+  fileNamePreset,
+  renderFileName,
+  type FileNamePreset,
+} from "./file-names.ts";
 
 const devError = (...args: unknown[]): void => {
   if (import.meta.env.DEV) {
@@ -53,8 +61,32 @@ const askWhereToSaveInput = document.getElementById(
   "askWhereToSave",
 ) as HTMLInputElement;
 
+const fileNameStyleInput = document.getElementById(
+  "fileNameStyle",
+) as HTMLSelectElement;
+const fileNameCustomRow = document.getElementById(
+  "fileNameCustomRow",
+) as HTMLDivElement;
+const fileNameTemplateInput = document.getElementById(
+  "fileNameTemplate",
+) as HTMLInputElement;
+const fileNameExampleName = document.getElementById(
+  "fileNameExampleName",
+) as HTMLElement;
+const fileNameTokenButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".token-button[data-token]"),
+);
+
 const downloadImagesLocallyInput = document.getElementById(
   "downloadImagesLocally",
+) as HTMLInputElement;
+
+const includeSourcesInput = document.getElementById(
+  "includeSources",
+) as HTMLInputElement;
+
+const includeThinkingInput = document.getElementById(
+  "includeThinking",
 ) as HTMLInputElement;
 
 const includeTimestampInput = document.getElementById(
@@ -196,6 +228,28 @@ const githubOverlayCancelButton = document.getElementById(
   "github-overlay-cancel",
 ) as HTMLButtonElement;
 
+const notionStatusLabel = document.getElementById(
+  "notion-status",
+) as HTMLSpanElement;
+
+const notionDisconnectButton = document.getElementById(
+  "notion-disconnect",
+) as HTMLButtonElement;
+
+const notionKeyPanel = document.getElementById("notion-key") as HTMLDivElement;
+
+const notionTokenInput = document.getElementById(
+  "notion-token",
+) as HTMLInputElement;
+
+const notionTokenSaveButton = document.getElementById(
+  "notion-token-save",
+) as HTMLButtonElement;
+
+const notionKeyError = document.getElementById(
+  "notion-key-error",
+) as HTMLParagraphElement;
+
 function applyTheme(theme: Settings["theme"]): void {
   if (theme === "system") {
     delete document.documentElement.dataset.theme;
@@ -279,6 +333,23 @@ function readPdfSettingsFromForm(): PdfSettings {
   };
 }
 
+/*
+ * The file name pattern the form stands for: a ready-made one, or
+ * the person's own ("" - the standard name - while theirs is
+ * still empty).
+ */
+function readFileNameTemplate(): string {
+  const style = fileNameStyleInput.value;
+
+  if (style === "custom") {
+    return fileNameTemplateInput.value.trim();
+  }
+
+  return (
+    FILE_NAME_PRESETS[style as FileNamePreset] ?? STANDARD_FILE_NAME
+  );
+}
+
 function readSettingsFromForm(): Settings {
   return {
     headingStyle: getRadioValue("headingStyle", savedSettings.headingStyle),
@@ -289,6 +360,9 @@ function readSettingsFromForm(): Settings {
     includeTimestamp: includeTimestampInput.checked,
     markdownProperties: markdownPropertiesInput.checked,
     askWhereToSave: askWhereToSaveInput.checked,
+    fileNameTemplate: readFileNameTemplate(),
+    includeSources: includeSourcesInput.checked,
+    includeThinking: includeThinkingInput.checked,
     downloadImagesLocally: downloadImagesLocallyInput.checked,
     theme: getRadioValue("theme", savedSettings.theme),
     language: languageInput.value as Settings["language"],
@@ -311,7 +385,10 @@ function applySettingsToForm(settings: Settings): void {
   languageInput.value = settings.language;
 
   askWhereToSaveInput.checked = settings.askWhereToSave;
+  applyFileNameTemplateToForm(settings.fileNameTemplate);
   downloadImagesLocallyInput.checked = settings.downloadImagesLocally;
+  includeSourcesInput.checked = settings.includeSources;
+  includeThinkingInput.checked = settings.includeThinking;
   includeTimestampInput.checked = settings.includeTimestamp;
   markdownPropertiesInput.checked = settings.markdownProperties;
 
@@ -410,6 +487,10 @@ settingsRoot.addEventListener("input", (event) => {
     updateDependentControls();
   }
 
+  if (target === fileNameTemplateInput) {
+    updateFileNameExample();
+  }
+
   if (target.type === "number" || target.type === "text") {
     scheduleSave(TYPING_SAVE_DELAY_MS);
   }
@@ -420,6 +501,12 @@ settingsRoot.addEventListener("change", (event) => {
 
   if (target === languageInput) {
     void changeLanguage();
+    return;
+  }
+
+  if (target === fileNameStyleInput) {
+    onFileNameStyleChange();
+    scheduleSave(CHANGE_SAVE_DELAY_MS);
     return;
   }
 
@@ -470,11 +557,13 @@ async function changeLanguage(): Promise<void> {
  */
 function renderTranslations(): void {
   applyTranslations();
+  updateFileNameExample();
   document.title = t("options.title");
   versionLabel.textContent = t("options.about.version", {
     version: chrome.runtime.getManifest().version,
   });
   renderGithub();
+  renderNotion();
   applySearch();
 }
 
@@ -487,6 +576,113 @@ function renderTranslations(): void {
 /* The footer text box only matters while its switch is on */
 function updateFooterTextRow(): void {
   pdfUserInfoTextRow.hidden = !pdfIncludeUserInfoInput.checked;
+}
+
+/*
+ * ---------------------------------------------------------
+ * FILE NAMES
+ * ---------------------------------------------------------
+ *
+ * A ready-made pattern is picked from the list; "My own
+ * pattern…" opens a text box for one with {title}, {site},
+ * {date} and {time}, which the buttons under it type in. The
+ * example under the list shows what a chat called (in the
+ * page's language) "Trip ideas" would be saved as, today.
+ */
+function applyFileNameTemplateToForm(template: string): void {
+  const preset = fileNamePreset(template ?? "");
+
+  fileNameStyleInput.value = preset ?? "custom";
+
+  if (preset === null) {
+    fileNameTemplateInput.value = template;
+  }
+
+  updateFileNameRow();
+}
+
+function updateFileNameExample(): void {
+  const name = renderFileName(readFileNameTemplate(), {
+    title: t("options.fileName.sampleTitle"),
+    site: "chatgpt",
+    date: new Date(),
+  });
+
+  fileNameExampleName.textContent = `${name}.pdf`;
+}
+
+function updateFileNameRow(): void {
+  fileNameCustomRow.hidden = fileNameStyleInput.value !== "custom";
+  updateFileNameExample();
+}
+
+/*
+ * Switching to "My own pattern…" starts from the pattern picked
+ * before (or "{date} {title}" after the standard name), so there
+ * is something to change rather than an empty box.
+ */
+let lastFileNameStyle = "standard";
+
+function onFileNameStyleChange(): void {
+  if (
+    fileNameStyleInput.value === "custom" &&
+    fileNameTemplateInput.value.trim() === ""
+  ) {
+    fileNameTemplateInput.value =
+      lastFileNameStyle === "standard"
+        ? FILE_NAME_PRESETS.dateTitle
+        : (FILE_NAME_PRESETS[lastFileNameStyle as FileNamePreset] ??
+          FILE_NAME_PRESETS.dateTitle);
+  }
+
+  lastFileNameStyle = fileNameStyleInput.value;
+  updateFileNameRow();
+
+  if (fileNameStyleInput.value === "custom") {
+    fileNameTemplateInput.focus();
+    fileNameTemplateInput.setSelectionRange(
+      fileNameTemplateInput.value.length,
+      fileNameTemplateInput.value.length,
+    );
+  }
+}
+
+fileNameStyleInput.addEventListener("focus", () => {
+  lastFileNameStyle = fileNameStyleInput.value;
+});
+
+/*
+ * Types a token in at the cursor (or at the end), with a space
+ * on either side unless something that separates is already
+ * there.
+ */
+for (const button of fileNameTokenButtons) {
+  // Keeps the cursor where it was in the text box.
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+
+  button.addEventListener("click", () => {
+    const input = fileNameTemplateInput;
+    const token = `{${button.dataset.token}}`;
+    const focused = document.activeElement === input;
+    const start = focused ? (input.selectionStart ?? input.value.length) : input.value.length;
+    const end = focused ? (input.selectionEnd ?? start) : start;
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    const spaceBefore = before !== "" && !/[\s\-_.([]$/.test(before) ? " " : "";
+    const spaceAfter = after !== "" && !/^[\s\-_.)\]]/.test(after) ? " " : "";
+    const value = `${before}${spaceBefore}${token}${spaceAfter}${after}`;
+
+    if (value.length > input.maxLength && input.maxLength > 0) {
+      return;
+    }
+
+    const caret = before.length + spaceBefore.length + token.length;
+
+    input.value = value;
+    input.focus();
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 function updateDependentControls(): void {
@@ -1222,6 +1418,147 @@ chrome.runtime.onMessage.addListener((message) => {
 
 /*
  * ---------------------------------------------------------
+ * NOTION CONNECTION
+ * ---------------------------------------------------------
+ *
+ * Connects with an internal integration's secret, pasted in (see
+ * notion.ts for why - signing in through Notion's own page would
+ * need a server-side piece this extension doesn't have). The
+ * browser first asks the person to allow access to api.notion.com
+ * - asked right in the click, since Firefox only shows that
+ * prompt in direct response to one.
+ */
+type NotionUiState =
+  | { kind: "disconnected" }
+  | { kind: "connected"; workspace: string }
+  | { kind: "error"; message: string };
+
+let notionState: NotionUiState = { kind: "disconnected" };
+let notionConnecting = false;
+
+function renderNotion(): void {
+  const connected = notionState.kind === "connected";
+
+  switch (notionState.kind) {
+    case "connected":
+      notionStatusLabel.textContent = notionState.workspace
+        ? t("options.notion.statusConnected", {
+            workspace: notionState.workspace,
+          })
+        : t("options.notion.statusConnectedNoName");
+      break;
+    case "error":
+      notionStatusLabel.textContent = notionState.message;
+      break;
+    default:
+      notionStatusLabel.textContent = t("options.notion.statusDisconnected");
+  }
+
+  notionStatusLabel.classList.toggle("is-connected", connected);
+  notionStatusLabel.classList.toggle("is-error", notionState.kind === "error");
+
+  notionDisconnectButton.hidden = !connected;
+  notionKeyPanel.hidden = connected;
+  notionTokenSaveButton.disabled = notionConnecting;
+}
+
+function setNotionState(state: NotionUiState, connecting = false): void {
+  notionState = state;
+  notionConnecting = connecting;
+  renderNotion();
+}
+
+function showNotionKeyError(message: string): void {
+  notionKeyError.textContent = message;
+  notionKeyError.hidden = message === "";
+}
+
+async function refreshNotionStatus(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "NOTION_GET_STATUS",
+    });
+
+    setNotionState(
+      response?.success && response.data?.connected
+        ? { kind: "connected", workspace: response.data.workspaceName ?? "" }
+        : { kind: "disconnected" },
+    );
+  } catch (error) {
+    devError("AI Exporter: Notion status check failed", error);
+    setNotionState({ kind: "disconnected" });
+  }
+}
+
+function requestNotionAccess(): Promise<boolean> {
+  return chrome.permissions
+    .request({ origins: [NOTION_HOST_PERMISSION] })
+    .catch(() => false);
+}
+
+async function connectNotionKey(): Promise<void> {
+  const token = notionTokenInput.value.trim();
+
+  if (token === "") {
+    showNotionKeyError(t("notion.error.tokenFormat"));
+    notionTokenInput.focus();
+    return;
+  }
+
+  const access = requestNotionAccess();
+
+  showNotionKeyError("");
+  setNotionState(notionState, true);
+
+  try {
+    if (!(await access)) {
+      throw new Error(t("options.notion.permissionDenied"));
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: "NOTION_CONNECT_TOKEN",
+      token,
+    });
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? t("notion.error.tokenRejected"));
+    }
+
+    notionTokenInput.value = "";
+    await refreshNotionStatus();
+  } catch (error) {
+    devError("AI Exporter: Notion key rejected", error);
+    setNotionState(notionState);
+    showNotionKeyError(
+      error instanceof Error ? error.message : t("notion.error.tokenRejected"),
+    );
+  }
+}
+
+notionTokenSaveButton.addEventListener("click", () => {
+  void connectNotionKey();
+});
+
+notionTokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void connectNotionKey();
+  }
+});
+
+notionDisconnectButton.addEventListener("click", async () => {
+  notionDisconnectButton.disabled = true;
+
+  try {
+    await chrome.runtime.sendMessage({ type: "NOTION_DISCONNECT" });
+  } finally {
+    notionDisconnectButton.disabled = false;
+    setNotionState({ kind: "disconnected" });
+  }
+});
+
+/*
+ * ---------------------------------------------------------
  * START
  * ---------------------------------------------------------
  */
@@ -1239,4 +1576,5 @@ async function init(): Promise<void> {
 
 init().then(() => {
   void refreshGithubStatus();
+  void refreshNotionStatus();
 });

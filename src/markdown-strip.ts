@@ -60,9 +60,11 @@ export function stripMarkdown(markdown: string): string {
   text = text.replace(/^#{1,6}\s+/gm, "");
 
   /*
-   * Blockquotes: drop leading "> ".
+   * Blockquotes: drop leading "> ". Only a space or tab after the
+   * ">" goes with it - not the line break of an empty quote line,
+   * which would run the quote's paragraphs together.
    */
-  text = text.replace(/^>\s?/gm, "");
+  text = text.replace(/^>[ \t]?/gm, "");
 
   /*
    * List markers: "- item" / "1. item" -> keep the

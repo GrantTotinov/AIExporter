@@ -15,7 +15,10 @@
  * below): that API authenticates with the session cookie,
  * which this script's same-origin requests send as well, so
  * no page bridge is needed there. gemini.google.com works the
- * same way (see LOAD GEMINI CONVERSATION below).
+ * same way (see LOAD GEMINI CONVERSATION below), and so do
+ * chat.deepseek.com, grok.com and www.perplexity.ai - whose pages
+ * only get this script when the popup is opened on them (see
+ * LOAD DEEPSEEK, GROK AND PERPLEXITY CONVERSATIONS below).
  *
  * No DOM scrolling is used.
  * No conversation credentials are stored by this file.
@@ -58,6 +61,43 @@ import {
   type ConversationListPage,
   type ConversationSummary,
 } from "./conversation-list.ts";
+import { chatGptThinking, convertChatGptCitations } from "./chatgpt-reply.ts";
+import {
+  buildDeepSeekHistoryPath,
+  buildDeepSeekListPath,
+  convertDeepSeekConversation,
+  deepSeekHeaders,
+  getDeepSeekConversationId,
+  parseDeepSeekSessionList,
+  readDeepSeekToken,
+  unwrapDeepSeekResponse,
+  type DeepSeekListCursor,
+} from "./deepseek-conversation.ts";
+import {
+  buildGrokListPath,
+  buildGrokLoadPath,
+  buildGrokNodesPath,
+  convertGrokResponses,
+  getGrokActiveResponseId,
+  getGrokConversationId,
+  parseGrokConversationList,
+  parseGrokResponseNodes,
+  parseGrokResponses,
+} from "./grok-conversation.ts";
+import {
+  PERPLEXITY_HEADERS,
+  buildPerplexityListRequest,
+  buildPerplexityThreadPath,
+  convertPerplexityEntries,
+  getPerplexityThreadSlug,
+  parsePerplexityThread,
+  parsePerplexityThreadList,
+} from "./perplexity-conversation.ts";
+import {
+  ReplySources,
+  replyExtras,
+  type ReplySource,
+} from "./reply-sources.ts";
 
 /*
  * ---------------------------------------------------------
@@ -277,12 +317,23 @@ const devError = (...args: unknown[]): void => {
  * PAGE BRIDGE INJECTION
  * ---------------------------------------------------------
  *
- * ChatGPT only - claude.ai and gemini.google.com are loaded
- * without the bridge (see the top of this file).
+ * ChatGPT only - the other sites are loaded without the bridge
+ * (see the top of this file).
  */
 
 const IS_CLAUDE_SITE = window.location.hostname === "claude.ai";
 const IS_GEMINI_SITE = window.location.hostname === "gemini.google.com";
+const IS_DEEPSEEK_SITE = window.location.hostname === "chat.deepseek.com";
+const IS_GROK_SITE = window.location.hostname === "grok.com";
+const IS_PERPLEXITY_SITE = /^(?:www\.)?perplexity\.ai$/.test(
+  window.location.hostname,
+);
+const IS_CHATGPT_SITE =
+  !IS_CLAUDE_SITE &&
+  !IS_GEMINI_SITE &&
+  !IS_DEEPSEEK_SITE &&
+  !IS_GROK_SITE &&
+  !IS_PERPLEXITY_SITE;
 
 function injectPageBridge(): void {
   if (document.documentElement.dataset.aiExporterBridgeInjected === "true") {
@@ -310,7 +361,7 @@ function injectPageBridge(): void {
   document.documentElement.dataset.aiExporterBridgeInjected = "true";
 }
 
-if (!IS_CLAUDE_SITE && !IS_GEMINI_SITE) {
+if (IS_CHATGPT_SITE) {
   injectPageBridge();
 }
 
@@ -323,9 +374,14 @@ if (!IS_CLAUDE_SITE && !IS_GEMINI_SITE) {
 interface Message {
   id: string;
   role: "user" | "assistant";
+  /* A reply's citations are notes (see reply-sources.ts). */
   content: string;
   order: number;
   imagePaths?: string[];
+  /* The reasoning a reply's model showed before answering */
+  thinking?: string;
+  /* The web pages a reply cites, numbered as its notes are */
+  sources?: ReplySource[];
 }
 
 interface ExportImageFile {
@@ -1436,6 +1492,18 @@ async function loadEntireConversation(
     return loadGeminiConversation(downloadImagesLocally, requestedId);
   }
 
+  if (IS_DEEPSEEK_SITE) {
+    return loadDeepSeekConversation(downloadImagesLocally, requestedId);
+  }
+
+  if (IS_GROK_SITE) {
+    return loadGrokConversation(downloadImagesLocally, requestedId);
+  }
+
+  if (IS_PERPLEXITY_SITE) {
+    return loadPerplexityConversation(downloadImagesLocally, requestedId);
+  }
+
   await waitForBridge();
 
   const conversationId = requestedId ?? getConversationIdFromUrl();
@@ -1622,12 +1690,33 @@ async function loadEntireConversation(
         return null;
       }
 
+      if (role === "user") {
+        return {
+          id,
+          role,
+          content: extracted.content,
+          order,
+          imagePaths: extracted.imagePaths,
+        };
+      }
+
+      // Citations become notes; the thinking comes from the
+      // reasoning messages before the reply.
+      const sources = new ReplySources();
+      const content = convertChatGptCitations(
+        extracted.content,
+        message.metadata,
+        sources,
+      );
+      const thinking = chatGptThinking(message, rawById, getApiMessageParentId);
+
       return {
         id,
         role,
-        content: extracted.content,
+        content,
         order,
         imagePaths: extracted.imagePaths,
+        ...replyExtras(thinking, sources),
       };
     }),
   );
@@ -1944,6 +2033,8 @@ async function loadClaudeConversation(
                   ),
                 ),
               ],
+              ...(message.thinking ? { thinking: message.thinking } : {}),
+              ...(message.sources ? { sources: message.sources } : {}),
             }
           : null;
       },
@@ -2333,6 +2424,8 @@ async function loadGeminiConversation(
                   ),
                 ),
               ],
+              ...(message.thinking ? { thinking: message.thinking } : {}),
+              ...(message.sources ? { sources: message.sources } : {}),
             }
           : null;
       },
@@ -2355,6 +2448,374 @@ async function loadGeminiConversation(
   });
 
   return { messages: result, images };
+}
+
+/*
+ * ---------------------------------------------------------
+ * LOAD DEEPSEEK, GROK AND PERPLEXITY CONVERSATIONS
+ * ---------------------------------------------------------
+ *
+ * These sites' pages only get this script when the popup is
+ * opened on one of them (see the top of chat-sites.ts). Their
+ * APIs take the session the page already has: DeepSeek the token
+ * its web app keeps in localStorage, Grok and Perplexity their
+ * session cookies, which this script's same-origin requests send
+ * too. deepseek-conversation.ts, grok-conversation.ts and
+ * perplexity-conversation.ts read the answers; what's here makes
+ * the requests and turns their messages - text and image parts,
+ * like Claude's and Gemini's - into the export's.
+ */
+
+type SiteMessagePart =
+  | { kind: "text"; text: string }
+  | { kind: "image"; image: { url: string | null; fileName: string } };
+
+interface SiteExportMessage {
+  id: string;
+  role: "user" | "assistant";
+  parts: SiteMessagePart[];
+  thinking?: string;
+  sources?: ReplySource[];
+}
+
+/* A long Perplexity thread, fifty questions a page */
+const MAX_THREAD_PAGES = 200;
+
+/*
+ * A same-origin API request, answered with its JSON. A refused
+ * session gets the plain "sign in" message rather than a status
+ * code.
+ */
+async function fetchSiteJson(
+  siteName: string,
+  path: string,
+  init: { method?: string; body?: string; headers?: Record<string, string> } = {},
+): Promise<unknown> {
+  const response = await fetch(new URL(path, window.location.origin), {
+    method: init.method ?? "GET",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...init.headers,
+    },
+    ...(init.body ? { body: init.body } : {}),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(`Sign in to ${siteName} to export this conversation.`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`${siteName} API request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/*
+ * An image from one of these sites. A same-origin request carries
+ * the person's session; one to another host (a file or image
+ * service) goes without it, so their cookies never go elsewhere.
+ */
+async function downloadSiteImage(
+  url: string,
+): Promise<{ base64: string; mimeType: string; sizeBytes: number }> {
+  const address = new URL(url);
+
+  if (address.protocol !== "https:" || address.username || address.password) {
+    throw new Error("The image's address isn't a safe web address.");
+  }
+
+  const response = await fetch(address, {
+    method: "GET",
+    credentials: address.origin === window.location.origin ? "include" : "omit",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Image download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+    throw new Error("The image is larger than the 8 MB export limit.");
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error("The image is empty or larger than the 8 MB export limit.");
+  }
+
+  return {
+    base64: bytesToBase64(bytes),
+    mimeType: response.headers.get("content-type") ?? "",
+    sizeBytes: bytes.byteLength,
+  };
+}
+
+/*
+ * The site's messages as the export's: text parts joined, and
+ * images downloaded and pointed to - or, like everywhere else,
+ * left out unless image bundling is on.
+ */
+async function toExportMessages(
+  siteMessages: SiteExportMessage[],
+  downloadImagesLocally: boolean,
+): Promise<ConversationLoadResult> {
+  const imageFileCache = new Map<string, Promise<ExportImageFile>>();
+  const limitImageRequests = createRequestLimiter(2);
+  let nextImageIndex = 1;
+  let downloadedImageBytes = 0;
+
+  const getImageFile = (url: string, fileName: string): Promise<ExportImageFile> => {
+    let pendingImage = imageFileCache.get(url);
+
+    if (!pendingImage) {
+      const imageIndex = nextImageIndex++;
+
+      pendingImage = limitImageRequests(async () => {
+        const downloaded = await downloadSiteImage(url);
+        const fileType = getImageFileType(fileName, downloaded.mimeType);
+
+        if (!fileType) {
+          throw new Error("The downloaded attachment is not a supported image type.");
+        }
+
+        if (downloadedImageBytes + downloaded.sizeBytes > MAX_TOTAL_IMAGE_BYTES) {
+          throw new Error("The conversation's images exceed the 20 MB export limit.");
+        }
+
+        downloadedImageBytes += downloaded.sizeBytes;
+
+        return {
+          path: `images/image-${String(imageIndex).padStart(3, "0")}.${fileType.extension}`,
+          mimeType: fileType.mimeType,
+          base64: downloaded.base64,
+          sizeBytes: downloaded.sizeBytes,
+        };
+      });
+      imageFileCache.set(url, pendingImage);
+    }
+
+    return pendingImage;
+  };
+
+  const converted = await Promise.all(
+    siteMessages.map(async (message): Promise<Omit<Message, "order"> | null> => {
+      let imageNumber = 0;
+
+      const renderedParts = await Promise.all(
+        message.parts.map(
+          async (part): Promise<{ text: string; imagePath?: string }> => {
+            if (part.kind === "text") {
+              return { text: part.text };
+            }
+
+            if (!downloadImagesLocally) {
+              return { text: "" };
+            }
+
+            const number = ++imageNumber;
+
+            if (!part.image.url) {
+              return { text: "[Image attachment could not be downloaded]" };
+            }
+
+            try {
+              const imageFile = await getImageFile(part.image.url, part.image.fileName);
+
+              return {
+                text: `![Image ${number}](${imageFile.path})`,
+                imagePath: imageFile.path,
+              };
+            } catch (error) {
+              devWarn("AI Exporter: failed to download an image", error);
+
+              return { text: "[Image attachment could not be downloaded]" };
+            }
+          },
+        ),
+      );
+
+      const content = renderedParts
+        .map((part) => part.text)
+        .filter(Boolean)
+        .join("\n\n")
+        .trim();
+
+      return content
+        ? {
+            id: message.id,
+            role: message.role,
+            content,
+            imagePaths: [
+              ...new Set(
+                renderedParts.flatMap((part) => (part.imagePath ? [part.imagePath] : [])),
+              ),
+            ],
+            ...(message.thinking ? { thinking: message.thinking } : {}),
+            ...(message.sources ? { sources: message.sources } : {}),
+          }
+        : null;
+    }),
+  );
+
+  const settledImages = await Promise.allSettled(imageFileCache.values());
+
+  return {
+    messages: converted
+      .filter((message): message is Omit<Message, "order"> => message !== null)
+      .map((message, order) => ({ ...message, order })),
+    images: settledImages.flatMap((item) =>
+      item.status === "fulfilled" ? [item.value] : [],
+    ),
+  };
+}
+
+function reportProgress(collected: number): void {
+  try {
+    void Promise.resolve(
+      chrome.runtime.sendMessage({ type: "EXPORT_PROGRESS", collected }),
+    ).catch(() => undefined);
+  } catch {
+    /* Progress reporting must never break the export. */
+  }
+}
+
+/*
+ * DeepSeek's API wants the token its web app keeps in
+ * localStorage, which this script can read: the page's storage
+ * is its own too.
+ */
+function deepSeekRequestHeaders(): Record<string, string> {
+  let raw: string | null = null;
+
+  try {
+    raw = window.localStorage.getItem("userToken");
+  } catch {
+    /* Storage blocked: treated as signed out. */
+  }
+
+  const token = readDeepSeekToken(raw);
+
+  if (!token) {
+    throw new Error("Sign in to DeepSeek to export this conversation.");
+  }
+
+  return deepSeekHeaders(
+    token,
+    document.documentElement.lang || navigator.language || "en-US",
+    new Date().getTimezoneOffset(),
+  );
+}
+
+async function loadDeepSeekConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const conversationId =
+    requestedId ?? getDeepSeekConversationId(window.location.pathname);
+
+  if (!conversationId) {
+    throw new Error(
+      "Could not determine the DeepSeek conversation ID from the current URL.",
+    );
+  }
+
+  const data = await fetchSiteJson("DeepSeek", buildDeepSeekHistoryPath(conversationId), {
+    headers: deepSeekRequestHeaders(),
+  });
+  const messages = convertDeepSeekConversation(unwrapDeepSeekResponse(data));
+
+  devLog("AI Exporter: DeepSeek export", { conversationId, messages: messages.length });
+
+  return toExportMessages(messages, downloadImagesLocally);
+}
+
+/* Grok answers load-responses fifty at a time */
+const GROK_RESPONSES_PER_REQUEST = 50;
+
+async function loadGrokConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const conversationId =
+    requestedId ?? getGrokConversationId(window.location.pathname);
+
+  if (!conversationId) {
+    throw new Error("Could not determine the Grok conversation ID from the current URL.");
+  }
+
+  const ids = parseGrokResponseNodes(
+    await fetchSiteJson("Grok", buildGrokNodesPath(conversationId)),
+  );
+  const responses: unknown[] = [];
+
+  for (let start = 0; start < ids.length; start += GROK_RESPONSES_PER_REQUEST) {
+    const page = await fetchSiteJson("Grok", buildGrokLoadPath(conversationId), {
+      method: "POST",
+      body: JSON.stringify({
+        responseIds: ids.slice(start, start + GROK_RESPONSES_PER_REQUEST),
+      }),
+    });
+
+    responses.push(...parseGrokResponses(page));
+    reportProgress(responses.length);
+  }
+
+  // Another conversation than the open one is exported as it was last shown.
+  const activeResponseId = requestedId
+    ? null
+    : getGrokActiveResponseId(window.location.search);
+  const messages = convertGrokResponses(responses, activeResponseId);
+
+  devLog("AI Exporter: Grok export", { conversationId, messages: messages.length });
+
+  return toExportMessages(messages, downloadImagesLocally);
+}
+
+/* A thread's questions and answers, fifty a request */
+const PERPLEXITY_ENTRIES_PER_REQUEST = 50;
+
+async function loadPerplexityConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const thread =
+    requestedId ?? getPerplexityThreadSlug(window.location.pathname);
+
+  if (!thread) {
+    throw new Error(
+      "Could not determine the Perplexity thread from the current URL.",
+    );
+  }
+
+  const entries: unknown[] = [];
+
+  for (let page = 0; page < MAX_THREAD_PAGES; page++) {
+    const parsed = parsePerplexityThread(
+      await fetchSiteJson(
+        "Perplexity",
+        buildPerplexityThreadPath(thread, entries.length, PERPLEXITY_ENTRIES_PER_REQUEST),
+        { headers: PERPLEXITY_HEADERS },
+      ),
+    );
+
+    entries.push(...parsed.entries);
+    reportProgress(entries.length * 2);
+
+    if (!parsed.hasNextPage || parsed.entries.length === 0) {
+      break;
+    }
+  }
+
+  const messages = convertPerplexityEntries(entries);
+
+  devLog("AI Exporter: Perplexity export", { thread, messages: messages.length });
+
+  return toExportMessages(messages, downloadImagesLocally);
 }
 
 /*
@@ -3210,15 +3671,112 @@ async function listGeminiPage(
  * list API can't be read. Only titles and links - no dates - and
  * only as many as the sidebar has loaded.
  */
+/* DeepSeek's sidebar, fifty chats a page, pinned ones first */
+async function listDeepSeekPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  const position = cursor ? (JSON.parse(cursor) as DeepSeekListCursor) : null;
+  const page = parseDeepSeekSessionList(
+    unwrapDeepSeekResponse(
+      await fetchSiteJson("DeepSeek", buildDeepSeekListPath(50, position), {
+        headers: deepSeekRequestHeaders(),
+      }),
+    ),
+  );
+
+  return {
+    conversations: page.conversations.map((conversation) => ({
+      ...conversation,
+      url: `${window.location.origin}/a/chat/s/${conversation.id}`,
+    })),
+    nextCursor: page.nextCursor ? JSON.stringify(page.nextCursor) : null,
+  };
+}
+
+async function listGrokPage(cursor: string | null): Promise<ConversationListPage> {
+  const page = parseGrokConversationList(
+    await fetchSiteJson("Grok", buildGrokListPath(60, cursor)),
+  );
+
+  return {
+    conversations: page.conversations.map((conversation) => ({
+      ...conversation,
+      url: `${window.location.origin}/c/${conversation.id}`,
+    })),
+    nextCursor: page.nextCursor,
+  };
+}
+
+/*
+ * Perplexity's library, newest first. Each thread is exported by
+ * its uuid, which /rest/thread/ takes like the slug its page has.
+ */
+const PERPLEXITY_LIST_PAGE_SIZE = 50;
+
+async function listPerplexityPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  const offset = cursor === null ? 0 : Number(cursor);
+  const request = buildPerplexityListRequest(PERPLEXITY_LIST_PAGE_SIZE, offset);
+  const threads = parsePerplexityThreadList(
+    await fetchSiteJson("Perplexity", request.path, {
+      method: "POST",
+      body: request.body,
+      headers: PERPLEXITY_HEADERS,
+    }),
+  );
+
+  return {
+    conversations: threads.map((thread) => ({
+      id: thread.id,
+      title: thread.title,
+      url: `${window.location.origin}/search/${encodeURIComponent(thread.slug)}`,
+      createdAt: null,
+      updatedAt: thread.updatedAt,
+    })),
+    nextCursor:
+      threads.length >= PERPLEXITY_LIST_PAGE_SIZE
+        ? String(offset + threads.length)
+        : null,
+  };
+}
+
+/*
+ * The conversation id a sidebar link's path names, for the
+ * site this page is on.
+ */
+function conversationIdFromPath(pathname: string): string | null {
+  if (IS_CLAUDE_SITE) {
+    return getClaudeConversationId(pathname);
+  }
+
+  if (IS_GEMINI_SITE) {
+    return getGeminiConversationId(pathname);
+  }
+
+  if (IS_DEEPSEEK_SITE) {
+    return getDeepSeekConversationId(pathname);
+  }
+
+  if (IS_GROK_SITE) {
+    return getGrokConversationId(pathname);
+  }
+
+  if (IS_PERPLEXITY_SITE) {
+    // Only a slug LOAD_CONVERSATION accepts as an id
+    const slug = getPerplexityThreadSlug(pathname);
+
+    return slug && /^[A-Za-z0-9_-]{1,128}$/.test(slug) ? slug : null;
+  }
+
+  return (
+    pathname.match(/^\/(?:g\/[^/]+\/)?c\/([0-9a-f-]{36})\/?$/i)?.[1] ?? null
+  );
+}
+
 function scrapeSidebarConversations(): ConversationSummary[] {
   const found = new Map<string, ConversationSummary>();
-  const idFromPath = IS_CLAUDE_SITE
-    ? getClaudeConversationId
-    : IS_GEMINI_SITE
-      ? getGeminiConversationId
-      : (pathname: string) =>
-          pathname.match(/^\/(?:g\/[^/]+\/)?c\/([0-9a-f-]{36})\/?$/i)?.[1] ??
-          null;
+  const idFromPath = conversationIdFromPath;
 
   for (const link of Array.from(document.querySelectorAll("a[href]"))) {
     const url = new URL((link as HTMLAnchorElement).href, window.location.href);
@@ -3250,7 +3808,13 @@ async function listConversationsPage(
       ? await listClaudePage(cursor)
       : IS_GEMINI_SITE
         ? await listGeminiPage(cursor)
-        : await listChatGptPage(cursor);
+        : IS_DEEPSEEK_SITE
+          ? await listDeepSeekPage(cursor)
+          : IS_GROK_SITE
+            ? await listGrokPage(cursor)
+            : IS_PERPLEXITY_SITE
+              ? await listPerplexityPage(cursor)
+              : await listChatGptPage(cursor);
 
     devLog(
       `AI Exporter: listed ${page.conversations.length} chats in ${Date.now() - started} ms`,
@@ -3349,6 +3913,23 @@ chrome.runtime.onMessage.addListener(
      * the asynchronous operation is running.
      */
     return true;
+  },
+);
+
+/*
+ * The popup asks before putting this script into a DeepSeek, Grok
+ * or Perplexity tab: a page that has it already answers, so it's
+ * never added twice.
+ */
+chrome.runtime.onMessage.addListener(
+  (message: { type: string }, _sender, sendResponse) => {
+    if (message.type !== "AIEXPORTER_PING") {
+      return false;
+    }
+
+    sendResponse({ ok: true });
+
+    return false;
   },
 );
 

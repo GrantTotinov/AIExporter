@@ -1,6 +1,14 @@
 import { defineConfig } from "vite";
+import { trimJsPdfPlugin } from "./scripts/trim-jspdf.mjs";
 
 export default defineConfig({
+  /*
+   * Takes the cdnjs.cloudflare.com <script> (remotely hosted
+   * code, which got AI Exporter rejected by the Chrome Web Store)
+   * and the unused html2canvas/DOMPurify/canvg imports out of
+   * jsPDF - see scripts/trim-jspdf.mjs.
+   */
+  plugins: [trimJsPdfPlugin()],
   build: {
     /*
      * MathJax (src/math-render.ts) is a ~1.8 MB chunk on purpose:

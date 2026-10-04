@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Free AI Exporter - ChatGPT, Claude & Gemini to PDF, Images, MD, JSON & CSV",
   "version": "2.3.0",
-  "description": "Free export and backup tool for ChatGPT, Claude and Gemini chats: PDF, Images, Markdown, JSON or CSV. Save to GitHub or clipboard.",
+  "description": "Free export and backup for ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity chats: PDF, Word, Markdown, JSON, CSV and more.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -14,9 +14,16 @@
     "clipboardWrite",
     "offscreen",
     "downloads",
+    "scripting",
     "storage"
   ],
-  "host_permissions": ["https://github.com/*", "https://api.github.com/*"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://api.notion.com/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -28,13 +35,19 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*"
       ],
-      "js": ["content.js"]
+      "js": [
+        "content.js"
+      ]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pageBridge.js"],
-      "matches": ["https://chatgpt.com/*"]
+      "resources": [
+        "pageBridge.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*"
+      ]
     }
   ],
   "action": {

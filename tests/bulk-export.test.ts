@@ -87,6 +87,24 @@ describe("file names", () => {
     expect(uniqueName("New-Chat", used)).toBe("New-Chat-2");
     expect(uniqueName("new-chat", used)).toBe("new-chat-3");
   });
+
+  it("numbers repeated names written with spaces in brackets", () => {
+    const used = new Set<string>();
+    expect(uniqueName("New chat", used)).toBe("New chat");
+    expect(uniqueName("New chat", used)).toBe("New chat (2)");
+  });
+
+  it("follows the person's own pattern, dated by the chat's last use", () => {
+    const tenDaysAgo = new Date(NOW - 10 * DAY);
+    const day = `${tenDaysAgo.getFullYear()}-${String(tenDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(tenDaysAgo.getDate()).padStart(2, "0")}`;
+
+    expect(
+      conversationFileBase(chat("b", "Python: script", 10), "{date} {title}", "chatgpt"),
+    ).toBe(`${day} Python - script`);
+    expect(
+      conversationFileBase(chat("b", "Python script", 10), "{site} - {title}", "claude"),
+    ).toBe("Claude - Python script");
+  });
 });
 
 describe("conversation lists", () => {

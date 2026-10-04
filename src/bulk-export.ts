@@ -7,7 +7,9 @@
  * the DOM: searching and date-filtering the conversation list,
  * and naming the files inside the ZIP.
  */
+import type { ChatSite } from "./chat-sites.ts";
 import type { ConversationSummary } from "./conversation-list.ts";
+import { STANDARD_FILE_NAME, renderFileName, titleSlug } from "./file-names.ts";
 
 export type DatePreset = "all" | "7d" | "30d" | "90d" | "365d" | "custom";
 
@@ -105,33 +107,43 @@ export function localDate(time: number): string {
 }
 
 /*
- * A file name for a conversation: its last-activity date, so the
- * ZIP sorts by date, and its title in any script - lowercased,
- * with everything that isn't a letter or digit turned into "-".
+ * A file name for a conversation. The standard one is its
+ * last-activity date, so the ZIP sorts by date, and its title in
+ * any script - lowercased, with everything that isn't a letter or
+ * digit turned into "-". With a pattern of the person's own (see
+ * file-names.ts), {date} and {time} are that last activity too:
+ * every chat in the ZIP was saved on the same day.
  */
-export function conversationFileBase(conversation: ConversationSummary): string {
+export function conversationFileBase(
+  conversation: ConversationSummary,
+  template: string = STANDARD_FILE_NAME,
+  site: ChatSite | null = null,
+): string {
   const time = conversation.updatedAt ?? conversation.createdAt;
-  const slug = conversation.title
-    .normalize("NFC")
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/-+$/, "");
-  const name = slug || "chat";
+
+  if (template.trim() !== STANDARD_FILE_NAME) {
+    return renderFileName(template, {
+      title: conversation.title,
+      site,
+      date: new Date(time ?? Date.now()),
+    });
+  }
+
+  const name = titleSlug(conversation.title) || "chat";
 
   return time === null ? name : `${localDate(time)}-${name}`;
 }
 
 /*
  * `base`, or `base-2`, `base-3`... when an earlier conversation
- * already took the name (two chats titled "New chat" on one day).
+ * already took the name (two chats titled "New chat" on one day);
+ * a name written with spaces gets "base (2)" instead.
  */
 export function uniqueName(base: string, used: Set<string>): string {
   let name = base;
 
   for (let index = 2; used.has(name.toLowerCase()); index++) {
-    name = `${base}-${index}`;
+    name = base.includes(" ") ? `${base} (${index})` : `${base}-${index}`;
   }
 
   used.add(name.toLowerCase());

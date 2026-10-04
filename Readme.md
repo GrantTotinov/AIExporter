@@ -1,11 +1,11 @@
 # AI Exporter
 
-A free browser extension for Chrome and Firefox that exports your ChatGPT, Claude and Gemini conversations to PDF, Markdown, plain text, JSON, or CSV, images included, so you can keep a copy, share it, or drop it straight into a GitHub repo. Everything happens locally, in your browser.
+A free browser extension for Chrome and Firefox that exports your ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity conversations to PDF, Word, HTML, Markdown, plain text, JSON, or CSV, images included, so you can keep a copy, share it, or drop it straight into a GitHub repo or a Notion page. Everything happens locally, in your browser.
 
 ## Free, source-available, and local
 
 - **Free.** No account, no subscription, no paid tier, no ads.
-- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT, Claude or Gemini), to GitHub if you use the GitHub features, and to the browser's add-on store to check for updates. See the [privacy policy](./docs/privacy-policy.md).
+- **Local.** Conversations are read and turned into files right in your browser. There's no AI Exporter server and no analytics or tracking: the extension only talks to the chat service you're exporting from (ChatGPT, Claude, Gemini, DeepSeek, Grok or Perplexity), to GitHub or Notion if you use those features, and to the browser's add-on store to check for updates. See the [privacy policy](./docs/privacy-policy.md).
 - **Source-available.** The complete source code is here on GitHub, so you can read exactly what the extension does, build it yourself, or send a fix. It's free for personal and other noncommercial use (see [License](#license)).
 
 ## Why this exists
@@ -16,19 +16,23 @@ AI Exporter takes a different approach. It talks to the same conversation API th
 
 On `claude.ai` it works the same way: it asks Claude's own conversation API for the whole conversation, every branch included, and follows the branch you're currently viewing. On `gemini.google.com` it reads the conversation through the same internal API the Gemini web app uses, ten turns at a time, so long chats come out complete without any scrolling either.
 
+DeepSeek, Grok and Perplexity are read the same way, through each site's own API: DeepSeek's message history and Grok's conversation tree, following the branch and the reply you're looking at, and Perplexity's thread, fifty questions at a time.
+
 ## What it does
 
-- **Works on ChatGPT, Claude and Gemini.** Open a conversation on `chatgpt.com`, `claude.ai` or `gemini.google.com` and export it.
-- **Exports to five formats:** PDF, Markdown (`.md`), plain text (`.txt`), JSON, or CSV.
+- **Works on ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity.** Open a conversation on `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` or `perplexity.ai` and export it. AI Exporter has no standing access to DeepSeek, Grok and Perplexity: it only reads their page once you open its popup there.
+- **Exports to seven formats:** PDF, Word (`.docx`), a single self-contained web page (`.html`), Markdown (`.md`), plain text (`.txt`), JSON, or CSV. Word and HTML files keep the code's syntax colors, tables, links, formulas and the chat's images, all inside the one file.
 - **Exports images too.** PDFs embed them on the page; Markdown, text, JSON, and CSV exports come as a ZIP with an `images/` folder. It's opt-in, see [Images](#images).
 - **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, Greek, Hebrew, and Arabic text. Hebrew, Arabic, and Persian replies read right to left, as on the chat page: lines are right-aligned, Arabic letters are joined, and English words and numbers inside them stay in the right order. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
 - **Keeps math formulas readable:** formulas are typeset in PDFs, just like on the chat site (fractions, roots, matrices, equations), and written as `$...$` and `$$...$$` in Markdown, which Obsidian, GitHub, Typora and VS Code show as math. Each site's own way of marking math is understood, so a price like "$5" stays a price.
 - **Ready for note apps:** Markdown files start with the chat's details (title, link, site, number of messages), which Obsidian and similar apps show as the note's properties. You can turn this off in **Settings → Chat contents**.
 - **Keeps artifacts and documents:** code and documents Claude wrote in an artifact, and Gemini's Canvas and Deep Research documents, are exported with the reply that made them.
+- **Keeps the sources:** when a reply looked things up on the web, its citations become small numbers with the list of pages under the reply: footnotes in Markdown, clickable numbers in PDF, Word, HTML and Notion, and the same goes for Deep Research reports. You can leave them out in **Settings → Chat contents**.
+- **Can keep the AI's thinking:** turn on **The AI's thinking** in **Settings → Chat contents** to also save the step-by-step reasoning that thinking models show before they answer. It goes in a separate gray section ahead of the reply, folded away in Markdown.
 - **Copies** the whole conversation to your clipboard as Markdown in one click.
 - **Lets you pick the messages** before exporting: tick them one by one, select all, only your questions, only the answers, or swap what's selected. Shift+click selects a range, and you can show messages in full to read them.
-- **Saves straight to a GitHub repo** (see below) instead of downloading.
-- **Fits your preferences:** heading style, spacing between messages, an optional export timestamp, and whether to ask where to save each file.
+- **Saves straight to a GitHub repo or a Notion page** (see below) instead of downloading.
+- **Fits your preferences:** heading style, spacing between messages, an optional export timestamp, how files are named, and whether to ask where to save each file.
 - Light, Dark, or System theme.
 - Interface in English, Spanish, French, German, Russian, or Chinese, or following your browser's language automatically.
 
@@ -63,15 +67,15 @@ Any time you pull new changes, rebuild and then reload the extension (the reload
 
 ## Using it
 
-1. Open any conversation on `chatgpt.com`, `claude.ai` or `gemini.google.com`.
+1. Open any conversation on `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` or `perplexity.ai`.
 2. Click the AI Exporter icon. The popup names the conversation it's about to save; on any other page it says what to open first.
-3. Pick **Copy the whole chat**, or **Save as a file** to choose which messages to include and a file type: PDF, Markdown, plain text, JSON, or CSV. Each file type has a one-line explanation, and the popup remembers the one you used last.
+3. Pick **Copy the whole chat**, or **Save as a file** to choose which messages to include and a file type: PDF, Word, a web page (HTML), Markdown, plain text, JSON, or CSV. Each file type has a one-line explanation, and the popup remembers the one you used last.
 
-Files are named after the site, the conversation, and the date, for example `claude-export-trip-ideas-2026-10-02.pdf`.
+Files are named after the site, the conversation, and the date, for example `claude-export-trip-ideas-2026-10-02.pdf`. To name them another way, pick a style under **Settings → Saving files → File names**: the chat's title alone, the date and title, or a pattern of your own made of `{title}`, `{site}`, `{date}` and `{time}`, such as `{date} {title}`.
 
 ### Settings
 
-Click **Settings** at the top of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Chat contents**, **PDF documents**, and **GitHub**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
+Click **Settings** at the top of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Chat contents**, **PDF documents**, **GitHub** and **Notion**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
 
 ### Images
 
@@ -96,13 +100,23 @@ AI Exporter can commit an export directly into a repo instead of downloading it 
 
 This uses GitHub's OAuth **device flow**, the same mechanism CLI tools like the GitHub CLI use to sign in. No password or personal access token ever touches the extension, just a short-lived code you type into GitHub's own site. Your access token is stored locally in your browser and never leaves your machine except to talk to `api.github.com`.
 
+## Saving to Notion
+
+1. Create an internal integration at [notion.so/profile/integrations](https://www.notion.so/profile/integrations) and copy its **Internal Integration Secret**.
+2. Open the extension's **Settings → Notion**, paste the key and click **Connect**. The browser asks once whether AI Exporter may reach Notion.
+3. In Notion, open the page to keep your chats in, click **••• → Connections** and add your integration. AI Exporter only sees the pages you add it to.
+4. Back in the popup, choose **Save as a file**, then **Save to Notion instead**, pick the page to put it in, and save. The chat becomes a new Notion page with real Notion headings, lists, tables, code blocks and equations, so it's as editable as anything written in Notion.
+
+Images aren't copied to Notion: its API only embeds pictures from a public web address.
+
 ## A few notes
 
-- AI Exporter works on `chatgpt.com`, `claude.ai` and `gemini.google.com`. If OpenAI, Anthropic or Google change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
+- AI Exporter works on `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` and `perplexity.ai`. If OpenAI, Anthropic, Google, DeepSeek, xAI or Perplexity change their internal APIs, exports may break until the extension gets updated. That's the trade-off of not relying on the visible page content.
 - AI Exporter keeps itself up to date. The bottom of the popup shows the version you have and whether it's the latest; click it to check again. Once the browser has downloaded an update, AI Exporter installs it as soon as no export is running, instead of waiting for the next browser restart. Firefox asks you to approve an update that needs new permissions: press Ctrl+Shift+A, click ⚙ and choose **Check for Updates**.
-- Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's thinking and tool calls are left out, and attached files are listed by name.
-- Gemini exports include Canvas and Deep Research documents, and generated images when image bundling is on. Gemini's thinking and the markup only its own interface uses (citation markers, suggested follow-ups, web image results, video cards) are left out, and attached files other than images are listed by name.
-- Image bundling downloads the image files into the export so they work locally without a ChatGPT, Claude or Gemini session.
+- Claude exports include legacy artifacts (the code and documents made before Claude's September 2026 artifacts update), each as it stood at that reply. Claude's tool calls are left out, and attached files are listed by name.
+- Gemini exports include Canvas and Deep Research documents, and generated images when image bundling is on. Its citation markers become numbered sources; the markup only Gemini's own interface uses (suggested follow-ups, web image results, video cards) is left out, and attached files other than images are listed by name.
+- DeepSeek, Grok and Perplexity exports include the pictures you uploaded, and Grok's generated images, when image bundling is on; other attached files are listed by name. DeepSeek's and Perplexity's web searches become numbered sources, the same as Grok's citations.
+- Image bundling downloads the image files into the export so they work locally without being signed in to the chat site.
 - The GitHub integration needs `repo` access to create files, since GitHub's Contents API doesn't offer a narrower "just let me write files" scope. If that's more than you're comfortable granting, stick to the local export formats.
 - This is a side project, maintained when time allows. Bug reports and pull requests are welcome. If something breaks, an exported conversation ID or a browser console log helps a lot when trying to reproduce it.
 

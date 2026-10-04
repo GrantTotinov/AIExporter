@@ -550,7 +550,7 @@
 
       .formats {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
         padding: 0 24px;
       }
@@ -848,6 +848,15 @@
         />
         <path d="M14 3v5h5M9 13h6M9 17h4" />
       </symbol>
+      <symbol id="i-file-word" viewBox="0 0 24 24">
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        />
+        <path d="M14 3v5h5M8.5 12l1.25 5 1.75-4 1.75 4 1.25-5" />
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24">
+        <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4.5l-3 15" />
+      </symbol>
       <symbol id="i-hash" viewBox="0 0 24 24">
         <path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18" />
       </symbol>
@@ -1075,6 +1084,20 @@
             <label for="format-pdf">
               <svg class="icon" aria-hidden="true"><use href="#i-file-text" /></svg>
               PDF
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-docx" value="docx" />
+            <label for="format-docx">
+              <svg class="icon" aria-hidden="true"><use href="#i-file-word" /></svg>
+              Word
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-html" value="html" />
+            <label for="format-html">
+              <svg class="icon" aria-hidden="true"><use href="#i-code" /></svg>
+              HTML
             </label>
           </div>
           <div class="format">

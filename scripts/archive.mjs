@@ -11,11 +11,17 @@
  * Plain Node with no dependencies, so it works the same on every
  * OS. Both stores need manifest.json at the root of the zip and
  * forward slashes in its paths, which is what this writes.
+ *
+ * It won't zip a build that breaks the stores' rules for
+ * Manifest V3 (code loaded from another server, eval(), a
+ * manifest naming a missing file...) - see
+ * scripts/check-store-rules.mjs.
  */
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
+import { checkDist, formatProblems } from "./check-store-rules.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const dist = join(root, "dist");
@@ -57,6 +63,17 @@ if (manifest.version !== packageVersion) {
   console.warn(
     `Warning: dist/manifest.json is version ${manifest.version} but package.json is ${packageVersion}. Rebuild if dist is out of date.`,
   );
+}
+
+const storeProblems = checkDist(dist, [
+  { label: "dist/manifest.json", manifest },
+]);
+
+if (storeProblems.length > 0) {
+  console.error(
+    `dist/ wasn't zipped - the extension stores would reject it:\n${formatProblems(storeProblems)}`,
+  );
+  process.exit(1);
 }
 
 /*

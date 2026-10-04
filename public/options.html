@@ -788,6 +788,82 @@
         font-weight: 600;
       }
 
+      /*
+       * File names: the person's own pattern, with buttons that
+       * put a {title}, {site}, {date} or {time} into it, and a
+       * live example of the name it gives.
+       */
+      .file-name-custom {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .file-name-custom[hidden] {
+        display: none;
+      }
+
+      .token-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .token-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 30px;
+        padding: 0 10px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+
+      .token-button .icon {
+        width: 14px;
+        height: 14px;
+        color: var(--accent-text);
+      }
+
+      .token-button:hover {
+        border-style: solid;
+        background: var(--hover);
+      }
+
+      .token-button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+
+      .file-name-example {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px;
+        margin: 2px 0 0;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .file-name-example code {
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: var(--tile);
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
       .button {
         display: inline-flex;
         align-items: center;
@@ -837,6 +913,68 @@
         border-color: var(--github-border);
         background: var(--github);
         color: var(--github-text);
+      }
+
+      .button--notion {
+        border-color: var(--github-border);
+        background: var(--github);
+        color: var(--github-text);
+      }
+
+      .button--notion:hover:not(:disabled) {
+        background: var(--github-hover);
+      }
+
+      /* Notion: connecting with an integration key */
+      .notion-key {
+        display: grid;
+        gap: 12px;
+        padding-left: 50px;
+      }
+
+      .notion-key[hidden] {
+        display: none;
+      }
+
+      .notion-key-intro {
+        margin: 0;
+        font-weight: 600;
+      }
+
+      .notion-steps {
+        display: grid;
+        gap: 6px;
+        margin: 0;
+        padding-left: 20px;
+        color: var(--text-muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .notion-steps a {
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      .notion-key-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .notion-key-row .field-label {
+        flex-basis: 100%;
+      }
+
+      .notion-key-row .text-input {
+        flex: 1 1 260px;
+      }
+
+      .notion-key-error {
+        margin: 0;
+        color: var(--danger);
+        font-size: 14px;
       }
 
       .button--github:hover:not(:disabled) {
@@ -1588,6 +1726,10 @@
           d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2"
         />
       </symbol>
+      <symbol id="i-notion" viewBox="0 0 24 24">
+        <rect x="4" y="3.5" width="16" height="17" rx="2.5" />
+        <path d="M9 16.5v-9l6 9v-9" />
+      </symbol>
       <symbol id="i-upload" viewBox="0 0 24 24">
         <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
         <path
@@ -1668,6 +1810,16 @@
       <symbol id="i-pen" viewBox="0 0 24 24">
         <path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16z" />
         <path d="m13.5 6.5 4 4" />
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24">
+        <path
+          d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"
+        />
+        <circle cx="7.5" cy="7.5" r="1.5" />
       </symbol>
       <symbol id="i-github" viewBox="0 0 16 16">
         <path
@@ -1769,6 +1921,10 @@
           <a class="nav-link" href="#github">
             <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
             <span data-i18n="options.github.title">GitHub</span>
+          </a>
+          <a class="nav-link" href="#notion">
+            <svg class="icon" aria-hidden="true"><use href="#i-notion" /></svg>
+            <span data-i18n="options.notion.title">Notion</span>
           </a>
         </nav>
       </div>
@@ -2000,6 +2156,117 @@
 
           <div
             class="setting"
+            data-help="options.fileName.help"
+            data-tip="options.fileName.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-tag" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="fileNameStyle"
+                    data-i18n="options.fileName.title"
+                    >File names</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="fileNameStyle-desc"
+                  data-i18n="options.fileName.desc"
+                >
+                  How your saved files are named.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="select">
+                <select id="fileNameStyle" aria-describedby="fileNameStyle-desc">
+                  <option value="standard" data-i18n="options.fileName.standard">
+                    Standard
+                  </option>
+                  <option value="title" data-i18n="options.fileName.titleOnly">
+                    Chat title
+                  </option>
+                  <option value="dateTitle" data-i18n="options.fileName.dateTitle">
+                    Date and chat title
+                  </option>
+                  <option
+                    value="siteTitleDate"
+                    data-i18n="options.fileName.siteTitleDate"
+                  >
+                    Site, chat title and date
+                  </option>
+                  <option value="custom" data-i18n="options.fileName.custom">
+                    My own pattern…
+                  </option>
+                </select>
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-chevron" />
+                </svg>
+              </span>
+            </div>
+            <div class="setting-extra">
+              <div class="file-name-custom" id="fileNameCustomRow" hidden>
+                <label
+                  class="field-label"
+                  for="fileNameTemplate"
+                  data-i18n="options.fileName.patternLabel"
+                  >Your pattern</label
+                >
+                <input
+                  type="text"
+                  class="text-input"
+                  id="fileNameTemplate"
+                  maxlength="120"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="{date} {title}"
+                  aria-describedby="fileNameExample"
+                />
+                <div
+                  class="token-row"
+                  role="group"
+                  aria-label="Add to the pattern"
+                  data-i18n-aria-label="options.fileName.insert"
+                >
+                  <button type="button" class="token-button" data-token="title">
+                    <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+                    <span data-i18n="options.fileName.tokenTitle">Chat title</span>
+                  </button>
+                  <button type="button" class="token-button" data-token="site">
+                    <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+                    <span data-i18n="options.fileName.tokenSite">Site</span>
+                  </button>
+                  <button type="button" class="token-button" data-token="date">
+                    <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+                    <span data-i18n="options.fileName.tokenDate">Date</span>
+                  </button>
+                  <button type="button" class="token-button" data-token="time">
+                    <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+                    <span data-i18n="options.fileName.tokenTime">Time</span>
+                  </button>
+                </div>
+              </div>
+              <p class="file-name-example" id="fileNameExample" aria-live="polite">
+                <span data-i18n="options.fileName.example">Example:</span>
+                <code id="fileNameExampleName"></code>
+              </p>
+            </div>
+          </div>
+
+          <div
+            class="setting"
             data-help="options.downloadFolder.help"
             data-tip="options.downloadFolder.tip"
           >
@@ -2103,6 +2370,103 @@
                   role="switch"
                   id="downloadImagesLocally"
                   aria-describedby="downloadImagesLocally-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.sources.help"
+            data-tip="options.sources.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-link" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="includeSources"
+                    data-i18n="options.sources.title"
+                    >Sources and citations</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="includeSources-desc"
+                  data-i18n="options.sources.desc"
+                >
+                  Number the parts of an answer that come from the web, and
+                  list the pages under it.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="includeSources"
+                  aria-describedby="includeSources-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.thinking.help"
+            data-tip="options.thinking.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-bulb" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="includeThinking"
+                    data-i18n="options.thinking.title"
+                    >The AI's thinking</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="includeThinking-desc"
+                  data-i18n="options.thinking.desc"
+                >
+                  Include the reasoning some AI models show before they answer.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="includeThinking"
+                  aria-describedby="includeThinking-desc"
                 />
                 <span class="switch-track" aria-hidden="true"></span>
               </span>
@@ -3028,6 +3392,126 @@
               >
                 Disconnect
               </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- =================== NOTION ===================== -->
+        <section class="card" id="notion" aria-labelledby="notion-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-notion" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="notion-title"
+                data-i18n="options.notion.title"
+              >
+                Notion
+              </h2>
+              <p class="card-subtitle" data-i18n="options.notion.subtitle">
+                Save chats as pages in your Notion, ready to edit and share.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting"
+            data-help="options.notion.help"
+            data-tip="options.notion.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-upload" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    data-i18n="options.notion.saveTitle"
+                    >Save chats to Notion</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc">
+                  <span class="status" id="notion-status" role="status"
+                    >Not connected</span
+                  >
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <button
+                type="button"
+                class="button button--danger"
+                id="notion-disconnect"
+                data-i18n="options.notion.disconnect"
+                hidden
+              >
+                Disconnect
+              </button>
+            </div>
+
+            <div class="setting-extra notion-key" id="notion-key">
+              <p class="notion-key-intro" data-i18n="options.notion.keyIntro">
+                Connect with a Notion integration key in three steps:
+              </p>
+              <ol class="notion-steps">
+                <li>
+                  <span data-i18n="options.notion.step1"
+                    >Open Notion's integrations page and create a new
+                    integration.</span
+                  >
+                  <a
+                    href="https://www.notion.so/profile/integrations"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-i18n="options.notion.step1Link"
+                    >Open the page</a
+                  >
+                </li>
+                <li data-i18n="options.notion.step2">
+                  Copy its "Internal Integration Secret" and paste it below.
+                </li>
+                <li data-i18n="options.notion.step3">
+                  In Notion, open the page to keep your chats in, click ••• →
+                  Connections, and add your integration.
+                </li>
+              </ol>
+              <div class="notion-key-row">
+                <label
+                  class="field-label"
+                  for="notion-token"
+                  data-i18n="options.notion.keyLabel"
+                  >Integration key</label
+                >
+                <input
+                  type="password"
+                  class="text-input"
+                  id="notion-token"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="200"
+                  placeholder="ntn_..."
+                />
+                <button
+                  type="button"
+                  class="button button--notion"
+                  id="notion-token-save"
+                  data-i18n="options.notion.keyConnect"
+                >
+                  Connect
+                </button>
+              </div>
+              <p class="notion-key-error" id="notion-key-error" role="alert" hidden></p>
             </div>
           </div>
         </section>

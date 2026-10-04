@@ -10,7 +10,8 @@ Everyone taking part in the project, in issues, pull requests, or anywhere else,
 2. Keep the existing code style. Look at the surrounding code before adding something new so it fits in naturally.
 3. If your change affects behavior that's covered by tests, add or update tests for it.
 4. Run `npm run typecheck` and `npm run test:run` before opening the PR, and make sure both pass.
-5. Open the PR with a short description of what changed and why.
+5. Run `npm run build` too. After building, it checks `dist/` for anything the Chrome Web Store or Firefox Add-ons would reject, and fails if it finds any. That covers code loaded from another server (a CDN script, a remote `import()`), `eval()` or `new Function()`, and a manifest naming a file the build doesn't have. Every line of code has to ship inside the extension, so a new library comes from npm and gets bundled, never from a CDN.
+6. Open the PR with a short description of what changed and why.
 
 ## Contributor agreement
 

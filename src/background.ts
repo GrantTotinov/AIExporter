@@ -8,8 +8,17 @@ import {
   saveFileToRepo,
   starProject,
 } from "./github.ts";
+import {
+  connectNotionWithToken,
+  createNotionPage,
+  disconnectNotion,
+  getNotionConnection,
+  listNotionPages,
+} from "./notion.ts";
+import type { NotionBlock } from "./notion-blocks.ts";
 import { initI18n } from "./i18n.ts";
 import { decodeBase64, copyToArrayBuffer } from "./zip.ts";
+import { asciiFileName, isSafeFileName } from "./file-names.ts";
 import {
   UPDATE_CHECK_INTERVAL_MS,
   UPDATE_NOTICE_KEY,
@@ -161,20 +170,6 @@ chrome.downloads.onChanged.addListener((delta) => {
  */
 const REPO_FULL_NAME_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
-/*
- * Matches the filenames buildFilename() in popup.ts generates:
- * no path separators, no traversal segments. buildFilename()
- * keeps Cyrillic characters (Ѐ-ӿ) as-is instead of
- * collapsing them to hyphens like every other non-ASCII script,
- * specifically so a Cyrillic ChatGPT conversation title still
- * produces a readable filename - so this pattern has to allow
- * that range too, or every export/GitHub-save of a
- * Cyrillic-titled conversation gets rejected here as an
- * "Invalid download request"/"Invalid save request" even though
- * popup.ts built a perfectly normal filename.
- */
-const SAFE_FILENAME_PATTERN = /^[A-Za-z0-9Ѐ-ӿ._-]+$/;
-
 const MAX_EXPORT_CONTENT_LENGTH = 10_000_000;
 const MAX_BINARY_EXPORT_CONTENT_LENGTH = 45_000_000;
 
@@ -182,14 +177,14 @@ function isValidRepoFullName(value: unknown): value is string {
   return typeof value === "string" && REPO_FULL_NAME_PATTERN.test(value);
 }
 
+/*
+ * Only names file-names.ts could have made (see buildFilename()):
+ * one file, no folder, no "..", and nothing either browser would
+ * refuse - the person's own name pattern can put spaces, any
+ * script and punctuation into it.
+ */
 function isValidExportFilename(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= 255 &&
-    SAFE_FILENAME_PATTERN.test(value) &&
-    !value.includes("..")
-  );
+  return isSafeFileName(value);
 }
 
 function isValidExportContent(value: unknown): value is string {
@@ -315,11 +310,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
       objectUrl = await createDownloadUrl(message.content, message.mimeType);
 
-      const downloadId = await chrome.downloads.download({
-        url: objectUrl,
-        filename: message.filename,
-        saveAs: message.saveAs,
-      });
+      const url = objectUrl;
+      const download = (filename: string): Promise<number> =>
+        chrome.downloads.download({ url, filename, saveAs: message.saveAs });
+
+      /*
+       * A browser that still turns the name down ("Invalid
+       * filename" in Chrome, "filename must not contain illegal
+       * characters" in Firefox) gets a plain ASCII one instead,
+       * rather than the export failing over its name.
+       */
+      const downloadId = await download(message.filename).catch(
+        (error: unknown) => {
+          const fallback = asciiFileName(message.filename);
+
+          if (
+            fallback === message.filename ||
+            !/file\s*name/i.test(error instanceof Error ? error.message : String(error))
+          ) {
+            throw error;
+          }
+
+          return download(fallback);
+        },
+      );
 
       trackedDownloadIds.add(downloadId);
       pendingObjectUrls.set(downloadId, objectUrl);
@@ -695,6 +709,110 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+/*
+ * ---------------------------------------------------------
+ * NOTION
+ * ---------------------------------------------------------
+ *
+ * See notion.ts. The popup builds the page's blocks (that needs
+ * a DOM) and this sends them. Signing in lives here for the same
+ * reason the GitHub one does: the sign-in window closes the popup.
+ */
+const NOTION_ID_PATTERN =
+  /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+
+function isValidNotionBlocks(value: unknown): value is NotionBlock[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (block) =>
+        typeof block === "object" &&
+        block !== null &&
+        (block as NotionBlock).object === "block" &&
+        typeof (block as NotionBlock).type === "string",
+    ) &&
+    JSON.stringify(value).length <= MAX_EXPORT_CONTENT_LENGTH
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function handleNotion(
+  type: string,
+  run: (message: Record<string, unknown>) => Promise<unknown>,
+  tracked = false,
+): void {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== type || !isOwnExtensionSender(sender)) {
+      return false;
+    }
+
+    const task = async (): Promise<void> => {
+      try {
+        sendResponse({ success: true, data: await run(message) });
+      } catch (error) {
+        sendResponse({ success: false, error: errorText(error) });
+      }
+    };
+
+    if (tracked) {
+      void trackTask(task);
+    } else {
+      void task();
+    }
+
+    return true;
+  });
+}
+
+handleNotion("NOTION_GET_STATUS", async () => {
+  const connection = await getNotionConnection();
+
+  return {
+    connected: connection !== null,
+    workspaceName: connection?.workspaceName ?? "",
+  };
+});
+
+handleNotion("NOTION_CONNECT_TOKEN", async (message) => {
+  if (typeof message.token !== "string" || message.token.length > 500) {
+    throw new Error("Invalid request.");
+  }
+
+  const connection = await connectNotionWithToken(message.token);
+
+  return { workspaceName: connection.workspaceName ?? "" };
+});
+
+handleNotion("NOTION_DISCONNECT", async () => {
+  await disconnectNotion();
+  return null;
+});
+
+handleNotion("NOTION_LIST_PAGES", () => listNotionPages());
+
+handleNotion(
+  "NOTION_SAVE_PAGE",
+  async (message) => {
+    if (
+      typeof message.parentId !== "string" ||
+      !NOTION_ID_PATTERN.test(message.parentId) ||
+      typeof message.title !== "string" ||
+      message.title.length === 0 ||
+      message.title.length > 2000 ||
+      !isValidNotionBlocks(message.blocks)
+    ) {
+      throw new Error("Invalid save request.");
+    }
+
+    return createNotionPage(message.parentId, message.title, message.blocks);
+  },
+  true,
+);
 
 /*
  * ---------------------------------------------------------

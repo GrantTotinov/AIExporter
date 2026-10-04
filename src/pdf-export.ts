@@ -9,8 +9,8 @@
  * decoding (a detached <textarea>) need real DOM APIs.
  *
  * jsPDF has no markdown support of its own - it only draws
- * plain, pre-positioned text - so this module includes a small
- * markdown parser (parseBlocks/parseInline below) that turns
+ * plain, pre-positioned text - so it uses the small Markdown
+ * parser in markdown-parse.ts (parseBlocks/parseInline), which turns
  * our generated Markdown into block/inline structure the
  * renderer can lay out: paragraphs, headings, code fences,
  * tables, lists and blockquotes at the block level; bold,
@@ -34,7 +34,24 @@ import jsPDF from "jspdf";
 import type { Settings, PdfSettings } from "./settings.ts";
 import { encodeBlobBase64 } from "./zip.ts";
 import { getChatSite, stripChatSiteSuffix } from "./chat-sites.ts";
-import { extractMath, MATH_CLOSE, MATH_OPEN, type MathSpan } from "./math.ts";
+import { extractMath, type MathSpan } from "./math.ts";
+import {
+  fenceUserContent,
+  isTableSeparatorLine,
+  parseBlocks,
+  parseInline,
+  preprocessRawContent,
+  type Block,
+  type InlineRun,
+  type InlineStyle,
+} from "./markdown-parse.ts";
+
+/*
+ * The parser lives in markdown-parse.ts (the HTML, Word and Notion
+ * exports share it); re-exported for the code that imports it from
+ * here.
+ */
+export { fenceUserContent, parseBlocks, parseInline, preprocessRawContent };
 import type { RenderedMath } from "./math-render.ts";
 import { drawMath, type MathTextStyle } from "./svg-pdf.ts";
 import { shapeArabicText } from "./arabic-shaping.ts";
@@ -49,23 +66,28 @@ import {
   toVisual,
   visualOrder,
 } from "./bidi.ts";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  order: number;
-  imagePaths?: string[];
-}
-
-interface ExportImageFile {
-  path: string;
-  mimeType: string;
-  base64: string;
-  sizeBytes: number;
-}
+import {
+  applyContentSettings,
+  type ExportImageFile,
+  type Message,
+} from "./export-builders.ts";
+import {
+  isSafeSourceUrl,
+  normalizeNotes,
+  sourceHost,
+  sourceLabel,
+  stripNotes,
+  type MessageSource,
+} from "./source-notes.ts";
 
 const PT_TO_MM = 25.4 / 72;
+
+/*
+ * A note's numbers are set this much smaller than the text, and
+ * raised by this share of the text's size - like a footnote's.
+ */
+const NOTE_SCALE = 0.68;
+const NOTE_RISE = 0.36;
 
 function mm(pt: number): number {
   return pt * PT_TO_MM;
@@ -359,641 +381,6 @@ export function fitToFont(text: string, coverage: Set<number>): string {
   return out;
 }
 
-/*
- * ---------------------------------------------------------
- * TEXT NORMALIZATION
- * ---------------------------------------------------------
- *
- * Decodes HTML entities (&amp;, &#x20;, ...) via a detached
- * <textarea> - the standard safe trick, since a textarea's
- * innerHTML is always treated as literal text, never parsed
- * into child elements or executed - then unescapes markdown's
- * own backslash escapes (\& -> &). Glyph coverage (emoji etc.)
- * is handled later, per font, by fitToFont().
- */
-let entityDecoder: HTMLTextAreaElement | undefined;
-
-function decodeHtmlEntities(text: string): string {
-  entityDecoder ??= document.createElement("textarea");
-  entityDecoder.innerHTML = text;
-  return entityDecoder.value;
-}
-
-const MARKDOWN_ESCAPE_RE = /\\([\\`*_{}[\]()#+.!&>~|-])/g;
-/*
- * ChatGPT's web-search citation markers (e.g. "citeturn0search0",
- * sometimes chained as "citeturn0search0turn1news2") are
- * internal reference tokens meant to be turned into footnotes/
- * links by ChatGPT's own UI - if the exported Markdown still has
- * them raw, they're just noise to a PDF reader.
- */
-const CITATION_ARTIFACT_RE = /[ \t]*cite(?:turn\d+(?:search|news)\d+)+/gi;
-/*
- * ChatGPT's own copy/export path leaves raw Private-Use-Area
- * tokens in the text for url/cite/filecite annotations
- * (U+E200 .. U+E202 wrapping the payload). These never render
- * as anything meaningful in a PDF - either resolve the url
- * token back into a normal markdown link, or drop the
- * citation/filecite token (and any other bracketed PUA token)
- * entirely. Built from character codes rather than embedding the
- * raw Private Use Area characters (or an escape for one) directly
- * in this source file, since those are invisible in most editors
- * and terminals and easy to lose or mismatch during an edit.
- */
-const PUA_OPEN = String.fromCharCode(0xe200);
-const PUA_SEP = String.fromCharCode(0xe202);
-const PUA_CLOSE = String.fromCharCode(0xe201);
-const PUA_URL_TOKEN_RE = new RegExp(
-  `${PUA_OPEN}url${PUA_SEP}([^${PUA_SEP}]*)${PUA_SEP}([^${PUA_CLOSE}]*)${PUA_CLOSE}`,
-  "g",
-);
-const PUA_CITE_TOKEN_RE = new RegExp(
-  `[ \\t]*${PUA_OPEN}(?:cite|filecite)${PUA_SEP}[^${PUA_CLOSE}]*${PUA_CLOSE}`,
-  "g",
-);
-const PUA_TOKEN_FALLBACK_RE = new RegExp(
-  `[ \\t]*${PUA_OPEN}[^${PUA_CLOSE}]*${PUA_CLOSE}`,
-  "g",
-);
-
-/*
- * A ":::writing{variant=\"chat_message\" id=\"...\"}...:::"
- * container (seen in some exported chat pastes) has no meaning to
- * our Markdown parser and would otherwise print as raw directive
- * syntax. Converted to a blockquote - with hard line breaks, since
- * it holds a drafted message whose lines are meaningful - so it
- * still reads as quoted message content instead of noise.
- */
-const WRITING_BLOCK_RE = /:::writing\{[^}]*\}[ \t]*\n([\s\S]*?)\n:::/g;
-
-/*
- * A link whose label or title spans lines - typical of GitHub
- * pastes, where a commit link's label and its "title" both carry
- * the commit message's line breaks - can't be matched once the
- * text is split into lines, so it printed raw. Such links are
- * folded onto one line here, and every link's title (never shown
- * in a PDF, and previously leaking into the URL itself) is
- * dropped. One level of parentheses is allowed inside the URL,
- * for links like .../wiki/Curve_(disambiguation).
- */
-const LINK_WITH_TITLE_RE =
-  /(!?)\[((?:[^[\]\n]|\n(?![ \t]*\n)){1,500})\]\(\s*<?((?:[^()\s<>]|\([^()\s]*\))+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
-
-const FENCED_CODE_RE = /(^[ \t]*```[^\n]*\n[\s\S]*?^[ \t]*```[ \t]*$)/m;
-
-function mapOutsideFences(
-  markdown: string,
-  transform: (text: string) => string,
-): string {
-  return markdown
-    .split(FENCED_CODE_RE)
-    .map((part, index) => (index % 2 === 1 ? part : transform(part)))
-    .join("");
-}
-
-/*
- * Runs once per message, on the raw Markdown, before block/inline
- * parsing - never inside normalizeText(), which only ever sees
- * small, already-extracted fragments (a link label, a bold span,
- * ...). A PUA url token has to become real "[label](url)" syntax
- * before parseInline's INLINE_TOKEN_RE scans the text, or the
- * freshly-built link syntax just prints as literal brackets
- * instead of becoming a clickable link.
- */
-export function preprocessRawContent(raw: string): string {
-  let text = raw.replace(/\r\n?/g, "\n");
-  text = text.replace(PUA_URL_TOKEN_RE, "[$1]($2)");
-  text = text.replace(PUA_CITE_TOKEN_RE, "");
-  text = text.replace(PUA_TOKEN_FALLBACK_RE, "");
-  text = text.replace(WRITING_BLOCK_RE, (_match, body: string) =>
-    body
-      .split("\n")
-      .map((line) => (line.trim() === "" ? ">" : `> ${line}  `))
-      .join("\n"),
-  );
-
-  return mapOutsideFences(text, (segment) =>
-    segment.replace(
-      LINK_WITH_TITLE_RE,
-      (_match, bang: string, label: string, url: string) =>
-        `${bang}[${label.replace(/[ \t]*\n[ \t]*/g, " ")}](${url})`,
-    ),
-  );
-}
-
-function normalizeText(raw: string): string {
-  let text = decodeHtmlEntities(raw);
-  text = text.replace(MARKDOWN_ESCAPE_RE, "$1");
-  text = text.replace(CITATION_ARTIFACT_RE, "");
-  text = text.replace(/[ \t]{2,}/g, " ");
-  return text;
-}
-
-/*
- * ---------------------------------------------------------
- * INLINE PARSING (bold / italic / inline code / links)
- * ---------------------------------------------------------
- *
- * Images are dropped entirely at this level - a downloaded
- * image is embedded as a real image separately (see
- * writeImage below); an un-downloaded one shouldn't leave
- * leftover "image" noise in the text.
- *
- * Link labels and bold/italic spans are parsed recursively, so
- * [`3159fb8`](url) is a code-styled link and **[a](url)** a bold
- * link, rather than printing the inner syntax literally. Emphasis
- * markers must hug their text (CommonMark's flanking rule), so
- * "3 * 4 * 5" stays literal instead of italicizing " 4 ".
- */
-interface InlineRun {
-  text: string;
-  bold?: boolean;
-  italic?: boolean;
-  code?: boolean;
-  link?: string;
-  /* Index of a formula placeholder (see extractMath) - text is "". */
-  math?: number;
-  /*
-   * Set by the renderer, not the parser: a right-to-left word the
-   * run's own font can't draw is set upright and/or in the
-   * proportional font instead (see runForText).
-   */
-  upright?: boolean;
-  sans?: boolean;
-}
-
-type InlineStyle = Omit<InlineRun, "text">;
-
-const INLINE_TOKEN_RE = new RegExp(
-  `${MATH_OPEN}([0-9]+)${MATH_CLOSE}|` +
-    /!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))*\)|\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*\*(?=\S)([^*]+?)(?<=\S)\*\*\*|\*\*(?=\S)([^*]+?)(?<=\S)\*\*|`([^`]+)`|\*(?=\S)([^*]+?)(?<=\S)\*/.source,
-  "g",
-);
-
-export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
-  const runs: InlineRun[] = [];
-  let lastIndex = 0;
-
-  function pushText(text: string, extra: InlineStyle = {}): void {
-    const normalized = normalizeText(text);
-
-    if (normalized !== "") {
-      runs.push({ ...style, ...extra, text: normalized });
-    }
-  }
-
-  for (const match of raw.matchAll(INLINE_TOKEN_RE)) {
-    const index = match.index ?? 0;
-
-    if (index > lastIndex) {
-      pushText(raw.slice(lastIndex, index));
-    }
-
-    const [
-      ,
-      mathIndex,
-      linkText,
-      linkUrl,
-      boldItalicText,
-      boldText,
-      codeText,
-      italicText,
-    ] = match;
-
-    if (mathIndex !== undefined) {
-      runs.push({ ...style, text: "", math: Number(mathIndex) });
-    } else if (linkText !== undefined) {
-      runs.push(
-        ...parseInline(linkText, { ...style, link: normalizeText(linkUrl) }),
-      );
-    } else if (boldItalicText !== undefined) {
-      runs.push(
-        ...parseInline(boldItalicText, { ...style, bold: true, italic: true }),
-      );
-    } else if (boldText !== undefined) {
-      runs.push(...parseInline(boldText, { ...style, bold: true }));
-    } else if (codeText !== undefined) {
-      pushText(codeText, { code: true });
-    } else if (italicText !== undefined) {
-      runs.push(...parseInline(italicText, { ...style, italic: true }));
-    }
-
-    lastIndex = index + match[0].length;
-  }
-
-  if (lastIndex < raw.length) {
-    pushText(raw.slice(lastIndex));
-  }
-
-  return runs;
-}
-
-/*
- * ---------------------------------------------------------
- * BLOCK PARSING
- * ---------------------------------------------------------
- */
-type Block =
-  | { type: "heading"; level: number; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "code"; code: string; lang?: string }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "table"; header: string[]; rows: string[][] }
-  | { type: "blockquote"; text: string }
-  | { type: "hr" };
-
-function isTableSeparatorLine(line: string): boolean {
-  return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line);
-}
-
-function splitTableRow(line: string): string[] {
-  let trimmed = line.trim();
-
-  if (trimmed.startsWith("|")) {
-    trimmed = trimmed.slice(1);
-  }
-
-  if (trimmed.endsWith("|")) {
-    trimmed = trimmed.slice(0, -1);
-  }
-
-  return trimmed
-    .split(/(?<!\\)\|/)
-    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
-}
-
-/*
- * `hardBreaks` mirrors the "breaks: true" option chat UIs (and
- * markdown renderers like marked.js) apply to user-authored text:
- * every single line break inside a paragraph becomes a real line
- * break instead of being soft-wrapped/reflowed into one sentence.
- * Assistant output is authored Markdown, where a lone newline is
- * just source wrapping and blank lines mark real paragraphs, so it
- * keeps the default (false) reflow behavior; a user message is
- * typically pasted, not composed, and its line breaks are always
- * meaningful (a git log entry, a status list, ...).
- */
-export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const blocks: Block[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    const fenceMatch = line.match(/^\s*(`{3,})/);
-
-    if (fenceMatch) {
-      // Only a fence at least as long closes it, so a ```` block
-      // can hold ``` fences of its own.
-      const closingFence = new RegExp(
-        `^\\s*\`{${fenceMatch[1].length},}\\s*$`,
-      );
-      const codeLines: string[] = [];
-      i++;
-
-      while (i < lines.length && !closingFence.test(lines[i])) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-
-      i++;
-      // The info string after the opening fence (```python) names
-      // the language the block is highlighted as.
-      const lang = line.trim().slice(fenceMatch[1].length).trim();
-      blocks.push({
-        type: "code",
-        code: codeLines.join("\n"),
-        ...(lang ? { lang } : {}),
-      });
-      continue;
-    }
-
-    if (
-      line.includes("|") &&
-      i + 1 < lines.length &&
-      isTableSeparatorLine(lines[i + 1])
-    ) {
-      const header = splitTableRow(line);
-      i += 2;
-      const rows: string[][] = [];
-
-      while (
-        i < lines.length &&
-        lines[i].includes("|") &&
-        lines[i].trim() !== ""
-      ) {
-        rows.push(splitTableRow(lines[i]));
-        i++;
-      }
-
-      blocks.push({ type: "table", header, rows });
-      continue;
-    }
-
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-
-    if (headingMatch) {
-      blocks.push({
-        type: "heading",
-        level: headingMatch[1].length,
-        text: headingMatch[2],
-      });
-      i++;
-      continue;
-    }
-
-    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      blocks.push({ type: "hr" });
-      i++;
-      continue;
-    }
-
-    if (/^\s*>\s?/.test(line)) {
-      const quoteLines: string[] = [];
-
-      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
-        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
-        i++;
-      }
-
-      blocks.push({
-        type: "blockquote",
-        text: joinLines(quoteLines, hardBreaks),
-      });
-      continue;
-    }
-
-    const listItemMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
-
-    if (listItemMatch) {
-      const ordered = /^\d+\.$/.test(listItemMatch[2]);
-      const items: string[] = [];
-
-      while (i < lines.length) {
-        const itemMatch = lines[i].match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
-
-        if (!itemMatch) {
-          if (
-            lines[i].trim() !== "" &&
-            /^\s+/.test(lines[i]) &&
-            items.length > 0
-          ) {
-            items[items.length - 1] += ` ${lines[i].trim()}`;
-            i++;
-            continue;
-          }
-
-          break;
-        }
-
-        items.push(itemMatch[3]);
-        i++;
-      }
-
-      blocks.push({ type: "list", ordered, items });
-      continue;
-    }
-
-    const paraLines: string[] = [];
-
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !/^\s*```/.test(lines[i]) &&
-      !/^#{1,6}\s+/.test(lines[i]) &&
-      !/^\s*>\s?/.test(lines[i]) &&
-      !/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
-      !/^(\s*)([-*+]|\d+\.)\s+/.test(lines[i]) &&
-      !(
-        lines[i].includes("|") &&
-        i + 1 < lines.length &&
-        isTableSeparatorLine(lines[i + 1])
-      )
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-
-    blocks.push({ type: "paragraph", text: joinLines(paraLines, hardBreaks) });
-  }
-
-  return blocks;
-}
-
-/*
- * Joins a paragraph's (or blockquote's) source lines. Markdown's
- * hard line break - a line ending in two-or-more spaces or a
- * backslash - forces a real break instead of soft-wrapping into
- * the next line; without it, six separately-authored status lines
- * collapse into one run-on sentence. `hardBreaks` makes every line
- * break hard. Breaks are encoded as "\n" and consumed by
- * renderParagraph/renderBlockquote.
- */
-function joinLines(lines: string[], hardBreaks: boolean): string {
-  return lines
-    .map((line, index) => {
-      if (index === lines.length - 1) {
-        return line.replace(/ {2,}$/, "");
-      }
-
-      if (hardBreaks || / {2,}$/.test(line) || /\\$/.test(line)) {
-        return `${line.replace(/ {2,}$/, "").replace(/\\$/, "")}\n`;
-      }
-
-      return `${line} `;
-    })
-    .join("");
-}
-
-/*
- * A user message is pasted transcript input, not authored
- * Markdown: a git log, a terminal session or raw code is common.
- * Parsed as-is, their incidental "*"/"-"/">" get misread as lists
- * or quotes, and their indentation and column alignment are lost
- * in proportional type. So pasted output/code is detected per
- * paragraph (a run of non-blank lines) and wrapped in a synthetic
- * ``` fence, which renders it verbatim in monospace. Deciding per
- * paragraph rather than per line keeps a git graph's filler lines
- * ("|\", "|/|") in the same block instead of splitting it.
- *
- * A paragraph is code when it contains a line only a terminal or
- * git could produce (a prompt, a commit hash, a diff header), or
- * when most of its lines look like source code. A paragraph that
- * is only probably code - mostly indented, like terminal output or
- * a commit message body - joins a code paragraph it touches, so
- * blank lines inside pasted code or output don't split the block.
- * A leading "Here's the log:" line and a trailing question stay
- * outside the fence.
- */
-const TERMINAL_LINE_RES = [
-  /^\s*PS [A-Za-z]:\\[^>]*>/,
-  /^\s*[A-Za-z]:\\[^<>|"]*>/,
-  /^\s*[\w.-]+@[\w.-]+:\S*\s?[$#]\s/,
-  /^\s*\$ \S/,
-  /^[\s|\\/]*\*[\s|\\/]*(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/,
-  /^(?=[0-9a-f]*\d)[0-9a-f]{7,40} \S/,
-  /^[\s|\\/*]*commit [0-9a-f]{7,40}\b/,
-  /^diff --git /,
-  /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/,
-];
-const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+\.)\s/;
-const CODE_KEYWORD_RE =
-  /^(?:public|private|protected|internal|static|class|interface|namespace|using|import|export|function|def|func|fn|return|var|let|const|if|else|for|foreach|while|switch|case|try|catch|throw|await|async)\b/;
-
-type ParagraphKind = "code" | "maybe" | "prose";
-
-function isTerminalLine(line: string): boolean {
-  return TERMINAL_LINE_RES.some((re) => re.test(line));
-}
-
-function isCodeLine(line: string): boolean {
-  const trimmed = line.trim();
-
-  if (/^[-+](?: {2,}|\t)\S/.test(line)) {
-    return true;
-  }
-
-  if (LIST_ITEM_RE.test(line)) {
-    return false;
-  }
-
-  return (
-    /^(?:\/\/|\/\*|\*\/|<!--|#!\/)/.test(trimmed) ||
-    /[;{]$/.test(trimmed) ||
-    /^[}\])]+[;,)]*$/.test(trimmed) ||
-    (/^(?: {4,}|\t)/.test(line) && /[(){}[\];=<>]/.test(trimmed)) ||
-    (CODE_KEYWORD_RE.test(trimmed) && /[(){};=]/.test(trimmed))
-  );
-}
-
-function classifyParagraph(lines: string[]): ParagraphKind {
-  if (lines.some((line) => /^\s*```/.test(line))) {
-    return "prose";
-  }
-
-  if (lines.some(isTerminalLine)) {
-    return "code";
-  }
-
-  const codeShare = lines.filter(isCodeLine).length / lines.length;
-
-  if (lines.length >= 2 && codeShare >= 0.6) {
-    return "code";
-  }
-
-  if (
-    /^(?:#{1,6}\s|>)/.test(lines[0].trimStart()) ||
-    LIST_ITEM_RE.test(lines[0])
-  ) {
-    return "prose";
-  }
-
-  const indentedShare =
-    lines.filter(
-      (line) => /^(?: {2,}|\t)\S/.test(line) && !LIST_ITEM_RE.test(line),
-    ).length / lines.length;
-
-  return codeShare >= 0.5 || indentedShare >= 0.5 ? "maybe" : "prose";
-}
-
-function isPlainLine(line: string): boolean {
-  return !/^\s/.test(line) && !isTerminalLine(line) && !isCodeLine(line);
-}
-
-function fenceCodeParagraphs(text: string): string {
-  const lines = text.split("\n");
-  const paragraphs: { start: number; end: number; kind: ParagraphKind }[] = [];
-
-  for (let i = 0; i < lines.length;) {
-    if (lines[i].trim() === "") {
-      i++;
-      continue;
-    }
-
-    const start = i;
-
-    while (i < lines.length && lines[i].trim() !== "") {
-      i++;
-    }
-
-    paragraphs.push({
-      start,
-      end: i,
-      kind: classifyParagraph(lines.slice(start, i)),
-    });
-  }
-
-  for (let changed = true; changed;) {
-    changed = false;
-
-    paragraphs.forEach((paragraph, index) => {
-      if (
-        paragraph.kind === "maybe" &&
-        (paragraphs[index - 1]?.kind === "code" ||
-          paragraphs[index + 1]?.kind === "code")
-      ) {
-        paragraph.kind = "code";
-        changed = true;
-      }
-    });
-  }
-
-  const out: string[] = [];
-  let cursor = 0;
-
-  for (let index = 0; index < paragraphs.length; index++) {
-    if (paragraphs[index].kind !== "code") {
-      continue;
-    }
-
-    let last = index;
-
-    while (paragraphs[last + 1]?.kind === "code") {
-      last++;
-    }
-
-    let start = paragraphs[index].start;
-    let end = paragraphs[last].end;
-
-    while (
-      start < end - 1 &&
-      isPlainLine(lines[start]) &&
-      /:\s*$/.test(lines[start])
-    ) {
-      start++;
-    }
-
-    while (
-      end - 1 > start &&
-      isPlainLine(lines[end - 1]) &&
-      /\?\s*$/.test(lines[end - 1])
-    ) {
-      end--;
-    }
-
-    out.push(
-      ...lines.slice(cursor, start),
-      "```",
-      ...lines.slice(start, end),
-      "```",
-    );
-    cursor = end;
-    index = last;
-  }
-
-  out.push(...lines.slice(cursor));
-  return out.join("\n");
-}
-
-export function fenceUserContent(markdown: string): string {
-  return mapOutsideFences(markdown, fenceCodeParagraphs);
-}
 
 interface TocEntry {
   label: string;
@@ -1071,13 +458,15 @@ function expandTabs(line: string, tabSize = 4): string {
 }
 
 export async function buildPdfBlob(
-  messages: Message[],
+  allMessages: Message[],
   images: ExportImageFile[],
   settings: Settings,
   tabTitle: string | undefined,
   tabUrl?: string,
 ): Promise<Blob> {
   const pdf: PdfSettings = settings.pdf;
+  // Thinking and sources only when the settings ask for them.
+  const messages = applyContentSettings(allMessages, settings);
 
   /*
    * compress: jsPDF writes every content and font stream raw by
@@ -1164,6 +553,19 @@ export async function buildPdfBlob(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - pdf.marginLeft - pdf.marginRight;
+
+  /*
+   * Where blocks are laid out, and the color of their text: the
+   * full text width in the usual color - or, while a reply's
+   * thinking is drawn, set in from the line on its left, in gray.
+   */
+  let blockLeft = pdf.marginLeft;
+  let blockWidth = contentWidth;
+  let textColor: Rgb = TEXT_COLOR;
+
+  /* The sources the message being drawn cites (see noteWords) */
+  let currentSources: MessageSource[] = [];
+
   const footerReserve = pdf.includePageNumbers || pdf.includeUserInfo ? 8 : 0;
   const contentBottom = pageHeight - pdf.marginBottom - footerReserve;
 
@@ -1189,6 +591,11 @@ export async function buildPdfBlob(
     message.role === "assistant"
       ? extractMath(message.content, site, formulas)
       : message.content,
+  );
+  const thinkingContents = messages.map((message) =>
+    message.role === "assistant" && message.thinking
+      ? extractMath(message.thinking, site, formulas)
+      : "",
   );
   let renderedFormulas: (RenderedMath | null)[] = [];
 
@@ -1294,7 +701,7 @@ export async function buildPdfBlob(
 
   function setRunFont(run: InlineStyle, fontSize: number): void {
     doc.setFont(...runFont(run));
-    doc.setFontSize(fontSize);
+    doc.setFontSize(run.sup ? fontSize * NOTE_SCALE : fontSize);
   }
 
   /*
@@ -1316,6 +723,8 @@ export async function buildPdfBlob(
     run: InlineRun;
     width: number;
     math?: MathLayout;
+    /* Kept on the line of the word before it (a note's number) */
+    glue?: boolean;
   }
 
   function isSpace(word: Word): boolean {
@@ -1373,11 +782,40 @@ export async function buildPdfBlob(
     };
   }
 
+  /*
+   * A note becomes a small raised "[1]" per source it cites, each
+   * linking to its source's page, like a footnote's number.
+   */
+  function noteWords(run: InlineRun, fontSize: number): Word[] {
+    return (run.notes ?? []).map((number) => {
+      const url = currentSources[number - 1]?.url ?? "";
+      const noteRun: InlineRun = {
+        text: `[${number}]`,
+        sup: true,
+        ...(isSafeSourceUrl(url) ? { link: url } : {}),
+      };
+
+      setRunFont(noteRun, fontSize);
+
+      return {
+        text: noteRun.text,
+        run: noteRun,
+        width: doc.getTextWidth(noteRun.text),
+        glue: true,
+      };
+    });
+  }
+
   function tokenizeRuns(runs: InlineRun[], fontSize: number): Word[] {
     const words: Word[] = [];
 
     for (const original of runs) {
       let run = original;
+
+      if (run.notes) {
+        words.push(...noteWords(run, fontSize));
+        continue;
+      }
 
       if (run.math !== undefined) {
         const rendered = renderedFormulas[run.math];
@@ -1600,10 +1038,26 @@ export async function buildPdfBlob(
 
       for (const part of parts) {
         if (currentWidth + part.width > maxWidth && current.length > 0) {
+          let carried: Word[] = [];
+
+          // A note's number moves to the next line together with the
+          // word it belongs to, so no line starts with one.
+          if (part.glue) {
+            let lastSpace = current.length - 1;
+
+            while (lastSpace >= 0 && !isSpace(current[lastSpace])) {
+              lastSpace--;
+            }
+
+            if (lastSpace >= 0) {
+              carried = current.splice(lastSpace + 1);
+            }
+          }
+
           dropTrailingSpace();
           lines.push(current);
-          current = [];
-          currentWidth = 0;
+          current = carried;
+          currentWidth = carried.reduce((sum, word) => sum + word.width, 0);
         }
 
         current.push(part);
@@ -1781,8 +1235,13 @@ export async function buildPdfBlob(
         (word) => word.run.link,
         (first, last, url) => {
           const width = spanWidth(first, last);
-          doc.setDrawColor(...LINK_COLOR);
-          doc.line(starts[first], y + 0.7, starts[first] + width, y + 0.7);
+
+          // A note's number is clickable but not underlined.
+          if (!line[first].run.sup) {
+            doc.setDrawColor(...LINK_COLOR);
+            doc.line(starts[first], y + 0.7, starts[first] + width, y + 0.7);
+          }
+
           doc.link(
             starts[first],
             y - mm(fontSize) * 0.9,
@@ -1805,7 +1264,9 @@ export async function buildPdfBlob(
               ? LINK_COLOR
               : run.code
                 ? CODE_TEXT_COLOR
-                : TEXT_COLOR),
+                : run.muted
+                  ? MUTED_COLOR
+                  : textColor),
           );
           doc.text(
             line
@@ -1813,7 +1274,7 @@ export async function buildPdfBlob(
               .map((word) => word.text)
               .join(""),
             starts[first],
-            y,
+            run.sup ? y - mm(fontSize) * NOTE_RISE : y,
           );
         },
       );
@@ -1821,7 +1282,7 @@ export async function buildPdfBlob(
       line.forEach((word, i) => {
         if (word.math) {
           drawMath(doc, word.math.rendered, starts[i], y, word.math.unit, {
-            color: word.run.link ? LINK_COLOR : TEXT_COLOR,
+            color: word.run.link ? LINK_COLOR : textColor,
             drawText: drawMathText,
           });
         }
@@ -1885,8 +1346,8 @@ export async function buildPdfBlob(
       parseInline(block.text, { bold: true }),
       fontSize,
       lineHeight,
-      pdf.marginLeft,
-      contentWidth,
+      blockLeft,
+      blockWidth,
     );
     y += bodyLineHeight * 0.2;
   }
@@ -1914,8 +1375,8 @@ export async function buildPdfBlob(
         parseInline(segment, style),
         bodyFontSize,
         bodyLineHeight,
-        pdf.marginLeft + (rtl ? 0 : indent),
-        contentWidth - indent,
+        blockLeft + (rtl ? 0 : indent),
+        blockWidth - indent,
       );
     }
 
@@ -1940,7 +1401,7 @@ export async function buildPdfBlob(
       const prefix = visualPlain(block.ordered ? `${index + 1}.` : "•", rtl);
       const lines = wrapWords(
         tokenizeRuns(parseInline(itemText), bodyFontSize),
-        contentWidth - indent,
+        blockWidth - indent,
         bodyFontSize,
       );
       // The marker sits on the first line's baseline, which a tall
@@ -1950,17 +1411,17 @@ export async function buildPdfBlob(
       ensureSpace(lineBoxHeight(lines[0], bodyLineHeight));
       doc.setFont(SANS_FONT, "normal");
       doc.setFontSize(bodyFontSize);
-      doc.setTextColor(20, 20, 20);
+      doc.setTextColor(...textColor);
       doc.text(
         prefix,
         rtl
-          ? pdf.marginLeft + contentWidth - doc.getTextWidth(prefix)
-          : pdf.marginLeft,
+          ? blockLeft + blockWidth - doc.getTextWidth(prefix)
+          : blockLeft,
         y + above,
       );
       drawWrappedLines(
         lines,
-        pdf.marginLeft + (rtl ? 0 : indent),
+        blockLeft + (rtl ? 0 : indent),
         bodyFontSize,
         bodyLineHeight,
         true,
@@ -1993,7 +1454,7 @@ export async function buildPdfBlob(
     doc.setFont(MONO_FONT, "normal");
     doc.setFontSize(codeFontSize);
 
-    const codeInnerWidth = contentWidth - 4;
+    const codeInnerWidth = blockWidth - 4;
     const charWidth = doc.getTextWidth("M") || 1;
     const maxChars = Math.max(1, Math.floor(codeInnerWidth / charWidth));
     // One column is reserved for the wrap-continuation marker
@@ -2040,7 +1501,7 @@ export async function buildPdfBlob(
      * doc.text() call per run of a single color.
      */
     function drawHighlighted(segment: TokenKind[], text: string): void {
-      let x = pdf.marginLeft + 2;
+      let x = blockLeft + 2;
       let start = 0;
 
       for (let index = 1; index <= text.length; index++) {
@@ -2092,9 +1553,9 @@ export async function buildPdfBlob(
         ensureSpace(codeLineHeight);
         doc.setFillColor(245, 245, 245);
         doc.rect(
-          pdf.marginLeft,
+          blockLeft,
           y - codeLineHeight * 0.72,
-          contentWidth,
+          blockWidth,
           codeLineHeight,
           "F",
         );
@@ -2103,7 +1564,7 @@ export async function buildPdfBlob(
         if (rtlText) {
           drawCodeText(
             `${toVisual(segment, false)}${isHardWrap ? WRAP_MARKER : ""}`,
-            pdf.marginLeft + 2,
+            blockLeft + 2,
           );
         } else {
           drawHighlighted(
@@ -2137,7 +1598,7 @@ export async function buildPdfBlob(
 
     const ruleY = y - bodyLineHeight * 0.3;
     doc.setDrawColor(200);
-    doc.line(pdf.marginLeft, ruleY, pageWidth - pdf.marginRight, ruleY);
+    doc.line(blockLeft, ruleY, blockLeft + blockWidth, ruleY);
     y += bodyLineHeight * 0.9;
   }
 
@@ -2152,7 +1613,7 @@ export async function buildPdfBlob(
     const cellPaddingY = 1.6;
     const cellFontSize = Math.max(6, bodyFontSize - 1);
     const cellLineHeight = mm(cellFontSize) * 1.3;
-    const colWidth = contentWidth / colCount;
+    const colWidth = blockWidth / colCount;
     // A table whose header reads right to left has its first column
     // on the right, as the chat page shows it.
     const rtlTable = isRtlParagraph(block.header.join(" "));
@@ -2231,8 +1692,8 @@ export async function buildPdfBlob(
             parseInline(subLine),
             cellFontSize,
             cellLineHeight,
-            pdf.marginLeft,
-            contentWidth,
+            blockLeft,
+            blockWidth,
           );
         }
 
@@ -2269,14 +1730,14 @@ export async function buildPdfBlob(
 
       if (isHeader) {
         doc.setFillColor(240, 240, 240);
-        doc.rect(pdf.marginLeft, rowTop, contentWidth, row.height, "F");
+        doc.rect(blockLeft, rowTop, blockWidth, row.height, "F");
       }
 
       doc.setDrawColor(200);
 
       for (let col = 0; col < colCount; col++) {
         const cellX =
-          pdf.marginLeft + (rtlTable ? colCount - 1 - col : col) * colWidth;
+          blockLeft + (rtlTable ? colCount - 1 - col : col) * colWidth;
         doc.rect(cellX, rowTop, colWidth, row.height);
 
         y = rowTop + cellPaddingY + cellLineHeight * 0.78;
@@ -2338,6 +1799,124 @@ export async function buildPdfBlob(
     }
   }
 
+  /* A small gray label in capitals over a section: THINKING, SOURCES */
+  function writeLabel(text: string): void {
+    const size = Math.max(7, bodyFontSize - 2.5);
+    const lineHeight = mm(size) * 1.7;
+
+    ensureSpace(lineHeight + bodyLineHeight);
+    doc.setFont(SANS_FONT, "bold");
+    doc.setFontSize(size);
+    doc.setTextColor(...MUTED_COLOR);
+    doc.text(text.toUpperCase(), pdf.marginLeft, y);
+    doc.setTextColor(...TEXT_COLOR);
+    y += lineHeight;
+  }
+
+  /*
+   * A reply's thinking, ahead of its answer: gray, and set in from
+   * a line down its left side - drawn last, page by page, since the
+   * thinking can run over a page break.
+   */
+  function renderThinking(blocks: Block[]): void {
+    const indent = 5;
+
+    writeLabel("Thinking");
+
+    const startPage = doc.getNumberOfPages();
+    const startY = y - bodyLineHeight * 0.8;
+
+    blockLeft = pdf.marginLeft + indent;
+    blockWidth = contentWidth - indent;
+    textColor = MUTED_COLOR;
+
+    try {
+      for (const [index, block] of blocks.entries()) {
+        if (isLeadIn(block)) {
+          ensureSpace(keepWithNextHeight(blocks, index));
+        }
+
+        renderBlock(block);
+      }
+    } finally {
+      blockLeft = pdf.marginLeft;
+      blockWidth = contentWidth;
+      textColor = TEXT_COLOR;
+    }
+
+    const endPage = doc.getNumberOfPages();
+    const endY = y - bodyLineHeight * 0.9;
+    const lineWidth = doc.getLineWidth();
+
+    doc.setDrawColor(208, 215, 222);
+    doc.setLineWidth(0.6);
+
+    for (let page = startPage; page <= endPage; page++) {
+      doc.setPage(page);
+
+      const top = page === startPage ? startY : pdf.marginTop - bodyLineHeight * 0.8;
+      const bottom = page === endPage ? endY : contentBottom;
+
+      if (bottom > top) {
+        doc.line(pdf.marginLeft + 1, top, pdf.marginLeft + 1, bottom);
+      }
+    }
+
+    doc.setLineWidth(lineWidth);
+    y += bodyLineHeight * 0.4;
+  }
+
+  /*
+   * The reply's sources under it, numbered as its notes cite them:
+   * each title links to its page, with the site's name after it.
+   */
+  function renderSources(sources: MessageSource[]): void {
+    const fontSize = Math.max(7, bodyFontSize - 1.5);
+    const lineHeight = mm(fontSize) * 1.35;
+    const indent = 7;
+
+    writeLabel("Sources");
+
+    sources.forEach((source, index) => {
+      const label = sourceLabel(source);
+      const host = sourceHost(source.url);
+      const runs: InlineRun[] = [
+        isSafeSourceUrl(source.url)
+          ? { text: label, link: source.url }
+          : { text: label },
+        ...(host && host !== label ? [{ text: ` · ${host}`, muted: true }] : []),
+      ];
+      const rtl = isRtlParagraph(label);
+      const prefix = visualPlain(`${index + 1}.`, rtl);
+      const lines = wrapWords(
+        tokenizeRuns(runs, fontSize),
+        contentWidth - indent,
+        fontSize,
+      );
+
+      ensureSpace(lineBoxHeight(lines[0], lineHeight));
+      doc.setFont(SANS_FONT, "normal");
+      doc.setFontSize(fontSize);
+      doc.setTextColor(...MUTED_COLOR);
+      doc.text(
+        prefix,
+        rtl
+          ? pdf.marginLeft + contentWidth - doc.getTextWidth(prefix)
+          : pdf.marginLeft,
+        y,
+      );
+      drawWrappedLines(
+        lines,
+        pdf.marginLeft + (rtl ? 0 : indent),
+        fontSize,
+        lineHeight,
+        true,
+      );
+    });
+
+    y += bodyLineHeight * 0.3;
+  }
+
   async function writeImage(image: ExportImageFile): Promise<void> {
     let converted = pngCache.get(image.path);
 
@@ -2366,11 +1945,17 @@ export async function buildPdfBlob(
     const drawHeight = naturalHeightMm * scale;
 
     ensureSpace(drawHeight);
+
+    /*
+     * y is the baseline of the line the image takes the place of,
+     * so it starts where that line's letters would - otherwise it
+     * sits a line low and touches whatever comes next.
+     */
     doc.addImage(
       converted.dataUrl,
       "PNG",
       pdf.marginLeft,
-      y,
+      y - mm(bodyFontSize) * 0.75,
       drawWidth,
       drawHeight,
     );
@@ -2533,7 +2118,10 @@ export async function buildPdfBlob(
   for (const [index, message] of messages.entries()) {
     const roleLabel = message.role === "user" ? "User" : "Assistant";
     const isUser = message.role === "user";
-    const preprocessed = preprocessRawContent(messageContents[index]);
+    const sources = message.sources ?? [];
+    const preprocessed = preprocessRawContent(
+      normalizeNotes(messageContents[index], sources.length),
+    );
     const hasRule = index > 0 && ruleBetweenMessages;
     const content = isUser ? fenceUserContent(preprocessed) : preprocessed;
     const blocks = parseBlocks(content, isUser);
@@ -2554,7 +2142,7 @@ export async function buildPdfBlob(
       label: roleLabel,
       // From the text as written, so a formula in the bookmark
       // title reads as its LaTeX instead of a placeholder token.
-      snippet: messageSnippet(preprocessRawContent(message.content)),
+      snippet: messageSnippet(stripNotes(preprocessRawContent(message.content))),
       page: doc.getNumberOfPages(),
       top: y - headingLineHeight,
     });
@@ -2576,6 +2164,16 @@ export async function buildPdfBlob(
       y += bodyLineHeight * 0.2;
     }
 
+    currentSources = sources;
+
+    if (thinkingContents[index]) {
+      renderThinking(
+        parseBlocks(
+          preprocessRawContent(stripNotes(thinkingContents[index])),
+        ),
+      );
+    }
+
     for (const [blockIndex, block] of blocks.entries()) {
       if (isLeadIn(block)) {
         ensureSpace(keepWithNextHeight(blocks, blockIndex));
@@ -2590,6 +2188,10 @@ export async function buildPdfBlob(
       if (image) {
         await writeImage(image);
       }
+    }
+
+    if (sources.length > 0) {
+      renderSources(sources);
     }
 
     y += bodyLineHeight * 0.4;

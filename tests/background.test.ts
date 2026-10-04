@@ -107,8 +107,8 @@ const revokeObjectURL = vi.fn();
 
 /*
  * GITHUB_SAVE_FILE shares isValidExportFilename() with
- * DOWNLOAD_START (see SAFE_FILENAME_PATTERN in background.ts),
- * so it's exercised by the Cyrillic-filename regression tests
+ * DOWNLOAD_START (isSafeFileName() in file-names.ts), so it's
+ * exercised by the Cyrillic-filename regression tests
  * below too. fetch is stubbed to reject so saveFileToRepo()
  * fails fast past validation instead of hanging on a real
  * network call - the tests only care whether the request got
@@ -390,6 +390,82 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
 
       expect(response.success).toBe(false);
       expect(downloadsDownload).not.toHaveBeenCalled();
+    });
+
+    /*
+     * The person's own file name pattern (Settings.fileNameTemplate)
+     * can make names with spaces, punctuation and any script.
+     */
+    it("accepts names written with spaces, punctuation and any script", async () => {
+      for (const filename of [
+        "2026-10-04 Trip ideas (Rome).pdf",
+        "ChatGPT - Café & croissants - 2026-10-04.docx",
+        "如何学习编程.md",
+        "שלום עולם.html",
+      ]) {
+        downloadsDownload.mockClear();
+
+        const response = await dispatchMessage(
+          validDownloadStartMessage({ filename }),
+        );
+
+        expect(response.success).toBe(true);
+        expect(downloadsDownload).toHaveBeenCalledWith(
+          expect.objectContaining({ filename }),
+        );
+      }
+    });
+
+    it("rejects names a browser would refuse", async () => {
+      for (const filename of [
+        "Trip: Rome.pdf",
+        "What?.pdf",
+        " leading space.pdf",
+        "trailing space .pdf",
+        "con.pdf",
+        "a..b.pdf",
+        "folder/file.pdf",
+        "folder\\file.pdf",
+        `bidi${String.fromCodePoint(0x202e)}fdp.exe.pdf`,
+        "no-extension",
+      ]) {
+        const response = await dispatchMessage(
+          validDownloadStartMessage({ filename }),
+        );
+
+        expect(response.success).toBe(false);
+      }
+
+      expect(downloadsDownload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a name the browser refuses", () => {
+    it("is retried once as plain ASCII", async () => {
+      downloadsDownload
+        .mockRejectedValueOnce(new Error("Invalid filename"))
+        .mockResolvedValueOnce(5);
+
+      const response = await dispatchMessage(
+        validDownloadStartMessage({ filename: "Café ideas.pdf" }),
+      );
+
+      expect(response).toEqual({ success: true, data: { downloadId: 5 } });
+      expect(downloadsDownload).toHaveBeenCalledTimes(2);
+      expect(downloadsDownload).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filename: "Cafe-ideas.pdf" }),
+      );
+    });
+
+    it("isn't retried for an error that has nothing to do with the name", async () => {
+      downloadsDownload.mockRejectedValueOnce(new Error("Download canceled"));
+
+      const response = await dispatchMessage(
+        validDownloadStartMessage({ filename: "Café ideas.pdf" }),
+      );
+
+      expect(response).toEqual({ success: false, error: "Download canceled" });
+      expect(downloadsDownload).toHaveBeenCalledTimes(1);
     });
   });
 

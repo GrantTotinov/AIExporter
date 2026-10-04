@@ -1,8 +1,11 @@
 import { loadSettings } from "./settings.ts";
 import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
+import { stripNotes } from "./source-notes.ts";
 import { encodeBlobBase64 } from "./zip.ts";
-import { buildPdfBlob } from "./pdf-export.ts";
+import { buildDocumentBlob, isDocumentFormat } from "./file-export.ts";
+import { buildNotionPage, notionPageTitle } from "./notion-blocks.ts";
+import type { NotionPageOption } from "./notion.ts";
 import {
   EXPORT_FORMATS,
   SITE_ONLY_TITLE,
@@ -18,7 +21,9 @@ import {
   CHAT_SITE_NAMES,
   getChatSite,
   isChatConversationUrl,
+  isInjectedSite,
   stripChatSiteSuffix,
+  type ChatSite,
 } from "./chat-sites.ts";
 import {
   UPDATE_NOTICE_KEY,
@@ -53,6 +58,10 @@ const NEW_REPOSITORY_URL = "https://github.com/new";
  */
 const EXPORT_FORMAT_KEY = "popupExportFormat";
 const GITHUB_REPO_KEY = "popupGithubRepo";
+const NOTION_PAGE_KEY = "popupNotionPage";
+
+/* Where a saved Notion page may be opened from the popup */
+const NOTION_URL_PATTERN = /^https:\/\/(?:[a-z0-9-]+\.)*notion\.(?:so|site|com)\//;
 
 const TOAST_MS = 2500;
 /* Errors stay up longer: there's more to read, and it matters */
@@ -88,6 +97,8 @@ const devError = (...args: unknown[]): void => {
 
 const FORMAT_ICONS: Record<ExportFormat, string> = {
   pdf: "i-file-text",
+  docx: "i-file-word",
+  html: "i-code",
   md: "i-hash",
   txt: "i-text",
   json: "i-braces",
@@ -217,6 +228,9 @@ const selectorExportLabel = document.getElementById(
 const selectorGithubButton = document.getElementById(
   "selector-github-button",
 ) as HTMLButtonElement;
+const selectorNotionButton = document.getElementById(
+  "selector-notion-button",
+) as HTMLButtonElement;
 
 /* "Save to GitHub" screen */
 const githubView = document.getElementById("github-view") as HTMLElement;
@@ -289,6 +303,57 @@ const githubConfirmExportButton = document.getElementById(
   "github-confirm-export",
 ) as HTMLButtonElement;
 
+/* "Save to Notion" screen */
+const notionView = document.getElementById("notion-view") as HTMLElement;
+const notionPanelCancelButton = document.getElementById(
+  "notion-panel-cancel",
+) as HTMLButtonElement;
+const notionTitle = document.getElementById(
+  "notion-title",
+) as HTMLHeadingElement;
+const notionState = document.getElementById("notion-state") as HTMLDivElement;
+const notionStateSpinner = document.getElementById(
+  "notion-state-spinner",
+) as HTMLSpanElement;
+const notionStateIcon = document.getElementById(
+  "notion-state-icon",
+) as unknown as SVGSVGElement;
+const notionStateIconUse = document.getElementById(
+  "notion-state-icon-use",
+) as unknown as SVGUseElement;
+const notionStateTitle = document.getElementById(
+  "notion-state-title",
+) as HTMLParagraphElement;
+const notionStateText = document.getElementById(
+  "notion-state-text",
+) as HTMLParagraphElement;
+const notionStateAction = document.getElementById(
+  "notion-state-action",
+) as HTMLButtonElement;
+const notionStateActionIcon = document.getElementById(
+  "notion-state-action-icon",
+) as unknown as SVGUseElement;
+const notionStateActionLabel = document.getElementById(
+  "notion-state-action-label",
+) as HTMLSpanElement;
+const notionStateSecondary = document.getElementById(
+  "notion-state-secondary",
+) as HTMLButtonElement;
+const notionForm = document.getElementById("notion-form") as HTMLDivElement;
+const notionPageSelect = document.getElementById(
+  "notion-page-select",
+) as HTMLSelectElement;
+const notionPageName = document.getElementById(
+  "notion-page-name",
+) as HTMLSpanElement;
+const notionFooter = document.getElementById("notion-footer") as HTMLElement;
+const notionPanelSaveButton = document.getElementById(
+  "notion-panel-save",
+) as HTMLButtonElement;
+const notionSaveLabel = document.getElementById(
+  "notion-save-label",
+) as HTMLSpanElement;
+
 /* Toast (on-screen feedback for button actions) */
 const toast = document.getElementById("toast") as HTMLDivElement;
 const toastText = document.getElementById("toast-text") as HTMLSpanElement;
@@ -321,6 +386,8 @@ let currentImages: ExportImageFile[] = [];
 let currentTabTitle: string | undefined;
 let currentTabUrl: string | undefined;
 let currentTabId: number | undefined;
+/* Settings.fileNameTemplate, as read when the chat was loaded */
+let currentFileNameTemplate = "";
 let lastShiftAnchorIndex: number | null = null;
 
 let githubRepos: GithubRepoOption[] = [];
@@ -329,23 +396,31 @@ let githubLoadId = 0;
 let githubStateActionHandler: (() => void) | null = null;
 let githubStateSecondaryHandler: (() => void) | null = null;
 
+let notionPages: NotionPageOption[] = [];
+/* Ignores a page list that arrives after the person left */
+let notionLoadId = 0;
+let notionStateActionHandler: (() => void) | null = null;
+let notionStateSecondaryHandler: (() => void) | null = null;
+
 /*
  * ---------------------------------------------------------
  * SCREENS
  * ---------------------------------------------------------
  *
- * The popup has three screens: the main one, "Save as a file"
- * (pick the messages and a file type) and "Save to GitHub".
+ * The popup has four screens: the main one, "Save as a file"
+ * (pick the messages and a file type), "Save to GitHub" and
+ * "Save to Notion".
  * One shows at a time. The last two take the popup's full
  * height (body.is-full), so a long message list scrolls inside
  * them while their buttons stay in view.
  */
-type ScreenName = "main" | "export" | "github";
+type ScreenName = "main" | "export" | "github" | "notion";
 
 const screens: Record<ScreenName, HTMLElement> = {
   main: mainView,
   export: exportView,
   github: githubView,
+  notion: notionView,
 };
 
 let currentScreen: ScreenName = "main";
@@ -364,7 +439,9 @@ function showScreen(name: ScreenName): void {
       ? exportTitle
       : name === "github"
         ? githubTitle
-        : exportButton;
+        : name === "notion"
+          ? notionTitle
+          : exportButton;
 
   focusTarget.focus({ preventScroll: true });
 }
@@ -378,14 +455,20 @@ githubPanelCancelButton.addEventListener("click", () => {
   showScreen("export");
 });
 
+notionPanelCancelButton.addEventListener("click", () => {
+  notionLoadId++;
+  showScreen("export");
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || busy || githubConfirm.open) {
     return;
   }
 
-  if (currentScreen === "github") {
+  if (currentScreen === "github" || currentScreen === "notion") {
     event.preventDefault();
     githubLoadId++;
+    notionLoadId++;
     showScreen("export");
   } else if (currentScreen === "export") {
     event.preventDefault();
@@ -458,9 +541,12 @@ function updateButtons(): void {
   bulkExportButton.disabled = busy || chatState === "unsupported";
   selectorExportButton.disabled = busy || selectedCount === 0;
   selectorGithubButton.disabled = busy || selectedCount === 0;
+  selectorNotionButton.disabled = busy || selectedCount === 0;
   githubPanelSaveButton.disabled = busy || githubRepoSelect.value === "";
+  notionPanelSaveButton.disabled = busy || notionPageSelect.value === "";
   selectorCancelButton.disabled = busy;
   githubPanelCancelButton.disabled = busy;
+  notionPanelCancelButton.disabled = busy;
   githubStarButton.disabled = busy || starring;
   buyCoffeeButton.disabled = busy;
   updateApplyButton.disabled = busy || installingUpdate;
@@ -617,6 +703,36 @@ function labelSiteLinks(): void {
 }
 
 /*
+ * DeepSeek, Grok and Perplexity tabs only get the content script
+ * when the popup is opened on them (see the top of chat-sites.ts).
+ * Opening the popup lends AI Exporter the tab for a while - the
+ * activeTab permission - which lets it put content.js in. A page
+ * that has it already answers the ping, so it's never added twice.
+ */
+async function ensureContentScript(tabId: number, site: ChatSite): Promise<void> {
+  if (!isInjectedSite(site)) {
+    return;
+  }
+
+  try {
+    const answer = await chrome.tabs.sendMessage(tabId, {
+      type: "AIEXPORTER_PING",
+    });
+
+    if (answer?.ok === true) {
+      return;
+    }
+  } catch {
+    /* Nothing in the tab answers yet. */
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["content.js"],
+  });
+}
+
+/*
  * ---------------------------------------------------------
  * LOAD CONVERSATION MESSAGES
  * ---------------------------------------------------------
@@ -653,6 +769,8 @@ async function loadConversationMessages(
 
     devLog("AI Exporter: requesting conversation");
 
+    await ensureContentScript(tab.id, site);
+
     let response;
 
     try {
@@ -661,25 +779,36 @@ async function loadConversationMessages(
         downloadImagesLocally,
       });
     } catch (sendError) {
-      /*
-       * No content script in the tab: it was opened before AI
-       * Exporter was installed or updated. Reloading the tab
-       * brings one in.
-       */
-      devWarn(
-        "AI Exporter: no content script, reloading tab and retrying",
-        sendError,
-      );
+      if (isInjectedSite(site)) {
+        /*
+         * The page went away in between - reloaded, say - and its
+         * content script with it: put it in again. (Reloading the
+         * tab, as below, wouldn't bring one back on these sites.)
+         */
+        devWarn("AI Exporter: no content script, adding it again", sendError);
 
-      setProgressMessage(
-        t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
-      );
+        await ensureContentScript(tab.id, site);
+      } else {
+        /*
+         * No content script in the tab: it was opened before AI
+         * Exporter was installed or updated. Reloading the tab
+         * brings one in.
+         */
+        devWarn(
+          "AI Exporter: no content script, reloading tab and retrying",
+          sendError,
+        );
 
-      await chrome.tabs.reload(tab.id);
+        setProgressMessage(
+          t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
+        );
 
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+        await chrome.tabs.reload(tab.id);
 
-      setProgressMessage(t("popup.loading.default"));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        setProgressMessage(t("popup.loading.default"));
+      }
 
       response = await chrome.tabs.sendMessage(tab.id, {
         type: "LOAD_CONVERSATION",
@@ -740,11 +869,13 @@ copyButton.addEventListener("click", async () => {
     );
 
     // A pasted chat goes into a message or document, where note
-    // properties would just be clutter.
+    // properties would just be clutter, and Markdown footnotes
+    // would show as "[^1]".
     const markdown = await buildMarkdownFromMessages(messages, {
       tabTitle,
       tabUrl,
       properties: false,
+      notes: "brackets",
     });
 
     const copyResponse = await chrome.runtime.sendMessage({
@@ -836,7 +967,7 @@ function previewText(content: string): string {
   const imageLabel = `[${t("popup.selector.image")}]`;
 
   const text = stripMarkdown(
-    content
+    stripNotes(content)
       .replace(/!\[[^\]]*\]\((?:<[^>]+>|[^)]+)\)/g, () => imageLabel)
       .replace(/\[([^\]]*)\]\((?:<[^>]+>|[^)]+)\)/g, "$1"),
   );
@@ -981,7 +1112,7 @@ function setSelectedFormat(format: ExportFormat): void {
 function updateFormatHint(): void {
   const format = getSelectedFormat();
   const zipped =
-    format !== "pdf" &&
+    !isDocumentFormat(format) &&
     getSelectedImageFiles(getSelectedMessages()).length > 0;
 
   formatHintIcon.setAttribute(
@@ -1051,6 +1182,11 @@ bulkExportButton.addEventListener("click", async () => {
     return;
   }
 
+  // The page lists and loads the chats through this tab's content script.
+  await ensureContentScript(tab.id, site).catch((error: unknown) => {
+    devWarn("AI Exporter: couldn't add the content script", error);
+  });
+
   const params = new URLSearchParams({ tab: String(tab.id), site });
 
   await chrome.tabs.create({
@@ -1080,6 +1216,7 @@ exportButton.addEventListener("click", async () => {
     currentTabTitle = tabTitle;
     currentTabUrl = tabUrl;
     currentTabId = tabId;
+    currentFileNameTemplate = settings.fileNameTemplate ?? "";
 
     exportSubtitle.textContent = chatTitleFor(tabTitle);
     selectorExpandToggle.checked = false;
@@ -1114,18 +1251,26 @@ selectorExportButton.addEventListener("click", async () => {
     await waitForPaint();
 
     const settings = await loadSettings();
-    const filename = buildFilename(currentTabTitle, currentTabUrl, format);
+    const now = new Date();
+    const filename = buildFilename(
+      currentTabTitle,
+      currentTabUrl,
+      format,
+      settings.fileNameTemplate,
+      now,
+    );
     let downloadFilename = filename;
     let blob: Blob;
 
-    if (format === "pdf") {
+    if (isDocumentFormat(format)) {
       /*
-       * PDF images are embedded inline in the document itself
-       * (see pdf-export.ts), so there's no separate images/
-       * folder to bundle into a ZIP the way the other formats
-       * do - the PDF download always stands alone.
+       * PDF, Word and HTML files embed their images in the
+       * document itself (see file-export.ts), so there's no
+       * separate images/ folder to bundle into a ZIP the way the
+       * other formats do - the download always stands alone.
        */
-      blob = await buildPdfBlob(
+      blob = await buildDocumentBlob(
+        format,
         chosen,
         getSelectedImageFiles(chosen),
         settings,
@@ -1137,18 +1282,26 @@ selectorExportButton.addEventListener("click", async () => {
         tabTitle: currentTabTitle,
         tabUrl: currentTabUrl,
         properties: format === "md",
+        notes: format === "md" ? "footnotes" : "brackets",
       });
 
       const { content, mimeType } = buildContentForFormat(
         format,
         markdown,
         chosen,
+        settings,
       );
 
       const selectedImages = getSelectedImageFiles(chosen);
 
       if (selectedImages.length > 0) {
-        downloadFilename = buildFilename(currentTabTitle, currentTabUrl, "zip");
+        downloadFilename = buildFilename(
+          currentTabTitle,
+          currentTabUrl,
+          "zip",
+          settings.fileNameTemplate,
+          now,
+        );
         blob = createExportZipBlob(content, filename, selectedImages);
       } else {
         blob = new Blob([content], { type: mimeType });
@@ -1340,7 +1493,12 @@ function selectedRepo(): GithubRepoOption | undefined {
 function githubExportFilename(): string {
   const zipped = getSelectedImageFiles(getSelectedMessages()).length > 0;
 
-  return buildFilename(currentTabTitle, currentTabUrl, zipped ? "zip" : "md");
+  return buildFilename(
+    currentTabTitle,
+    currentTabUrl,
+    zipped ? "zip" : "md",
+    currentFileNameTemplate,
+  );
 }
 
 /*
@@ -1487,10 +1645,13 @@ async function saveToGitHub(): Promise<void> {
       tabUrl: currentTabUrl,
       properties: true,
     });
+    const now = new Date();
     const markdownFilename = buildFilename(
       currentTabTitle,
       currentTabUrl,
       "md",
+      currentFileNameTemplate,
+      now,
     );
     const selectedImages = getSelectedImageFiles(chosen);
     let filename = markdownFilename;
@@ -1498,7 +1659,13 @@ async function saveToGitHub(): Promise<void> {
     let binary = false;
 
     if (selectedImages.length > 0) {
-      filename = buildFilename(currentTabTitle, currentTabUrl, "zip");
+      filename = buildFilename(
+        currentTabTitle,
+        currentTabUrl,
+        "zip",
+        currentFileNameTemplate,
+        now,
+      );
       const archive = createExportZipBlob(
         markdown,
         markdownFilename,
@@ -1581,6 +1748,301 @@ githubConfirm.addEventListener("click", (event) => {
   if (event.target === githubConfirm) {
     githubConfirm.close();
   }
+});
+
+/*
+ * ---------------------------------------------------------
+ * "SAVE TO NOTION" SCREEN
+ * ---------------------------------------------------------
+ *
+ * Creates a new Notion page with the selected messages (see
+ * notion-blocks.ts) inside a page the person picks - one of the
+ * pages they shared with AI Exporter when connecting. Like the
+ * GitHub screen, it says what to do instead of showing an empty
+ * list when there's no connection or no page to pick.
+ */
+type NotionState =
+  | { kind: "loading" }
+  | { kind: "not-connected" }
+  | { kind: "error"; message: string }
+  | { kind: "empty" }
+  | { kind: "saved"; parent: string; url: string | null };
+
+function notionStateContent(state: NotionState): {
+  icon: string;
+  title: string;
+  text: string;
+  action?: GithubStateAction;
+  secondary?: { label: string; run: () => void };
+} {
+  switch (state.kind) {
+    case "loading":
+      return { icon: "", title: t("popup.notion.loadingPages"), text: "" };
+    case "not-connected":
+      return {
+        icon: "i-notion",
+        title: t("popup.notion.notConnectedTitle"),
+        text: t("popup.notion.notConnectedText"),
+        action: {
+          icon: "i-settings",
+          label: t("popup.notion.openSettings"),
+          run: () => openTab(chrome.runtime.getURL("options.html#notion")),
+        },
+      };
+    case "error":
+      return {
+        icon: "i-alert",
+        title: t("popup.notion.failedTitle"),
+        text: state.message || t("popup.github.failedToLoad"),
+        action: {
+          icon: "i-retry",
+          label: t("popup.github.retry"),
+          run: () => void loadNotionPages(),
+        },
+      };
+    case "empty":
+      return {
+        icon: "i-notion",
+        title: t("popup.notion.noPagesTitle"),
+        text: t("popup.notion.noPages"),
+        action: {
+          icon: "i-settings",
+          label: t("popup.notion.openSettings"),
+          run: () => openTab(chrome.runtime.getURL("options.html#notion")),
+        },
+      };
+    case "saved": {
+      const { url } = state;
+
+      return {
+        icon: "i-check-circle",
+        title: t("popup.notion.savedTitle"),
+        text: t("popup.notion.savedText", { parent: state.parent }),
+        action: url
+          ? {
+              icon: "i-external",
+              label: t("popup.notion.view"),
+              run: () => openTab(url),
+            }
+          : undefined,
+        secondary: {
+          label: t("popup.github.done"),
+          run: () => showScreen("main"),
+        },
+      };
+    }
+  }
+}
+
+function showNotionState(state: NotionState): void {
+  const content = notionStateContent(state);
+  const loading = state.kind === "loading";
+
+  notionState.hidden = false;
+  notionForm.hidden = true;
+  notionFooter.hidden = true;
+  notionState.dataset.tone =
+    state.kind === "error" ? "error" : state.kind === "saved" ? "success" : "";
+
+  notionStateSpinner.hidden = !loading;
+  notionStateIcon.toggleAttribute("hidden", loading);
+  notionStateIconUse.setAttribute("href", `#${content.icon}`);
+  notionStateTitle.textContent = content.title;
+  notionStateText.textContent = content.text;
+  notionStateText.hidden = content.text === "";
+
+  notionStateAction.hidden = !content.action;
+  notionStateActionHandler = content.action?.run ?? null;
+
+  if (content.action) {
+    notionStateActionIcon.setAttribute("href", `#${content.action.icon}`);
+    notionStateActionLabel.textContent = content.action.label;
+  }
+
+  notionStateSecondary.hidden = !content.secondary;
+  notionStateSecondaryHandler = content.secondary?.run ?? null;
+  notionStateSecondary.textContent = content.secondary?.label ?? "";
+}
+
+notionStateAction.addEventListener("click", () => {
+  notionStateActionHandler?.();
+});
+
+notionStateSecondary.addEventListener("click", () => {
+  notionStateSecondaryHandler?.();
+});
+
+async function rememberedNotionPage(): Promise<string | undefined> {
+  try {
+    const stored = await chrome.storage.local.get(NOTION_PAGE_KEY);
+    const value = stored[NOTION_PAGE_KEY];
+
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadNotionPages(): Promise<void> {
+  const loadId = ++notionLoadId;
+  const isStale = (): boolean =>
+    loadId !== notionLoadId || currentScreen !== "notion";
+
+  notionPages = [];
+  notionPageSelect.replaceChildren();
+  showNotionState({ kind: "loading" });
+
+  try {
+    const statusResponse = await chrome.runtime.sendMessage({
+      type: "NOTION_GET_STATUS",
+    });
+
+    if (isStale()) {
+      return;
+    }
+
+    if (!statusResponse?.success || !statusResponse.data?.connected) {
+      showNotionState({ kind: "not-connected" });
+
+      return;
+    }
+
+    const pagesResponse = await chrome.runtime.sendMessage({
+      type: "NOTION_LIST_PAGES",
+    });
+
+    if (isStale()) {
+      return;
+    }
+
+    if (!pagesResponse?.success) {
+      showNotionState({
+        kind: "error",
+        message: errorMessage(
+          pagesResponse?.error ?? "",
+          "popup.github.failedToLoad",
+        ),
+      });
+
+      return;
+    }
+
+    const pages = pagesResponse.data as NotionPageOption[];
+
+    if (pages.length === 0) {
+      showNotionState({ kind: "empty" });
+
+      return;
+    }
+
+    const lastPage = await rememberedNotionPage();
+
+    if (isStale()) {
+      return;
+    }
+
+    notionPages = pages;
+    notionPageSelect.replaceChildren(
+      ...pages.map(
+        (page) =>
+          new Option(page.icon ? `${page.icon} ${page.title}` : page.title, page.id),
+      ),
+    );
+
+    if (lastPage && pages.some((page) => page.id === lastPage)) {
+      notionPageSelect.value = lastPage;
+    }
+
+    notionPageName.textContent = notionPageTitle(currentTabTitle, currentTabUrl);
+
+    notionState.hidden = true;
+    notionForm.hidden = false;
+    notionFooter.hidden = false;
+    updateButtons();
+  } catch (error) {
+    devError("AI Exporter: loading Notion pages failed", error);
+
+    if (!isStale()) {
+      showNotionState({
+        kind: "error",
+        message: errorMessage(error, "popup.github.failedToLoad"),
+      });
+    }
+  }
+}
+
+selectorNotionButton.addEventListener("click", () => {
+  if (getSelectedMessages().length === 0) {
+    return;
+  }
+
+  showScreen("notion");
+  void loadNotionPages();
+});
+
+notionPageSelect.addEventListener("change", () => {
+  updateButtons();
+});
+
+async function saveToNotion(): Promise<void> {
+  const parentId = notionPageSelect.value;
+  const parent = notionPages.find((page) => page.id === parentId);
+  const chosen = getSelectedMessages();
+
+  if (!parent || chosen.length === 0) {
+    return;
+  }
+
+  notionPanelSaveButton.classList.add("is-busy");
+  notionSaveLabel.textContent = t("popup.github.saving");
+  setBusy(true);
+
+  try {
+    await waitForPaint();
+
+    const settings = await loadSettings();
+    const page = buildNotionPage(chosen, settings, {
+      tabTitle: currentTabTitle,
+      tabUrl: currentTabUrl,
+    });
+    const saveResponse = await chrome.runtime.sendMessage({
+      type: "NOTION_SAVE_PAGE",
+      parentId,
+      title: page.title,
+      blocks: page.blocks,
+    });
+
+    if (!saveResponse?.success) {
+      throw new Error(saveResponse?.error ?? t("popup.toast.notionSaveFailed"));
+    }
+
+    const url = saveResponse.data?.url;
+
+    showNotionState({
+      kind: "saved",
+      parent: parent.title,
+      url:
+        typeof url === "string" && NOTION_URL_PATTERN.test(url) ? url : null,
+    });
+    notionStateAction.focus({ preventScroll: true });
+
+    void chrome.storage.local
+      .set({ [NOTION_PAGE_KEY]: parentId })
+      .catch(() => undefined);
+
+    openExportSuccess();
+  } catch (error) {
+    devError("AI Exporter: Notion save failed", error);
+    showErrorToast(error, "popup.toast.notionSaveFailed");
+  } finally {
+    notionPanelSaveButton.classList.remove("is-busy");
+    notionSaveLabel.textContent = t("popup.notion.save");
+    setBusy(false);
+  }
+}
+
+notionPanelSaveButton.addEventListener("click", () => {
+  void saveToNotion();
 });
 
 /*

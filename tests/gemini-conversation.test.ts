@@ -10,6 +10,7 @@ import {
   type GeminiExportMessage,
   type GeminiPageTokens,
 } from "../src/gemini-conversation";
+import { bracketNotes } from "../src/source-notes";
 
 /*
  * Fixtures follow the shape of a captured hNvQHb response from
@@ -859,5 +860,122 @@ describe("convertGeminiTurns", () => {
     ).toEqual([
       { id: "r_1", role: "user", parts: [{ kind: "text", text: "Hi" }] },
     ]);
+  });
+});
+
+describe("thoughts and citations", () => {
+  /*
+   * Field 43 of a rich content block: groups that pair a
+   * "[cite: N]" marker with an entry per number, each holding
+   * [favicon, url, title] at [3][0].
+   */
+  function citationGroups(groups: [string, [string, string][]][]): unknown[] {
+    return groups.map(([marker, pages]) => [
+      [marker],
+      pages.map(([url, title]) =>
+        fillTo(4, { 3: [["https://www.google.com/s2/favicons", url, title]] }),
+      ),
+    ]);
+  }
+
+  it("keeps the thoughts apart from the reply", () => {
+    const [, answer] = convertGeminiTurns([
+      turn(
+        "r_1",
+        prompt("Hi"),
+        reply([candidate("rc_1", "Hello!", { 37: [["I should greet back."]] })]),
+      ),
+    ]);
+
+    expect(answer.thinking).toBe("I should greet back.");
+    expect(texts([answer])).toEqual([["Hello!"]]);
+  });
+
+  it("turns [cite: N] markers into notes for the pages field 43 names", () => {
+    const rich = fillTo(44, {
+      7: [],
+      43: citationGroups([
+        [
+          " [cite: 1, 2]",
+          [
+            ["https://rome.example/", "Rome"],
+            ["https://empire.example/", "Empire"],
+          ],
+        ],
+        [" [cite: 2]", [["https://empire.example/", "Empire again"]]],
+      ]),
+    });
+    const [, answer] = convertGeminiTurns([
+      turn(
+        "r_1",
+        prompt("Rome?"),
+        reply([
+          candidate("rc_1", "Rome is old. [cite: 1, 2] It ruled much. [cite: 2]", {
+            12: rich,
+          }),
+        ]),
+      ),
+    ]);
+
+    expect(bracketNotes(texts([answer])[0][0], answer.sources ?? [])).toBe(
+      "Rome is old.[1][2] It ruled much.[2]",
+    );
+    expect(answer.sources).toEqual([
+      { title: "Rome", url: "https://rome.example/" },
+      { title: "Empire", url: "https://empire.example/" },
+    ]);
+  });
+
+  it("finds the citations in the sparse field bundle too", () => {
+    const rich = [
+      null,
+      null,
+      { "44": citationGroups([[" [cite: 1]", [["https://a.example/", "A"]]]]) },
+    ];
+    const [, answer] = convertGeminiTurns([
+      turn("r_1", prompt("Q"), reply([candidate("rc_1", "Fact. [cite: 1]", { 12: rich })])),
+    ]);
+
+    expect(bracketNotes(texts([answer])[0][0], answer.sources ?? [])).toBe("Fact.[1]");
+  });
+
+  it("drops citations whose pages it can't find", () => {
+    const [, answer] = convertGeminiTurns([
+      turn("r_1", prompt("Q"), reply([candidate("rc_1", "Fact. [cite: 7]")])),
+    ]);
+
+    expect(texts([answer])).toEqual([["Fact."]]);
+    expect(answer.sources).toBeUndefined();
+  });
+
+  it("resolves a Deep Research document's citations from its own list", () => {
+    const document = fillTo(18, {
+      2: "Report",
+      4: "# Findings\n\nIt works. [cite: 1]",
+      17: [
+        null,
+        fillTo(44, {
+          43: citationGroups([[" [cite: 1]", [["https://paper.example/", "Paper"]]]]),
+        }),
+      ],
+    });
+    const [, answer] = convertGeminiTurns([
+      turn(
+        "r_1",
+        prompt("Research this"),
+        reply([
+          candidate(
+            "rc_1",
+            "Here is your report:\nhttp://googleusercontent.com/immersive_entry_chip/0",
+            { 30: [document] },
+          ),
+        ]),
+      ),
+    ]);
+
+    expect(bracketNotes(texts([answer])[0][0], answer.sources ?? [])).toBe(
+      "Here is your report:\n\n# Findings\n\nIt works.[1]",
+    );
+    expect(answer.sources).toEqual([{ title: "Paper", url: "https://paper.example/" }]);
   });
 });

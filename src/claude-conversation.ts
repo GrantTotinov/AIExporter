@@ -21,6 +21,13 @@
  * chunk that content.js would have to import.
  */
 
+import {
+  ReplySources,
+  isWebAddress,
+  replyExtras,
+  type ReplySource,
+} from "./reply-sources.ts";
+
 /*
  * ---------------------------------------------------------
  * CLAUDE API TYPES
@@ -35,6 +42,12 @@ export interface ClaudeContentBlock {
   text?: string;
   name?: string;
   input?: unknown;
+  /* A "thinking" block's reasoning */
+  thinking?: string;
+  /* A text block's citations of web search results */
+  citations?: unknown;
+  /* A tool result's content: web search results among others */
+  content?: unknown;
 }
 
 export interface ClaudeFileAsset {
@@ -99,6 +112,10 @@ export interface ClaudeExportMessage {
   id: string;
   role: "user" | "assistant";
   parts: ClaudeMessagePart[];
+  /* The reply's extended thinking */
+  thinking?: string;
+  /* The web pages the reply cites, numbered as its notes are */
+  sources?: ReplySource[];
 }
 
 const UUID_PATTERN =
@@ -458,13 +475,152 @@ function renderArtifact(artifact: ClaudeArtifact): string {
  * ---------------------------------------------------------
  *
  * Text and voice-note blocks are the reply itself (Markdown).
- * Thinking, tool calls and tool results are left out, the
- * same way the ChatGPT export leaves out reasoning and tool
- * traffic - except artifacts, which are usually the substance
- * of the reply.
+ * Tool calls and tool results are left out - except artifacts,
+ * which are usually the substance of the reply, and the web
+ * search results its citations point to. Thinking goes into the
+ * message's own `thinking` (see SOURCES AND THINKING above).
  */
 
 type PendingPart = ClaudeMessagePart | { kind: "artifact"; id: string };
+
+/*
+ * ---------------------------------------------------------
+ * SOURCES AND THINKING
+ * ---------------------------------------------------------
+ *
+ * A reply that searched the web has the results in tool result
+ * blocks - claude.ai's own ("knowledge" items with a title and a
+ * url) or the API's (web_search_tool_result, "web_search_result"
+ * items) - and the sentences built on them are text blocks with
+ * `citations`. A citation names its page at `url`, or under
+ * `details`, `source` or `metadata`, and can say where in the
+ * block the cited text ends (`end_index`). It becomes a note
+ * there, or at the end of its block, and its page a source -
+ * titled from the search results when the citation has no title
+ * of its own. claude.ai's internal format isn't documented, so
+ * every shape open-source clients and the public API show is read.
+ */
+
+function citationLink(citation: Record<string, unknown>): {
+  url: unknown;
+  title: unknown;
+} {
+  for (const holder of [
+    citation,
+    citation.details,
+    citation.source,
+    citation.metadata,
+  ]) {
+    if (isRecord(holder) && isWebAddress(holder.url)) {
+      return { url: holder.url, title: holder.title ?? citation.title };
+    }
+  }
+
+  return { url: undefined, title: citation.title };
+}
+
+/* The titles of the pages the reply's web searches found, by link */
+function searchResultTitles(blocks: ClaudeContentBlock[]): Map<string, string> {
+  const titles = new Map<string, string>();
+
+  const visit = (node: unknown, depth: number): void => {
+    if (depth > 4) {
+      return;
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach((child) => visit(child, depth + 1));
+      return;
+    }
+
+    if (!isRecord(node)) {
+      return;
+    }
+
+    const title = stringValue(node.title)?.trim();
+
+    if (isWebAddress(node.url) && title && !titles.has(node.url)) {
+      titles.set(node.url, title);
+    }
+
+    visit(node.content, depth + 1);
+  };
+
+  for (const block of blocks) {
+    if (block.type === "tool_result" || block.type === "web_search_tool_result") {
+      visit(block.content, 0);
+    }
+  }
+
+  return titles;
+}
+
+/*
+ * A text block with its citations as notes, each where its cited
+ * text ends - counted in this block - or else at the block's end,
+ * right after the text rather than the space it may end on.
+ */
+function textWithNotes(
+  block: ClaudeContentBlock,
+  sources: ReplySources,
+  titles: Map<string, string>,
+): string {
+  const text = stringValue(block.text) ?? "";
+  const citations = Array.isArray(block.citations)
+    ? block.citations.filter(isRecord)
+    : [];
+
+  if (citations.length === 0) {
+    return text;
+  }
+
+  const notes = new Map<number, number[]>();
+
+  for (const citation of citations) {
+    const { url, title } = citationLink(citation);
+    const number = sources.add(
+      url,
+      stringValue(title)?.trim() ||
+        (isWebAddress(url) ? titles.get(url) : undefined),
+    );
+
+    if (number === null) {
+      continue;
+    }
+
+    const end = citation.end_index;
+    let at =
+      typeof end === "number" &&
+      Number.isInteger(end) &&
+      end > 0 &&
+      end <= text.length
+        ? end
+        : text.length;
+
+    while (at > 0 && /\s/.test(text[at - 1])) {
+      at--;
+    }
+
+    notes.set(at, [...(notes.get(at) ?? []), number]);
+  }
+
+  let output = text;
+
+  for (const at of [...notes.keys()].sort((a, b) => b - a)) {
+    output = output.slice(0, at) + sources.note(notes.get(at) ?? []) + output.slice(at);
+  }
+
+  return output;
+}
+
+/* The reply's extended thinking, from its "thinking" blocks */
+function thinkingText(blocks: ClaudeContentBlock[]): string {
+  return blocks
+    .filter((block) => block.type === "thinking")
+    .map((block) => (stringValue(block.thinking) ?? "").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 /*
  * Older replies can come back as a single text string with
@@ -495,6 +651,8 @@ function convertLegacyText(text: string): string {
 function getContentParts(
   message: ClaudeChatMessage,
   artifacts: Map<string, ClaudeArtifact>,
+  sources: ReplySources,
+  titles: Map<string, string>,
 ): ClaudeMessagePart[] {
   const blocks = Array.isArray(message.content)
     ? message.content.filter(isRecord)
@@ -531,7 +689,7 @@ function getContentParts(
      * (a tool call, say) starts a new paragraph.
      */
     if (block.type === "text") {
-      textRun += stringValue(block.text) ?? "";
+      textRun += textWithNotes(block, sources, titles);
       continue;
     }
 
@@ -641,11 +799,19 @@ export function convertClaudeMessages(
       return [];
     }
 
+    const blocks = Array.isArray(message.content)
+      ? message.content.filter(isRecord)
+      : [];
+    const sources = new ReplySources();
     const parts = [
       ...getFileParts(message),
-      ...getContentParts(message, artifacts),
+      ...getContentParts(message, artifacts, sources, searchResultTitles(blocks)),
     ];
+    const extras =
+      role === "assistant" ? replyExtras(thinkingText(blocks), sources) : {};
 
-    return parts.length > 0 ? [{ id: message.uuid, role, parts }] : [];
+    return parts.length > 0
+      ? [{ id: message.uuid, role, parts, ...extras }]
+      : [];
   });
 }

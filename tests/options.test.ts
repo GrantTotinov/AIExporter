@@ -504,6 +504,96 @@ describe("options page", () => {
     });
   });
 
+  describe("file names", () => {
+    function choose(select: HTMLSelectElement, value: string): void {
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    const DATE = String.raw`\d{4}-\d{2}-\d{2}`;
+
+    it("offers ready-made patterns, with an example of each", async () => {
+      await loadOptionsPage();
+
+      const style = byId<HTMLSelectElement>("fileNameStyle");
+
+      expect(style.value).toBe("standard");
+      expect(byId("fileNameCustomRow").hidden).toBe(true);
+      expect(byId("fileNameExampleName").textContent).toMatch(
+        new RegExp(`^chatgpt-export-trip-ideas-${DATE}\\.pdf$`),
+      );
+
+      choose(style, "dateTitle");
+      expect(byId("fileNameExampleName").textContent).toMatch(
+        new RegExp(`^${DATE} Trip ideas\\.pdf$`),
+      );
+
+      await vi.advanceTimersByTimeAsync(300);
+      expect(savedSettings().fileNameTemplate).toBe("{date} {title}");
+
+      choose(style, "siteTitleDate");
+      expect(byId("fileNameExampleName").textContent).toMatch(
+        new RegExp(`^ChatGPT - Trip ideas - ${DATE}\\.pdf$`),
+      );
+    });
+
+    it("opens a box for the person's own pattern, ready to change", async () => {
+      await loadOptionsPage();
+
+      const input = byId<HTMLInputElement>("fileNameTemplate");
+
+      choose(byId<HTMLSelectElement>("fileNameStyle"), "custom");
+
+      expect(byId("fileNameCustomRow").hidden).toBe(false);
+      expect(input.value).toBe("{date} {title}");
+      expect(document.activeElement).toBe(input);
+
+      typeInto(input, "{title} by me");
+      expect(byId("fileNameExampleName").textContent).toBe("Trip ideas by me.pdf");
+
+      await vi.advanceTimersByTimeAsync(900);
+      expect(savedSettings().fileNameTemplate).toBe("{title} by me");
+    });
+
+    it("types a token in with the buttons", async () => {
+      await loadOptionsPage();
+
+      const input = byId<HTMLInputElement>("fileNameTemplate");
+
+      choose(byId<HTMLSelectElement>("fileNameStyle"), "custom");
+      typeInto(input, "Notes");
+      document
+        .querySelector<HTMLButtonElement>('.token-button[data-token="time"]')
+        ?.click();
+
+      expect(input.value).toBe("Notes {time}");
+      expect(byId("fileNameExampleName").textContent).toMatch(
+        /^Notes \d{2}-\d{2}\.pdf$/,
+      );
+
+      await vi.advanceTimersByTimeAsync(900);
+      expect(savedSettings().fileNameTemplate).toBe("Notes {time}");
+    });
+
+    it("shows a stored pattern of the person's own", async () => {
+      await loadOptionsPage({ fileNameTemplate: "{title} ({date})" });
+
+      expect(byId<HTMLSelectElement>("fileNameStyle").value).toBe("custom");
+      expect(byId("fileNameCustomRow").hidden).toBe(false);
+      expect(byId<HTMLInputElement>("fileNameTemplate").value).toBe(
+        "{title} ({date})",
+      );
+    });
+
+    it("shows the example in the page's language", async () => {
+      await loadOptionsPage({ language: "de", fileNameTemplate: "{title}" });
+
+      expect(byId("fileNameExampleName").textContent).toBe(
+        `${de["options.fileName.sampleTitle"]}.pdf`,
+      );
+    });
+  });
+
   it("shows who GitHub is connected as", async () => {
     githubStatus = { connected: true, login: "octocat" };
 

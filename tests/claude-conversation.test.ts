@@ -10,6 +10,7 @@ import {
   type ClaudeContentBlock,
   type ClaudeExportMessage,
 } from "../src/claude-conversation";
+import { bracketNotes } from "../src/source-notes";
 
 /*
  * Fixtures follow the shape claude.ai's own
@@ -295,7 +296,7 @@ describe("convertClaudeMessages", () => {
     ).toEqual([]);
   });
 
-  it("leaves out thinking, tool calls and tool results", () => {
+  it("leaves tool calls and tool results out, and keeps the thinking apart", () => {
     const answer = message("assistant", [
       {
         type: "thinking",
@@ -310,9 +311,79 @@ describe("convertClaudeMessages", () => {
       { type: "tool_result", name: "web_search" },
       text("Here's what I found."),
     ]);
+    const [exported] = convertClaudeMessages([answer]);
 
-    expect(texts(convertClaudeMessages([answer]))).toEqual([
+    expect(texts([exported])).toEqual([
       ["Let me look that up.", "Here's what I found."],
+    ]);
+    expect(exported.thinking).toBe("The user wants the docs.");
+    expect(exported.sources).toBeUndefined();
+  });
+
+  it("turns web search citations into notes, titled from the search results", () => {
+    const answer = message("assistant", [
+      {
+        type: "tool_result",
+        name: "web_search",
+        content: [
+          {
+            type: "knowledge",
+            title: "Vitest docs",
+            url: "https://vitest.dev/config/",
+            metadata: { site_domain: "vitest.dev" },
+          },
+          { type: "knowledge", title: "Unused result", url: "https://other.example/" },
+        ],
+      },
+      text("According to "),
+      {
+        type: "text",
+        text: "the docs, jsdom is opt-in. ",
+        citations: [
+          {
+            uuid: "c1",
+            start_index: 0,
+            end_index: 25,
+            details: { type: "web_search_citation", url: "https://vitest.dev/config/" },
+          },
+        ],
+      },
+      text("Done."),
+    ]);
+    const [exported] = convertClaudeMessages([answer]);
+    const [content] = texts([exported])[0];
+
+    expect(bracketNotes(content, exported.sources ?? [])).toBe(
+      "According to the docs, jsdom is opt-in[1]. Done.",
+    );
+    expect(exported.sources).toEqual([
+      { title: "Vitest docs", url: "https://vitest.dev/config/" },
+    ]);
+  });
+
+  it("reads the API's citation shape too, a note at the end of each block", () => {
+    const answer = message("assistant", [
+      {
+        type: "web_search_tool_result",
+        content: [{ type: "web_search_result", title: "Rome", url: "https://rome.example/" }],
+      },
+      {
+        type: "text",
+        text: "Rome is old.\n",
+        citations: [
+          { type: "web_search_result_location", url: "https://rome.example/", title: "" },
+          { type: "web_search_result_location", url: "https://more.example/", title: "More" },
+        ],
+      },
+    ]);
+    const [exported] = convertClaudeMessages([answer]);
+
+    expect(bracketNotes(texts([exported])[0][0], exported.sources ?? [])).toBe(
+      "Rome is old.[1][2]",
+    );
+    expect(exported.sources).toEqual([
+      { title: "Rome", url: "https://rome.example/" },
+      { title: "More", url: "https://more.example/" },
     ]);
   });
 

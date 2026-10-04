@@ -8,22 +8,70 @@
  * its images - and names it. Shared by the popup, which exports
  * the open chat, and the bulk export page, which exports many.
  */
-import { SEPARATOR_TEXT, loadSettings } from "./settings.ts";
+import { SEPARATOR_TEXT, loadSettings, type Settings } from "./settings.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
 import { createZipBlob, decodeBase64 } from "./zip.ts";
 import { normalizeMathMarkdown } from "./math.ts";
+import { renderFileName } from "./file-names.ts";
 import {
   CHAT_SITE_NAMES,
   getChatSite,
   stripChatSiteSuffix,
 } from "./chat-sites.ts";
+import {
+  bracketNotes,
+  bracketSourceList,
+  markdownFootnoteDefinitions,
+  markdownFootnotes,
+  sourceLabel,
+  stripNotes,
+  type MessageSource,
+} from "./source-notes.ts";
+
+export type { MessageSource } from "./source-notes.ts";
 
 export interface Message {
   id: string;
   role: "user" | "assistant";
+  /* Markdown; a reply's citations are notes (see source-notes.ts). */
   content: string;
   order: number;
   imagePaths?: string[];
+  /* The reasoning a reply's model showed before answering (Markdown). */
+  thinking?: string;
+  /* The web pages a reply drew on, numbered as its notes cite them. */
+  sources?: MessageSource[];
+}
+
+/*
+ * The messages the way the settings want them in the file: notes
+ * and sources only while "Sources" is on, thinking only while
+ * "Thinking" is.
+ */
+export function applyContentSettings(
+  messages: Message[],
+  settings: Pick<Settings, "includeSources" | "includeThinking">,
+): Message[] {
+  return messages.map((message) => {
+    const { thinking, sources, ...rest } = message;
+    const exported: Message = {
+      ...rest,
+      content:
+        settings.includeSources === false
+          ? stripNotes(message.content)
+          : message.content,
+    };
+
+    if (settings.includeThinking === true && thinking?.trim()) {
+      exported.thinking = thinking;
+    }
+
+    if (settings.includeSources !== false && sources && sources.length > 0) {
+      exported.sources = sources;
+    }
+
+    return exported;
+  });
 }
 
 export interface ExportImageFile {
@@ -33,11 +81,20 @@ export interface ExportImageFile {
   sizeBytes: number;
 }
 
-export type ExportFormat = "md" | "txt" | "json" | "csv" | "pdf";
+export type ExportFormat =
+  | "md"
+  | "txt"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "docx"
+  | "html";
 export type FilenameExtension = ExportFormat | "zip";
 
 export const EXPORT_FORMATS: readonly ExportFormat[] = [
   "pdf",
+  "docx",
+  "html",
   "md",
   "txt",
   "json",
@@ -45,45 +102,33 @@ export const EXPORT_FORMATS: readonly ExportFormat[] = [
 ];
 
 /* Before a new chat gets its title, the tab shows only the site */
-export const SITE_ONLY_TITLE = /^(?:ChatGPT|Claude|(?:Google\s+)?Gemini)$/i;
+export const SITE_ONLY_TITLE =
+  /^(?:ChatGPT|Claude|(?:Google\s+)?Gemini|DeepSeek(?:\s*[-|·–—]\s*Into the Unknown)?|Grok|Perplexity(?:\s+AI)?)$/i;
 
 /*
  * ---------------------------------------------------------
  * FILENAME
  * ---------------------------------------------------------
  *
- * Builds a filesystem-safe filename from the site, the tab
- * title and today's date, e.g.
- * "chatgpt-export-easypay-transfer-help-2026-08-30.md",
- * "claude-export-easypay-transfer-help-2026-08-30.md" or
- * "gemini-export-easypay-transfer-help-2026-08-30.md".
+ * Names the file after the chat, its site and the date, the way
+ * the person chose in the settings (`template`, see
+ * file-names.ts) - by default
+ * "chatgpt-export-easypay-transfer-help-2026-08-30.md".
  */
 export function buildFilename(
   tabTitle: string | undefined,
   tabUrl: string | undefined,
   extension: FilenameExtension,
+  template = "",
+  date = new Date(),
 ): string {
-  const date = new Date();
+  const title = stripChatSiteSuffix(tabTitle ?? "");
 
-  const datePart =
-    date.getFullYear() +
-    "-" +
-    String(date.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(date.getDate()).padStart(2, "0");
-
-  const rawTitle = stripChatSiteSuffix(tabTitle ?? "conversation");
-
-  const safeTitle = rawTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-
-  const titlePart = safeTitle || "conversation";
-  const site = getChatSite(tabUrl) ?? "chatgpt";
-
-  return `${site}-export-${titlePart}-${datePart}.${extension}`;
+  return `${renderFileName(template, {
+    title: SITE_ONLY_TITLE.test(title) ? "" : title,
+    site: getChatSite(tabUrl),
+    date,
+  })}.${extension}`;
 }
 
 /*
@@ -91,11 +136,21 @@ export function buildFilename(
  * JSON / CSV BUILDERS
  * ---------------------------------------------------------
  */
+/*
+ * A reply's notes become "[1]" in its content, and its sources and
+ * thinking get fields of their own when it has any.
+ */
 export function buildJson(messages: Message[]): string {
   return JSON.stringify(
     messages.map((message) => ({
       role: message.role,
-      content: message.content,
+      content: bracketNotes(message.content, message.sources ?? []),
+      ...(message.thinking ? { thinking: message.thinking } : {}),
+      ...(message.sources?.length
+        ? {
+            sources: message.sources.map(({ title, url }) => ({ title, url })),
+          }
+        : {}),
     })),
     null,
     2,
@@ -110,13 +165,42 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
+/*
+ * "thinking" and "sources" columns are only added when a message
+ * has any, so a chat without them keeps the two columns it always
+ * had.
+ */
 export function buildCsv(messages: Message[]): string {
-  const header = "role,content";
+  const withThinking = messages.some((message) => message.thinking);
+  const withSources = messages.some((message) => message.sources?.length);
+  const header = [
+    "role",
+    "content",
+    ...(withThinking ? ["thinking"] : []),
+    ...(withSources ? ["sources"] : []),
+  ].join(",");
 
-  const rows = messages.map(
-    (message) =>
-      `${escapeCsvField(message.role)},${escapeCsvField(message.content)}`,
-  );
+  const rows = messages.map((message) => {
+    const sources = message.sources ?? [];
+    const cells = [
+      message.role,
+      bracketNotes(message.content, sources),
+      ...(withThinking ? [message.thinking ?? ""] : []),
+      ...(withSources
+        ? [
+            sources
+              .map((source, index) =>
+                [`[${index + 1}] ${sourceLabel(source)}`, source.url]
+                  .filter(Boolean)
+                  .join(" - "),
+              )
+              .join("\n"),
+          ]
+        : []),
+    ];
+
+    return cells.map(escapeCsvField).join(",");
+  });
 
   return [header, ...rows].join("\r\n");
 }
@@ -137,6 +221,34 @@ export interface MarkdownSource {
   tabTitle: string | undefined;
   tabUrl: string | undefined;
   properties: boolean;
+  /*
+   * How a reply's citations are written: "footnotes" are Markdown
+   * footnotes (Markdown files and GitHub), "brackets" a plain "[1]"
+   * with the list of sources under the reply - for text files and
+   * copied chats, which are read as they are.
+   */
+  notes?: "footnotes" | "brackets";
+}
+
+/*
+ * The thinking ahead of a reply: folded away in a Markdown file
+ * (Obsidian and GitHub show <details> as a section that opens on a
+ * click), a quote in text that's read as it is.
+ */
+function thinkingMarkdown(
+  thinking: string,
+  style: NonNullable<MarkdownSource["notes"]>,
+): string {
+  if (style === "footnotes") {
+    return `<details>\n<summary>Thinking</summary>\n\n${thinking}\n\n</details>`;
+  }
+
+  const quoted = thinking
+    .split("\n")
+    .map((line) => (line.trim() ? `> ${line}` : ">"))
+    .join("\n");
+
+  return `> **Thinking**\n>\n${quoted}`;
 }
 
 /*
@@ -203,6 +315,8 @@ export async function buildMarkdownFromMessages(
   const site = getChatSite(source.tabUrl);
   const now = new Date();
   const properties = source.properties && settings.markdownProperties;
+  const noteStyle = source.notes ?? "footnotes";
+  let noteOffset = 0;
 
   const header = properties
     ? buildFrontMatter(
@@ -216,12 +330,35 @@ export async function buildMarkdownFromMessages(
 
   return (
     header +
-    messages
+    applyContentSettings(messages, settings)
       .map((message) => {
-        const content =
-          message.role === "assistant"
-            ? normalizeMathMarkdown(message.content, site)
-            : message.content;
+        const isReply = message.role === "assistant";
+        const sources = message.sources ?? [];
+        let content = isReply
+          ? normalizeMathMarkdown(message.content, site)
+          : message.content;
+        let sourceList = "";
+
+        if (noteStyle === "footnotes") {
+          content = markdownFootnotes(content, sources, noteOffset);
+          sourceList = markdownFootnoteDefinitions(sources, noteOffset);
+          noteOffset += sources.length;
+        } else {
+          content = bracketNotes(content, sources);
+          sourceList = sources.length > 0 ? bracketSourceList(sources) : "";
+        }
+
+        const thinking = message.thinking
+          ? thinkingMarkdown(
+              isReply
+                ? normalizeMathMarkdown(message.thinking, site)
+                : message.thinking,
+              noteStyle,
+            )
+          : "";
+
+        content = [thinking, content, sourceList].filter(Boolean).join("\n\n");
+
         const roleLabel = message.role === "user" ? "User" : "Assistant";
 
         let heading: string;
@@ -245,11 +382,19 @@ export async function buildMarkdownFromMessages(
   );
 }
 
+/*
+ * `markdown` is built for the format already (with "brackets" notes
+ * for plain text); JSON and CSV are built from the messages, after
+ * the settings are applied to them.
+ */
 export function buildContentForFormat(
   format: ExportFormat,
   markdown: string,
-  messages: Message[],
+  allMessages: Message[],
+  settings: Pick<Settings, "includeSources" | "includeThinking">,
 ): { content: string; mimeType: string } {
+  const messages = applyContentSettings(allMessages, settings);
+
   switch (format) {
     case "txt":
       return {

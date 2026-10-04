@@ -34,7 +34,9 @@ async function pdfSize(url: string, reply: string): Promise<number> {
 }
 
 describe("PDF right-to-left text", () => {
-  it("lays out Hebrew and Arabic replies", async () => {
+  // The first test to typeset a formula loads MathJax, which takes a
+  // few seconds while the other test files run alongside.
+  it("lays out Hebrew and Arabic replies", { timeout: 20_000 }, async () => {
     const size = await pdfSize(
       "https://chatgpt.com/c/1",
       [

@@ -17,8 +17,14 @@
  */
 import { loadSettings, type Settings } from "./settings.ts";
 import { applyTranslations, getLocale, initI18n, t } from "./i18n.ts";
-import { buildPdfBlob } from "./pdf-export.ts";
-import { CHAT_SITE_NAMES, type ChatSite } from "./chat-sites.ts";
+import { buildDocumentBlob, isDocumentFormat } from "./file-export.ts";
+import {
+  CHAT_SITE_NAMES,
+  getChatSite,
+  isChatSite,
+  isInjectedSite,
+  type ChatSite,
+} from "./chat-sites.ts";
 import { createZipBlob, decodeBase64, type ZipEntry } from "./zip.ts";
 import {
   EXPORT_FORMATS,
@@ -130,10 +136,7 @@ const exportLabel = byId<HTMLSpanElement>("export-label");
 const params = new URLSearchParams(window.location.search);
 const tabId = Number(params.get("tab"));
 const siteParam = params.get("site");
-const site: ChatSite | null =
-  siteParam === "chatgpt" || siteParam === "claude" || siteParam === "gemini"
-    ? siteParam
-    : null;
+const site: ChatSite | null = isChatSite(siteParam) ? siteParam : null;
 const siteName = site ? CHAT_SITE_NAMES[site] : "";
 
 let conversations: ConversationSummary[] = [];
@@ -187,13 +190,51 @@ const dateFormat = (): Intl.DateTimeFormat =>
  */
 class TabUnavailableError extends Error {}
 
+/*
+ * A DeepSeek, Grok or Perplexity tab loses the content script the
+ * popup put in (see the top of chat-sites.ts) when it's reloaded.
+ * The popup lent AI Exporter that tab, so while it still shows the
+ * same site the script can go in again. False when it can't.
+ */
+async function addContentScriptAgain(): Promise<boolean> {
+  if (!site || !isInjectedSite(site)) {
+    return false;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+
+    if (getChatSite(tab.url) !== site) {
+      return false;
+    }
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"],
+    });
+
+    return true;
+  } catch (error) {
+    devWarn("AI Exporter: couldn't add the content script again", error);
+    return false;
+  }
+}
+
 async function sendToTab<T>(message: Record<string, unknown>): Promise<T> {
   let response: { success?: boolean; data?: T; error?: string } | undefined;
 
   try {
     response = await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {
-    throw new TabUnavailableError(errorMessage(error));
+    if (!(await addContentScriptAgain())) {
+      throw new TabUnavailableError(errorMessage(error));
+    }
+
+    try {
+      response = await chrome.tabs.sendMessage(tabId, message);
+    } catch (retryError) {
+      throw new TabUnavailableError(errorMessage(retryError));
+    }
   }
 
   if (!response?.success) {
@@ -325,7 +366,14 @@ function updateSelectionUi(): void {
 function formatLabel(format: ExportFormat): string {
   return format === "txt"
     ? t("popup.format.txt")
-    : { pdf: "PDF", md: "Markdown", json: "JSON", csv: "CSV" }[format];
+    : {
+        pdf: "PDF",
+        docx: "Word",
+        html: "HTML",
+        md: "Markdown",
+        json: "JSON",
+        csv: "CSV",
+      }[format];
 }
 
 chatList.addEventListener("click", (event) => {
@@ -595,8 +643,9 @@ async function buildConversationFiles(
 ): Promise<ZipEntry[]> {
   const title = titleOf(conversation);
 
-  if (format === "pdf") {
-    const blob = await buildPdfBlob(
+  if (isDocumentFormat(format)) {
+    const blob = await buildDocumentBlob(
+      format,
       loaded.messages,
       loaded.images,
       settings,
@@ -606,7 +655,7 @@ async function buildConversationFiles(
 
     return [
       {
-        path: `${folder}/${name}.pdf`,
+        path: `${folder}/${name}.${format}`,
         bytes: new Uint8Array(await blob.arrayBuffer()),
       },
     ];
@@ -616,8 +665,14 @@ async function buildConversationFiles(
     tabTitle: title,
     tabUrl: conversation.url,
     properties: format === "md",
+    notes: format === "md" ? "footnotes" : "brackets",
   });
-  const { content } = buildContentForFormat(format, markdown, loaded.messages);
+  const { content } = buildContentForFormat(
+    format,
+    markdown,
+    loaded.messages,
+    settings,
+  );
   const bytes = new TextEncoder().encode(content);
 
   if (loaded.images.length === 0) {
@@ -736,7 +791,10 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       try {
         const loaded = await loadConversation(conversation, settings);
-        const name = uniqueName(conversationFileBase(conversation), usedNames);
+        const name = uniqueName(
+          conversationFileBase(conversation, settings.fileNameTemplate, site),
+          usedNames,
+        );
 
         entries.push(
           ...(await buildConversationFiles(

@@ -25,6 +25,12 @@
  * content.js - see the top of claude-conversation.ts.
  */
 
+import {
+  ReplySources,
+  replyExtras,
+  type ReplySource,
+} from "./reply-sources.ts";
+
 /*
  * ---------------------------------------------------------
  * EXPORT TYPES
@@ -49,6 +55,10 @@ export interface GeminiExportMessage {
   id: string;
   role: "user" | "assistant";
   parts: GeminiMessagePart[];
+  /* The reply's thoughts */
+  thinking?: string;
+  /* The web pages the reply cites, numbered as its notes are */
+  sources?: ReplySource[];
 }
 
 /*
@@ -685,8 +695,9 @@ function getShownCandidate(reply: unknown): unknown[] | null {
  *   ("immersive_entry_chip"), and so on.
  *
  * All of it is left out, except that each document link is
- * replaced with that document. Code blocks are left as they
- * are: a reply can be about this very markup.
+ * replaced with that document, and a citation whose pages are
+ * known becomes a note (see CITATIONS below). Code blocks are
+ * left as they are: a reply can be about this very markup.
  */
 const GEMINI_MARKUP_PATTERN =
   /\[cite_start\]|[ \t]*\[cite:\s*\d+(?:\s*,\s*\d+)*\s*\]|<(?:FollowUp|Image)\b(?:\s+[\w:-]+(?:="[^"]*")?)*\s*\/>|https?:\/\/googleusercontent\.com\/(?:[\w-]+\/)*[\w-]+/g;
@@ -710,7 +721,15 @@ function closesFence(line: string, fence: string): boolean {
   );
 }
 
-function removeGeminiMarkup(text: string, documents: string[] = []): string {
+/*
+ * `cite` turns the numbers of a "[cite: 3, 4]" marker into a note;
+ * without it, citations are just removed.
+ */
+function removeGeminiMarkup(
+  text: string,
+  documents: string[] = [],
+  cite?: (numbers: number[]) => string,
+): string {
   const remaining = [...documents];
   const lines: string[] = [];
   let fence: string | null = null;
@@ -746,6 +765,12 @@ function removeGeminiMarkup(text: string, documents: string[] = []): string {
 
     const inserted: string[] = [];
     const cleaned = line.replace(GEMINI_MARKUP_PATTERN, (match) => {
+      const citation = match.match(/\[cite:\s*([\d,\s]+)\]/);
+
+      if (citation) {
+        return cite ? cite((citation[1].match(/\d+/g) ?? []).map(Number)) : "";
+      }
+
       const document = DOCUMENT_LINK_PATTERN.test(match)
         ? remaining.shift()
         : undefined;
@@ -789,13 +814,80 @@ function removeGeminiMarkup(text: string, documents: string[] = []): string {
 }
 
 /*
+ * ---------------------------------------------------------
+ * CITATIONS
+ * ---------------------------------------------------------
+ *
+ * The web pages a reply's "[cite: N]" markers stand for are in
+ * field 43 of its rich content block ([12]) - or, for a Deep
+ * Research document, of the document's [17][1] or [5]: groups
+ * that each pair a marker such as " [cite: 1, 2]" with an entry
+ * per number, in order, holding [favicon, url, title] at [3][0].
+ * A number's first entry wins. (As HanaokaYuzu/Gemini-API reads
+ * them; most replies have none.)
+ */
+const CITATIONS_FIELD = 43;
+
+interface CitedPage {
+  url: string;
+  title: string;
+}
+
+function getCitedPages(container: unknown): Map<number, CitedPage> {
+  const pages = new Map<number, CitedPage>();
+  const groups = getSparseField(container, CITATIONS_FIELD);
+
+  if (!Array.isArray(groups)) {
+    return pages;
+  }
+
+  for (const group of groups) {
+    const marker = stringValue(at(group, 0, 0));
+    const entries = at(group, 1);
+
+    if (!marker || !Array.isArray(entries)) {
+      continue;
+    }
+
+    const numbers =
+      (marker.match(/\[cite:\s*([\d,\s]+)\]/)?.[1] ?? marker).match(/\d+/g) ??
+      [];
+
+    numbers.forEach((number, index) => {
+      const url = stringValue(at(entries[index], 3, 0, 1));
+      const id = Number(number);
+
+      if (url && !pages.has(id)) {
+        pages.set(id, { url, title: stringValue(at(entries[index], 3, 0, 2)) ?? "" });
+      }
+    });
+  }
+
+  return pages;
+}
+
+/* A "[cite: ...]" marker's note, its pages added to the sources */
+function citeWith(
+  pages: Map<number, CitedPage>,
+  sources: ReplySources,
+): (numbers: number[]) => string {
+  return (numbers) =>
+    sources.note(
+      numbers.map((number) => {
+        const page = pages.get(number);
+        return page ? sources.add(page.url, page.title) : null;
+      }),
+    );
+}
+
+/*
  * A Canvas or Deep Research document: its Markdown at [4] (a
  * Canvas holding code comes fenced already) and its title at
  * [2], which is shown unless the document opens with a heading
  * of its own. [30] holds other cards too, such as YouTube
  * videos, but only documents have a body at [4].
  */
-function getDocuments(candidate: unknown[]): string[] {
+function getDocuments(candidate: unknown[], sources: ReplySources): string[] {
   const items = candidate[30];
 
   if (!Array.isArray(items)) {
@@ -803,7 +895,12 @@ function getDocuments(candidate: unknown[]): string[] {
   }
 
   return items.flatMap((item): string[] => {
-    const body = removeGeminiMarkup(stringValue(at(item, 4)) ?? "");
+    const pages = getCitedPages(at(item, 17, 1));
+    const body = removeGeminiMarkup(
+      stringValue(at(item, 4)) ?? "",
+      [],
+      citeWith(pages.size > 0 ? pages : getCitedPages(at(item, 5)), sources),
+    );
 
     if (!body) {
       return [];
@@ -819,12 +916,13 @@ function getDocuments(candidate: unknown[]): string[] {
 
 /*
  * Generated images become image parts after the text, in the
- * order the reply lists them. Thinking is left out, the same
- * way the ChatGPT and Claude exports leave it out.
+ * order the reply lists them. Its citations become notes, their
+ * pages added to `sources`.
  */
 function getReplyParts(
   candidate: unknown[],
   seenMedia: Set<string>,
+  sources: ReplySources,
 ): GeminiMessagePart[] {
   let text = stringValue(at(candidate, 1, 0)) ?? "";
 
@@ -836,7 +934,11 @@ function getReplyParts(
     text = stringValue(at(candidate, 22, 0)) ?? text;
   }
 
-  const body = removeGeminiMarkup(text, getDocuments(candidate));
+  const body = removeGeminiMarkup(
+    text,
+    getDocuments(candidate, sources),
+    citeWith(getCitedPages(candidate[12]), sources),
+  );
   const parts: GeminiMessagePart[] = body ? [{ kind: "text", text: body }] : [];
 
   for (const image of getGeneratedImages(candidate)) {
@@ -894,13 +996,18 @@ export function convertGeminiTurns(turns: unknown[]): GeminiExportMessage[] {
     }
 
     const candidate = getShownCandidate(turn[3]);
-    const replyParts = candidate ? getReplyParts(candidate, seenMedia) : [];
+    const sources = new ReplySources();
+    const replyParts = candidate
+      ? getReplyParts(candidate, seenMedia, sources)
+      : [];
 
     if (candidate && replyParts.length > 0) {
       messages.push({
         id: stringValue(candidate[0]) || `${turnId}-reply`,
         role: "assistant",
         parts: replyParts,
+        // The thoughts, as the app shows them above the reply
+        ...replyExtras(stringValue(at(candidate, 37, 0, 0)) ?? "", sources),
       });
     }
   }
