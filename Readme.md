@@ -20,7 +20,7 @@ DeepSeek, Grok and Perplexity are read the same way, through each site's own API
 
 ## What it does
 
-- **Works on ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity.** Open a conversation on `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` or `perplexity.ai` and export it. AI Exporter has no standing access to DeepSeek, Grok and Perplexity: it only reads their page once you open its popup there.
+- **Works on ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity.** Open a conversation on `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` or `perplexity.ai` and export it. AI Exporter runs on these six sites and nowhere else, and it only reads a conversation when you export, copy or save it.
 - **Exports to seven formats:** PDF, Word (`.docx`), a single self-contained web page (`.html`), Markdown (`.md`), plain text (`.txt`), JSON, or CSV. Word and HTML files keep the code's syntax colors, tables, links, formulas and the chat's images, all inside the one file.
 - **Exports images too.** PDFs embed them on the page; Markdown, text, JSON, and CSV exports come as a ZIP with an `images/` folder. It's opt-in, see [Images](#images).
 - **Makes proper PDFs:** a header with the title and a link back to the conversation, a bookmark for every message, clickable links, tables, code blocks, and embedded fonts for Latin, Cyrillic, Greek, Hebrew, and Arabic text. Hebrew, Arabic, and Persian replies read right to left, as on the chat page: lines are right-aligned, Arabic letters are joined, and English words and numbers inside them stay in the right order. Page size, orientation, margins, font size, a table of contents, page numbers, and a footer line are all up to you (see [PDF settings](#pdf-settings)).
@@ -59,11 +59,11 @@ To run the latest code, or to use it in Firefox:
    This produces a `dist/` folder with the built extension.
 3. Load it:
    - **Chrome:** open `chrome://extensions`, turn on **Developer mode** (top right corner), click **Load unpacked**, and select the `dist/` folder.
-   - **Firefox** (140 or newer): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/manifest.json`. Firefox removes temporary add-ons when it restarts, so load it again after a restart. If Firefox asks for access to `chatgpt.com`, `claude.ai` and `gemini.google.com`, allow it; the extension can't read conversations without it.
+   - **Firefox** (140 or newer): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/manifest.json`. Firefox removes temporary add-ons when it restarts, so load it again after a restart. If Firefox asks for access to `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `grok.com` and `www.perplexity.ai`, allow it; the extension can't read conversations without it.
 
 The AI Exporter icon should now show up in your toolbar. If you don't see it, click the extensions button next to the address bar and pin it.
 
-Any time you pull new changes, rebuild and then reload the extension (the reload icon on `chrome://extensions`, or **Reload** on `about:debugging`), and refresh any open ChatGPT, Claude or Gemini tabs. The browser doesn't pick up rebuilt files on its own.
+Any time you pull new changes, rebuild and then reload the extension (the reload icon on `chrome://extensions`, or **Reload** on `about:debugging`), and refresh any open ChatGPT, Claude, Gemini, DeepSeek, Grok or Perplexity tabs. The browser doesn't pick up rebuilt files on its own.
 
 ## Using it
 
@@ -94,7 +94,7 @@ Open **Settings → PDF documents** to pick the text size, paper size (A4, Lette
 
 AI Exporter can commit an export directly into a repo instead of downloading it to disk.
 
-1. Open the extension's **Settings** page and click **Connect GitHub**.
+1. Open the extension's **Settings** page and click **Connect GitHub**. The browser asks once whether AI Exporter may reach GitHub.
 2. You'll get a short code and a new tab pointing at `github.com/login/device`. Enter the code there and approve access.
 3. Back in the popup, choose **Save as a file**, then **Save to GitHub instead** to pick a repo and save the selected messages as Markdown. Files land in an `exports/` folder at the root of whichever repo you choose. With image bundling enabled, selected images are saved in a ZIP with the Markdown file and its `images/` folder. The popup shows whether the repo is public or private, and asks again before saving into a public one.
 

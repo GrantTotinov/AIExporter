@@ -3,17 +3,14 @@
  * SUPPORTED CHAT SITES
  * ---------------------------------------------------------
  *
- * The sites AI Exporter exports conversations from, and how
- * content.ts gets onto their pages:
+ * The sites AI Exporter exports conversations from. All of them
+ * are listed under content_scripts in both manifests, so their
+ * pages always have content.js, with no access to grant first.
  *
- * - ChatGPT, Claude and Gemini are listed under content_scripts
- *   in both manifests, so their pages always have content.js.
- * - DeepSeek, Grok and Perplexity aren't: a site added to the
- *   manifests is a new permission, and Chrome turns the extension
- *   off for every person who has it until they agree to it again
- *   - most never find out why. Instead the popup puts content.js
- *   into their tab when it's opened there (see popup.ts), which
- *   the activeTab permission allows without asking.
+ * A site added there is a new permission: Chrome turns the
+ * extension off for every person who has it until they agree to
+ * it again - most never find out why - and Firefox holds the
+ * update back. New sites are best added together, in one release.
  *
  * content.ts picks the matching loader by hostname. popup.ts uses
  * these helpers to check that the active tab is one of them and
@@ -70,14 +67,6 @@ export const CHAT_SITE_START_URLS: Record<ChatSite, string> = {
   grok: "https://grok.com/",
   perplexity: "https://www.perplexity.ai/",
 };
-
-/*
- * Whether the popup has to put content.js into the site's tab
- * itself (see the top of this file).
- */
-export function isInjectedSite(site: ChatSite): boolean {
-  return site === "deepseek" || site === "grok" || site === "perplexity";
-}
 
 export function isChatSite(value: unknown): value is ChatSite {
   return (CHAT_SITES as readonly unknown[]).includes(value);

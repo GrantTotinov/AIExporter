@@ -117,7 +117,14 @@ const revokeObjectURL = vi.fn();
  */
 const fetchMock = vi.fn().mockRejectedValue(new Error("network disabled in test"));
 
+/* Whether github.com and api.github.com are allowed (optional permissions) */
+let githubAllowed = true;
+const permissionsContains = vi.fn(async () => githubAllowed);
+
 vi.stubGlobal("chrome", {
+  permissions: {
+    contains: permissionsContains,
+  },
   runtime: {
     id: runtimeId,
     onMessage: {
@@ -255,6 +262,7 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
     nextObjectUrlId = 0;
     localStorageItems = {};
     runningVersion = "2.3.0";
+    githubAllowed = true;
 
     storageSyncGet.mockImplementation((defaults: Record<string, unknown>) =>
       Promise.resolve(defaults),
@@ -706,6 +714,60 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
 
       expect(response.success).toBe(false);
       expect(response.error).not.toBe("Invalid save request.");
+    });
+  });
+
+  /*
+   * github.com and api.github.com are optional permissions. A
+   * token without them counts as not connected - Connect GitHub
+   * in the settings asks for them again - but is kept, since
+   * allowing GitHub again brings that connection straight back.
+   */
+  describe("GITHUB_GET_STATUS", () => {
+    beforeEach(() => {
+      localStorageItems.githubAccessToken = "tok";
+      fetchMock.mockClear();
+    });
+
+    it("says who is connected", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "",
+        json: async () => ({ login: "octocat", avatar_url: "" }),
+      });
+
+      expect(await dispatchMessage({ type: "GITHUB_GET_STATUS" })).toEqual({
+        success: true,
+        data: { connected: true, login: "octocat" },
+      });
+    });
+
+    it("counts a token without the permission as not connected, and keeps it", async () => {
+      githubAllowed = false;
+
+      expect(await dispatchMessage({ type: "GITHUB_GET_STATUS" })).toEqual({
+        success: true,
+        data: { connected: false },
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(localStorageItems.githubAccessToken).toBe("tok");
+    });
+
+    it("refuses to save to GitHub without the permission", async () => {
+      githubAllowed = false;
+
+      const response = await dispatchMessage({
+        type: "GITHUB_SAVE_FILE",
+        fullName: "octocat/Hello-World",
+        filename: "conversation.md",
+        content: "# hello",
+        binary: false,
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain("isn't allowed to reach GitHub");
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 

@@ -16,9 +16,8 @@
  * which this script's same-origin requests send as well, so
  * no page bridge is needed there. gemini.google.com works the
  * same way (see LOAD GEMINI CONVERSATION below), and so do
- * chat.deepseek.com, grok.com and www.perplexity.ai - whose pages
- * only get this script when the popup is opened on them (see
- * LOAD DEEPSEEK, GROK AND PERPLEXITY CONVERSATIONS below).
+ * chat.deepseek.com, grok.com and www.perplexity.ai (see LOAD
+ * DEEPSEEK, GROK AND PERPLEXITY CONVERSATIONS below).
  *
  * No DOM scrolling is used.
  * No conversation credentials are stored by this file.
@@ -2455,9 +2454,7 @@ async function loadGeminiConversation(
  * LOAD DEEPSEEK, GROK AND PERPLEXITY CONVERSATIONS
  * ---------------------------------------------------------
  *
- * These sites' pages only get this script when the popup is
- * opened on one of them (see the top of chat-sites.ts). Their
- * APIs take the session the page already has: DeepSeek the token
+ * Their APIs take the session the page already has: DeepSeek the token
  * its web app keeps in localStorage, Grok and Perplexity their
  * session cookies, which this script's same-origin requests send
  * too. deepseek-conversation.ts, grok-conversation.ts and
@@ -3917,9 +3914,11 @@ chrome.runtime.onMessage.addListener(
 );
 
 /*
- * The popup asks before putting this script into a DeepSeek, Grok
- * or Perplexity tab: a page that has it already answers, so it's
- * never added twice.
+ * The popup and the "Save many chats" page ask before talking to
+ * a tab: one opened before AI Exporter was installed or updated
+ * has no content script to answer, and only a reload brings one
+ * in. The site lets the bulk page check that a tab it lost for a
+ * moment still shows the same site.
  */
 chrome.runtime.onMessage.addListener(
   (message: { type: string }, _sender, sendResponse) => {
@@ -3927,7 +3926,7 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    sendResponse({ ok: true });
+    sendResponse({ ok: true, host: window.location.hostname });
 
     return false;
   },

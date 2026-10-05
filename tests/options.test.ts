@@ -26,14 +26,29 @@ const storageSet = vi.fn(async (items: Record<string, unknown>) => {
 });
 
 let githubStatus: { connected: boolean; login?: string } = { connected: false };
+/* What the person answers when the browser asks to allow GitHub */
+let allowGithub = true;
 
 const sendMessage = vi.fn(async (message: { type: string }) => {
   if (message.type === "GITHUB_GET_STATUS") {
     return { success: true, data: githubStatus };
   }
 
+  if (message.type === "GITHUB_START_AUTH") {
+    return {
+      success: true,
+      data: {
+        userCode: "ABCD-1234",
+        verificationUri: "https://github.com/login/device",
+      },
+    };
+  }
+
   return { success: true };
 });
+
+const permissionsRequest = vi.fn(async () => allowGithub);
+const tabsCreate = vi.fn();
 
 function byId<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -59,7 +74,8 @@ async function loadOptionsPage(initial: Partial<Settings> = {}): Promise<void> {
       sendMessage,
       onMessage: { addListener: vi.fn() },
     },
-    tabs: { create: vi.fn() },
+    permissions: { request: permissionsRequest },
+    tabs: { create: tabsCreate },
     i18n: { getUILanguage: () => "en-US" },
   });
 
@@ -90,6 +106,7 @@ function commit(input: HTMLInputElement, value: string): void {
 beforeEach(() => {
   vi.clearAllMocks();
   githubStatus = { connected: false };
+  allowGithub = true;
   vi.useFakeTimers();
 });
 
@@ -605,6 +622,72 @@ describe("options page", () => {
 
     expect(byId("github-connect").hidden).toBe(true);
     expect(byId("github-disconnect").hidden).toBe(false);
+  });
+
+  describe("Connect GitHub", () => {
+    function sentTypes(): string[] {
+      return sendMessage.mock.calls.map(([message]) => message.type);
+    }
+
+    it("asks the browser for GitHub in the click itself", async () => {
+      await loadOptionsPage();
+
+      byId<HTMLButtonElement>("github-connect").click();
+
+      // Synchronously: Firefox only shows the prompt in a click.
+      expect(permissionsRequest).toHaveBeenCalledWith({
+        origins: ["https://github.com/*", "https://api.github.com/*"],
+      });
+    });
+
+    it("stops and says why when GitHub isn't allowed", async () => {
+      allowGithub = false;
+
+      await loadOptionsPage();
+      sendMessage.mockClear();
+
+      byId<HTMLButtonElement>("github-connect").click();
+
+      await vi.waitFor(() => {
+        expect(byId("github-status").textContent).toBe(
+          en["options.github.permissionDenied"],
+        );
+      });
+      expect(sentTypes()).not.toContain("GITHUB_START_AUTH");
+      expect(tabsCreate).not.toHaveBeenCalled();
+      expect(byId<HTMLButtonElement>("github-connect").disabled).toBe(false);
+    });
+
+    it("signs in on GitHub's own page once allowed", async () => {
+      await loadOptionsPage();
+      sendMessage.mockClear();
+
+      byId<HTMLButtonElement>("github-connect").click();
+
+      await vi.waitFor(() => {
+        expect(tabsCreate).toHaveBeenCalledWith({
+          url: "https://github.com/login/device",
+        });
+      });
+      expect(sentTypes()).toEqual(["GITHUB_GET_STATUS", "GITHUB_START_AUTH"]);
+      expect(byId("github-overlay-code").textContent).toBe("ABCD-1234");
+      expect(byId("github-overlay").classList.contains("open")).toBe(true);
+    });
+
+    it("brings back a connection that only lacked the permission", async () => {
+      await loadOptionsPage();
+      sendMessage.mockClear();
+      githubStatus = { connected: true, login: "octocat" };
+
+      byId<HTMLButtonElement>("github-connect").click();
+
+      await vi.waitFor(() => {
+        expect(byId("github-status").textContent).toBe("Connected as octocat");
+      });
+      expect(sentTypes()).toEqual(["GITHUB_GET_STATUS"]);
+      expect(tabsCreate).not.toHaveBeenCalled();
+      expect(byId("github-disconnect").hidden).toBe(false);
+    });
   });
 
   it("uses only translation keys that exist", () => {

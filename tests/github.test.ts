@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import chromeManifest from "../manifest.chrome.json";
+import firefoxManifest from "../manifest.firefox.json";
 
 const storageLocalGet = vi.fn();
 const storageLocalSet = vi.fn();
 const storageLocalRemove = vi.fn();
+
+/* Whether github.com and api.github.com are allowed (optional permissions) */
+let permitted = true;
+const permissionsContains = vi.fn(async () => permitted);
 
 vi.stubGlobal("chrome", {
   storage: {
@@ -12,6 +18,7 @@ vi.stubGlobal("chrome", {
       remove: storageLocalRemove,
     },
   },
+  permissions: { contains: permissionsContains },
   i18n: {
     getUILanguage: vi.fn(() => "en-US"),
   },
@@ -35,6 +42,7 @@ describe("github", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+    permitted = true;
     github = await import("../src/github");
   });
 
@@ -107,6 +115,47 @@ describe("github", () => {
       fetchMock.mockResolvedValue(jsonResponse(200, { device_code: "only" }));
 
       await expect(github.startDeviceFlow()).rejects.toThrow();
+    });
+
+    it("doesn't start without the permission to reach GitHub", async () => {
+      permitted = false;
+
+      await expect(github.startDeviceFlow()).rejects.toThrow(
+        "isn't allowed to reach GitHub",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(permissionsContains).toHaveBeenCalledWith({
+        origins: ["https://github.com/*", "https://api.github.com/*"],
+      });
+    });
+  });
+
+  describe.each([
+    ["Chrome", chromeManifest],
+    ["Firefox", firefoxManifest],
+  ])("the %s manifest", (_browser, manifest) => {
+    it("asks for GitHub only when the person connects it", () => {
+      expect(manifest).not.toHaveProperty("host_permissions");
+
+      for (const origin of github.GITHUB_HOST_PERMISSIONS) {
+        expect(manifest.optional_host_permissions).toContain(origin);
+      }
+    });
+  });
+
+  describe("hasGitHubAccess", () => {
+    it("says whether both GitHub hosts are allowed", async () => {
+      expect(await github.hasGitHubAccess()).toBe(true);
+
+      permitted = false;
+
+      expect(await github.hasGitHubAccess()).toBe(false);
+    });
+
+    it("counts a failed check as no access", async () => {
+      permissionsContains.mockRejectedValueOnce(new Error("no API"));
+
+      expect(await github.hasGitHubAccess()).toBe(false);
     });
   });
 
@@ -200,6 +249,17 @@ describe("github", () => {
 
       await expect(github.getCurrentUser()).rejects.toThrow();
       expect(storageLocalRemove).toHaveBeenCalledWith("githubAccessToken");
+    });
+
+    it("keeps the token but sends nothing without the permission", async () => {
+      permitted = false;
+      storageLocalGet.mockResolvedValue({ githubAccessToken: "tok" });
+
+      await expect(github.getCurrentUser()).rejects.toThrow(
+        "isn't allowed to reach GitHub",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(storageLocalRemove).not.toHaveBeenCalled();
     });
   });
 

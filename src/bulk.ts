@@ -22,7 +22,6 @@ import {
   CHAT_SITE_NAMES,
   getChatSite,
   isChatSite,
-  isInjectedSite,
   type ChatSite,
 } from "./chat-sites.ts";
 import { createZipBlob, decodeBase64, type ZipEntry } from "./zip.ts";
@@ -183,41 +182,90 @@ const dateFormat = (): Intl.DateTimeFormat =>
   new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium" });
 
 /*
- * The chat site's tab is gone - closed, or navigated away and
- * back so its content script was replaced - when a message to it
- * can't be delivered at all, as opposed to the content script
- * answering with an error.
+ * The chat site's tab is gone - closed, or showing another site -
+ * when a message to it can't be delivered at all, as opposed to
+ * the content script answering with an error.
  */
 class TabUnavailableError extends Error {}
 
 /*
- * A DeepSeek, Grok or Perplexity tab loses the content script the
- * popup put in (see the top of chat-sites.ts) when it's reloaded.
- * The popup lent AI Exporter that tab, so while it still shows the
- * same site the script can go in again. False when it can't.
+ * How long to wait for the chat tab to answer again, and how long
+ * a tab that has finished loading may go without answering before
+ * it's reloaded.
  */
-async function addContentScriptAgain(): Promise<boolean> {
-  if (!site || !isInjectedSite(site)) {
-    return false;
-  }
+const RECONNECT_WAIT_MS = 15_000;
+const RELOAD_AFTER_MS = 1500;
+const RECONNECT_POLL_MS = 500;
 
-  try {
-    const tab = await chrome.tabs.get(tabId);
+/*
+ * The chat tab doesn't answer while it reloads - its content script
+ * comes back with the page - and never answers when it was opened
+ * before AI Exporter was installed or updated: Chrome only adds the
+ * content script to pages loaded afterwards. A tab that has finished
+ * loading on this site without one is reloaded once.
+ *
+ * The tab's address shows only while the popup's loan of the tab
+ * (activeTab) lasts, so it can't always be checked: a tab whose
+ * address doesn't show is waited for but never reloaded. The
+ * content script also says which site it's on, so a tab that has
+ * moved on to another site isn't sent this site's chats. False
+ * when the tab is closed, shows another site, or doesn't answer in
+ * time.
+ */
+async function reconnectToTab(): Promise<boolean> {
+  const startedAt = Date.now();
+  let reloaded = false;
 
-    if (getChatSite(tab.url) !== site) {
+  while (Date.now() - startedAt < RECONNECT_WAIT_MS) {
+    let tab: chrome.tabs.Tab;
+
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
       return false;
     }
 
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["content.js"],
-    });
+    const shownSite = tab.url === undefined ? undefined : getChatSite(tab.url);
 
-    return true;
-  } catch (error) {
-    devWarn("AI Exporter: couldn't add the content script again", error);
-    return false;
+    if (shownSite !== undefined && shownSite !== site) {
+      return false;
+    }
+
+    try {
+      const answer = await chrome.tabs.sendMessage(tabId, {
+        type: "AIEXPORTER_PING",
+      });
+
+      if (answer?.ok === true) {
+        return (
+          typeof answer.host === "string" &&
+          getChatSite(`https://${answer.host}/`) === site
+        );
+      }
+    } catch {
+      /* Not back yet. */
+    }
+
+    if (
+      !reloaded &&
+      shownSite === site &&
+      tab.status === "complete" &&
+      Date.now() - startedAt >= RELOAD_AFTER_MS
+    ) {
+      reloaded = true;
+
+      try {
+        await chrome.tabs.reload(tabId);
+      } catch (error) {
+        devWarn("AI Exporter: couldn't reload the chat tab", error);
+        return false;
+      }
+    }
+
+    await sleep(RECONNECT_POLL_MS);
   }
+
+  return false;
 }
 
 async function sendToTab<T>(message: Record<string, unknown>): Promise<T> {
@@ -226,7 +274,7 @@ async function sendToTab<T>(message: Record<string, unknown>): Promise<T> {
   try {
     response = await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {
-    if (!(await addContentScriptAgain())) {
+    if (!site || !(await reconnectToTab())) {
       throw new TabUnavailableError(errorMessage(error));
     }
 

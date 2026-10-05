@@ -21,7 +21,6 @@ import {
   CHAT_SITE_NAMES,
   getChatSite,
   isChatConversationUrl,
-  isInjectedSite,
   stripChatSiteSuffix,
   type ChatSite,
 } from "./chat-sites.ts";
@@ -703,33 +702,59 @@ function labelSiteLinks(): void {
 }
 
 /*
- * DeepSeek, Grok and Perplexity tabs only get the content script
- * when the popup is opened on them (see the top of chat-sites.ts).
- * Opening the popup lends AI Exporter the tab for a while - the
- * activeTab permission - which lets it put content.js in. A page
- * that has it already answers the ping, so it's never added twice.
+ * Every chat site's pages get the content script (see the top of
+ * chat-sites.ts), but Chrome only adds it to pages loaded after
+ * AI Exporter was installed or updated. A tab that was already
+ * open has nothing that answers the ping, and reloading it brings
+ * one in.
  */
-async function ensureContentScript(tabId: number, site: ChatSite): Promise<void> {
-  if (!isInjectedSite(site)) {
-    return;
-  }
+const RELOAD_SETTLE_MS = 2000;
+const CONTENT_SCRIPT_WAIT_MS = 15_000;
+const CONTENT_SCRIPT_POLL_MS = 500;
 
+async function hasContentScript(tabId: number): Promise<boolean> {
   try {
     const answer = await chrome.tabs.sendMessage(tabId, {
       type: "AIEXPORTER_PING",
     });
 
-    if (answer?.ok === true) {
-      return;
-    }
+    return answer?.ok === true;
   } catch {
-    /* Nothing in the tab answers yet. */
+    /* Nothing in the tab answers. */
+    return false;
+  }
+}
+
+/* Until the tab's (re)loaded page has the content script, or time runs out. */
+async function waitForContentScript(tabId: number): Promise<void> {
+  const deadline = Date.now() + CONTENT_SCRIPT_WAIT_MS;
+
+  while (!(await hasContentScript(tabId)) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, CONTENT_SCRIPT_POLL_MS));
+  }
+}
+
+async function ensureContentScript(tabId: number, site: ChatSite): Promise<void> {
+  if (await hasContentScript(tabId)) {
+    return;
   }
 
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ["content.js"],
-  });
+  devWarn("AI Exporter: no content script, reloading tab");
+
+  setProgressMessage(
+    t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
+  );
+
+  await chrome.tabs.reload(tabId);
+
+  /*
+   * Gives the page time to start up - ChatGPT's own signed-in
+   * requests are what pageBridge.js copies its headers from.
+   */
+  await new Promise((resolve) => setTimeout(resolve, RELOAD_SETTLE_MS));
+  await waitForContentScript(tabId);
+
+  setProgressMessage(t("popup.loading.default"));
 }
 
 /*
@@ -779,36 +804,20 @@ async function loadConversationMessages(
         downloadImagesLocally,
       });
     } catch (sendError) {
-      if (isInjectedSite(site)) {
-        /*
-         * The page went away in between - reloaded, say - and its
-         * content script with it: put it in again. (Reloading the
-         * tab, as below, wouldn't bring one back on these sites.)
-         */
-        devWarn("AI Exporter: no content script, adding it again", sendError);
+      /*
+       * The page went away in between - reloaded, say - and its
+       * content script with it. The page that loads next gets a
+       * new one.
+       */
+      devWarn("AI Exporter: lost the content script, asking again", sendError);
 
-        await ensureContentScript(tab.id, site);
-      } else {
-        /*
-         * No content script in the tab: it was opened before AI
-         * Exporter was installed or updated. Reloading the tab
-         * brings one in.
-         */
-        devWarn(
-          "AI Exporter: no content script, reloading tab and retrying",
-          sendError,
-        );
+      setProgressMessage(
+        t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
+      );
 
-        setProgressMessage(
-          t("popup.loading.reconnecting", { site: CHAT_SITE_NAMES[site] }),
-        );
+      await waitForContentScript(tab.id);
 
-        await chrome.tabs.reload(tab.id);
-
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        setProgressMessage(t("popup.loading.default"));
-      }
+      setProgressMessage(t("popup.loading.default"));
 
       response = await chrome.tabs.sendMessage(tab.id, {
         type: "LOAD_CONVERSATION",
@@ -1182,11 +1191,7 @@ bulkExportButton.addEventListener("click", async () => {
     return;
   }
 
-  // The page lists and loads the chats through this tab's content script.
-  await ensureContentScript(tab.id, site).catch((error: unknown) => {
-    devWarn("AI Exporter: couldn't add the content script", error);
-  });
-
+  // A tab without a content script is reloaded by the page (see bulk.ts).
   const params = new URLSearchParams({ tab: String(tab.id), site });
 
   await chrome.tabs.create({

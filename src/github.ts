@@ -42,6 +42,11 @@
  * value across the user's other Chrome installs, which is
  * not desirable for a bearer credential - local keeps it on
  * this machine only.
+ *
+ * github.com and api.github.com are optional host permissions,
+ * like api.notion.com: the settings page asks for them when the
+ * person clicks Connect GitHub, so people who never use GitHub
+ * aren't asked to allow it.
  */
 
 /*
@@ -69,6 +74,12 @@ const GITHUB_SCOPE = "repo";
 
 const STORAGE_KEY_TOKEN = "githubAccessToken";
 export const PROJECT_REPOSITORY = "GrantTotinov/AIExporter";
+
+/* Sign-in goes through github.com, everything else api.github.com. */
+export const GITHUB_HOST_PERMISSIONS = [
+  "https://github.com/*",
+  "https://api.github.com/*",
+];
 
 /*
  * ---------------------------------------------------------
@@ -133,6 +144,16 @@ export async function disconnectGitHub(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY_TOKEN);
 }
 
+export async function hasGitHubAccess(): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({
+      origins: GITHUB_HOST_PERMISSIONS,
+    });
+  } catch {
+    return false;
+  }
+}
+
 /*
  * ---------------------------------------------------------
  * DEVICE FLOW: START
@@ -144,6 +165,10 @@ export async function disconnectGitHub(): Promise<void> {
  * pollForAccessToken with the returned device_code.
  */
 export async function startDeviceFlow(): Promise<DeviceCodeResponse> {
+  if (!(await hasGitHubAccess())) {
+    throw new Error(t("github.error.permission"));
+  }
+
   const response = await fetch("https://github.com/login/device/code", {
     method: "POST",
     headers: {
@@ -268,6 +293,15 @@ async function githubApiRequest(
 
   if (!token) {
     throw new Error(t("github.error.notConnected"));
+  }
+
+  /*
+   * Without the permission the request would only fail as a
+   * network error. The token is kept: allowing GitHub again in
+   * the settings brings the connection back.
+   */
+  if (!(await hasGitHubAccess())) {
+    throw new Error(t("github.error.permission"));
   }
 
   const response = await fetch(`https://api.github.com${path}`, {

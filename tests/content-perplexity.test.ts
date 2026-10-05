@@ -53,8 +53,11 @@ describe("content.ts on www.perplexity.ai", () => {
     vi.restoreAllMocks();
   });
 
-  it("answers the popup's ping and leaves ChatGPT's page bridge out", async () => {
-    expect(await page.send({ type: "AIEXPORTER_PING" })).toEqual({ ok: true });
+  it("answers the ping with its site and leaves ChatGPT's page bridge out", async () => {
+    expect(await page.send({ type: "AIEXPORTER_PING" })).toEqual({
+      ok: true,
+      host: "www.perplexity.ai",
+    });
     expect(page.getURL).not.toHaveBeenCalled();
   });
 

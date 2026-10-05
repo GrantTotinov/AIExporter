@@ -60,7 +60,10 @@ let notionPages: Response;
 let messageListeners: ((message: unknown) => void)[] = [];
 /* Whether the tab has a content script to answer the popup */
 let contentScriptReady: boolean;
-/* The page reloads - and loses its content script - as the chat is asked for */
+/*
+ * The page reloads as the chat is asked for: it loses its content
+ * script, and the reloaded page has one again half a second later.
+ */
 let reloadOnLoad: boolean;
 
 const NO_RECEIVER = "Could not establish connection. Receiving end does not exist.";
@@ -79,6 +82,9 @@ const tabsSendMessage = vi.fn(
       if (reloadOnLoad) {
         reloadOnLoad = false;
         contentScriptReady = false;
+        setTimeout(() => {
+          contentScriptReady = true;
+        }, 500);
         throw new Error(NO_RECEIVER);
       }
 
@@ -89,13 +95,12 @@ const tabsSendMessage = vi.fn(
   },
 );
 
-/* Putting content.js into the tab, which then answers */
-const executeScript = vi.fn(async () => {
-  contentScriptReady = true;
-  return [{ documentId: "doc", frameId: 0, result: undefined }];
+/* The reloaded page has a content script a moment later. */
+const tabsReload = vi.fn(async () => {
+  setTimeout(() => {
+    contentScriptReady = true;
+  }, 500);
 });
-
-const tabsReload = vi.fn(async () => undefined);
 
 const runtimeSendMessage = vi.fn(
   async (message: { type: string; filename?: string }) => {
@@ -200,7 +205,6 @@ async function openPopup(): Promise<void> {
       create: tabsCreate,
       reload: tabsReload,
     },
-    scripting: { executeScript },
     i18n: { getUILanguage: () => "en-US" },
   });
 
@@ -367,27 +371,22 @@ describe("popup: the current chat", () => {
   });
 });
 
-describe("popup: DeepSeek, Grok and Perplexity", () => {
+describe("popup: reaching the chat's tab", () => {
   const DEEPSEEK_TAB = {
     id: 9,
     url: "https://chat.deepseek.com/a/chat/s/abc123",
     title: "Rice - DeepSeek",
   };
 
-  /* The calls the popup made to the tab and into it, in order */
+  /* The messages the popup sent to the tab, in order */
   function tabCalls(): string[] {
-    return [
-      ...tabsSendMessage.mock.calls.map(([, message], index) => ({
-        order: tabsSendMessage.mock.invocationCallOrder[index],
-        name: (message as { type: string }).type,
-      })),
-      ...executeScript.mock.calls.map((_call, index) => ({
-        order: executeScript.mock.invocationCallOrder[index],
-        name: "executeScript",
-      })),
-    ]
-      .sort((a, b) => a.order - b.order)
-      .map((call) => call.name);
+    return tabsSendMessage.mock.calls.map(
+      ([, message]) => (message as { type: string }).type,
+    );
+  }
+
+  function exportDescription(): string {
+    return byId("export").querySelector(".action-desc")?.textContent ?? "";
   }
 
   it("names the chat after the site", async () => {
@@ -400,41 +399,59 @@ describe("popup: DeepSeek, Grok and Perplexity", () => {
     expect(byId("chat-title").textContent).toBe("Rice");
   });
 
-  it("puts the content script into the tab before asking for the chat", async () => {
-    activeTab = { ...DEEPSEEK_TAB };
-    contentScriptReady = false;
+  it.each([
+    [`https://chatgpt.com/c/${UUID}`, "Trip ideas - ChatGPT"],
+    [`https://claude.ai/chat/${UUID}`, "Trip ideas - Claude"],
+    ["https://gemini.google.com/app/e87b6c6ac16404a5", "Trip ideas - Google Gemini"],
+    ["https://chat.deepseek.com/a/chat/s/abc123", "Trip ideas - DeepSeek"],
+    [`https://grok.com/c/${UUID}`, "Trip ideas - Grok"],
+    ["https://www.perplexity.ai/search/trip-ideas-abc", "Trip ideas - Perplexity"],
+  ])("asks the content script on %s for the chat right away", async (url, title) => {
+    activeTab = { id: 9, url, title };
 
     await openPopup();
     await openExportScreen();
 
-    expect(executeScript).toHaveBeenCalledWith({
-      target: { tabId: 9 },
-      files: ["content.js"],
-    });
-    expect(tabCalls()).toEqual([
-      "AIEXPORTER_PING",
-      "executeScript",
-      "LOAD_CONVERSATION",
-    ]);
+    expect(tabCalls()).toEqual(["AIEXPORTER_PING", "LOAD_CONVERSATION"]);
     expect(tabsReload).not.toHaveBeenCalled();
     expect(rows()).toHaveLength(3);
   });
 
-  it("doesn't put it in twice", async () => {
-    activeTab = {
-      id: 9,
-      url: "https://grok.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
-      title: "Cats - Grok",
-    };
+  it("reloads a tab that was open before AI Exporter was installed", async () => {
+    activeTab = { ...DEEPSEEK_TAB };
+    contentScriptReady = false;
 
     await openPopup();
-    await openExportScreen();
 
-    expect(executeScript).not.toHaveBeenCalled();
-    expect(tabCalls()).toEqual(["AIEXPORTER_PING", "LOAD_CONVERSATION"]);
+    vi.useFakeTimers();
+
+    try {
+      byId<HTMLButtonElement>("export").click();
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(tabsReload).toHaveBeenCalledWith(9);
+      expect(exportDescription()).toBe(
+        en["popup.loading.reconnecting"].replace("{{site}}", "DeepSeek"),
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() => {
+      expect(byId("export-view").hidden).toBe(false);
+    });
+    expect(tabsReload).toHaveBeenCalledTimes(1);
+    expect(tabCalls()).toEqual([
+      "AIEXPORTER_PING",
+      "AIEXPORTER_PING",
+      "LOAD_CONVERSATION",
+    ]);
+    expect(rows()).toHaveLength(3);
   });
 
-  it("puts it in again when the page reloaded in between, instead of reloading the tab", async () => {
+  it("waits for a page that reloaded in between, without reloading the tab", async () => {
     activeTab = {
       id: 9,
       url: "https://www.perplexity.ai/search/rice-abc",
@@ -443,20 +460,29 @@ describe("popup: DeepSeek, Grok and Perplexity", () => {
     reloadOnLoad = true;
 
     await openPopup();
-    await openExportScreen();
 
-    expect(tabCalls()).toEqual([
+    vi.useFakeTimers();
+
+    try {
+      byId<HTMLButtonElement>("export").click();
+      await vi.advanceTimersByTimeAsync(3000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() => {
+      expect(byId("export-view").hidden).toBe(false);
+    });
+    expect(tabsReload).not.toHaveBeenCalled();
+    expect(tabCalls().slice(0, 2)).toEqual([
       "AIEXPORTER_PING",
-      "LOAD_CONVERSATION",
-      "AIEXPORTER_PING",
-      "executeScript",
       "LOAD_CONVERSATION",
     ]);
-    expect(tabsReload).not.toHaveBeenCalled();
+    expect(tabCalls().at(-1)).toBe("LOAD_CONVERSATION");
     expect(rows()).toHaveLength(3);
   });
 
-  it("puts it in before opening Save many chats", async () => {
+  it("opens Save many chats next to the tab, which looks after it from there", async () => {
     activeTab = { ...DEEPSEEK_TAB, index: 2 } as typeof activeTab;
     contentScriptReady = false;
     vi.spyOn(window, "close").mockImplementation(() => undefined);
@@ -470,21 +496,8 @@ describe("popup: DeepSeek, Grok and Perplexity", () => {
         index: 3,
       });
     });
-    expect(executeScript).toHaveBeenCalledWith({
-      target: { tabId: 9 },
-      files: ["content.js"],
-    });
-    expect(executeScript.mock.invocationCallOrder[0]).toBeLessThan(
-      tabsCreate.mock.invocationCallOrder[0],
-    );
-  });
-
-  it("leaves ChatGPT, Claude and Gemini to the manifest's content script", async () => {
-    await openPopup();
-    await openExportScreen();
-
-    expect(executeScript).not.toHaveBeenCalled();
-    expect(tabCalls()).toEqual(["LOAD_CONVERSATION"]);
+    expect(tabsSendMessage).not.toHaveBeenCalled();
+    expect(tabsReload).not.toHaveBeenCalled();
   });
 });
 

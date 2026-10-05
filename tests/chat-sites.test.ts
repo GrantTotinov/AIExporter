@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_SITES,
+  CHAT_SITE_START_URLS,
   getChatSite,
   isChatConversationUrl,
   isChatSite,
-  isInjectedSite,
   stripChatSiteSuffix,
 } from "../src/chat-sites";
+import chromeManifest from "../manifest.chrome.json";
+import firefoxManifest from "../manifest.firefox.json";
 import { getClaudeConversationId } from "../src/claude-conversation";
 import { getGeminiConversationId } from "../src/gemini-conversation";
 import { getDeepSeekConversationId } from "../src/deepseek-conversation";
@@ -84,7 +86,7 @@ describe("getChatSite", () => {
   });
 });
 
-describe("isChatSite and isInjectedSite", () => {
+describe("isChatSite", () => {
   it("knows the six sites by their ids only", () => {
     for (const site of CHAT_SITES) {
       expect(isChatSite(site)).toBe(true);
@@ -96,13 +98,39 @@ describe("isChatSite and isInjectedSite", () => {
     expect(isChatSite(null)).toBe(false);
     expect(isChatSite("toString")).toBe(false);
   });
+});
 
-  it("leaves the content script of DeepSeek, Grok and Perplexity to the popup", () => {
-    expect(CHAT_SITES.filter(isInjectedSite)).toEqual([
-      "deepseek",
-      "grok",
-      "perplexity",
-    ]);
+/* Every content script pattern is "https://<host>/*". */
+function matchesPattern(pattern: string, url: string): boolean {
+  return pattern.endsWith("/*") && url.startsWith(pattern.slice(0, -1));
+}
+
+describe.each([
+  ["Chrome", chromeManifest],
+  ["Firefox", firefoxManifest],
+])("the %s manifest", (_browser, manifest) => {
+  const patterns = manifest.content_scripts.flatMap((script) => script.matches);
+
+  it("gives every chat site's pages the content script", () => {
+    for (const site of CHAT_SITES) {
+      expect(
+        patterns.some((pattern) =>
+          matchesPattern(pattern, CHAT_SITE_START_URLS[site]),
+        ),
+        site,
+      ).toBe(true);
+    }
+  });
+
+  it("gives it to no other site", () => {
+    for (const pattern of patterns) {
+      expect(
+        CHAT_SITES.some((site) =>
+          matchesPattern(pattern, CHAT_SITE_START_URLS[site]),
+        ),
+        pattern,
+      ).toBe(true);
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import {
 } from "./settings.ts";
 import { initI18n, applyTranslations, t } from "./i18n.ts";
 import { NOTION_HOST_PERMISSION } from "./notion.ts";
+import { GITHUB_HOST_PERMISSIONS } from "./github.ts";
 import {
   FILE_NAME_PRESETS,
   STANDARD_FILE_NAME,
@@ -1351,10 +1352,41 @@ githubOverlayCancelButton.addEventListener("click", () => {
   setGithubState(githubState);
 });
 
+/*
+ * github.com and api.github.com are optional permissions (see
+ * github.ts). The browser asks for them right in the click, since
+ * Firefox only shows that prompt in direct response to one; once
+ * allowed, it doesn't ask again.
+ */
+function requestGithubAccess(): Promise<boolean> {
+  return chrome.permissions
+    .request({ origins: GITHUB_HOST_PERMISSIONS })
+    .catch(() => false);
+}
+
 githubConnectButton.addEventListener("click", async () => {
+  const access = requestGithubAccess();
+
   setGithubState(githubState, true);
 
   try {
+    if (!(await access)) {
+      throw new Error(t("options.github.permissionDenied"));
+    }
+
+    /*
+     * A connection that only lacked the permission, given back
+     * just now, works again without signing in to GitHub anew.
+     */
+    const status = await chrome.runtime.sendMessage({
+      type: "GITHUB_GET_STATUS",
+    });
+
+    if (status?.success && status.data?.connected) {
+      setGithubState({ kind: "connected", login: status.data.login });
+      return;
+    }
+
     const response = await chrome.runtime.sendMessage({
       type: "GITHUB_START_AUTH",
     });
@@ -1367,7 +1399,12 @@ githubConnectButton.addEventListener("click", async () => {
 
     openGithubOverlay(userCode);
 
-    window.open(verificationUri, "_blank", "noopener,noreferrer");
+    /*
+     * A tab rather than window.open(): after the permission prompt
+     * the click can be too long ago for the browser to allow a
+     * new window.
+     */
+    void chrome.tabs.create({ url: verificationUri });
   } catch (error) {
     devError("AI Exporter: GitHub auth start failed", error);
 

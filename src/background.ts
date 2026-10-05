@@ -4,6 +4,7 @@ import {
   getStoredToken,
   getCurrentUser,
   disconnectGitHub,
+  hasGitHubAccess,
   listRepos,
   saveFileToRepo,
   starProject,
@@ -572,7 +573,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
       const token = await getStoredToken();
 
-      if (!token) {
+      /*
+       * A token is no use without the permission to reach GitHub
+       * (taken back in the browser's settings, say): that counts
+       * as not connected, and Connect GitHub asks for it again.
+       */
+      if (!token || !(await hasGitHubAccess())) {
         sendResponse({ success: true, data: { connected: false } });
 
         return;

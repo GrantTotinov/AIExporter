@@ -1,7 +1,7 @@
 AIExporter
 Privacy Policy for AIExporter
 
-Effective date: October 4, 2026
+Effective date: October 5, 2026
 
 AIExporter (formerly AI Exporter / GPTChatDownloader) is a Chrome extension that allows users to export their ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity conversations as PDF, Word, HTML, Markdown, plain text, JSON or CSV, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository or a Notion workspace.
 
@@ -14,7 +14,7 @@ ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity conversation content
 
 When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai, gemini.google.com, chat.deepseek.com, grok.com or perplexity.ai. When you use Save many chats, it also reads the list of your conversations on that site (their titles and dates) so that you can choose which ones to save, and then each conversation you choose.
 
-On chat.deepseek.com, grok.com and perplexity.ai, AIExporter has no standing access to the page. It is added to a tab only when you open AIExporter's popup on that tab, using the browser's activeTab permission, and only to that tab.
+AIExporter's content script runs on the pages of these six sites, and on no other website, so that it is ready when you ask for an export. It reads a conversation only when you export, copy or save it.
 
 This may include:
 
@@ -73,7 +73,7 @@ AIExporter does not send Notion exports to a server operated by the developer.
 
 3. GitHub Authorization
 
-GitHub integration is optional.
+GitHub integration is optional. AIExporter asks the browser for permission to reach github.com and api.github.com only when you connect GitHub.
 
 If you choose to connect GitHub, AIExporter uses GitHub's OAuth Device Flow. Authorization takes place through GitHub's website.
 
@@ -190,17 +190,17 @@ AIExporter operates on gemini.google.com and uses the authenticated session alre
 AIExporter does not collect or store the user's Google login credentials.
 DeepSeek
 
-AIExporter operates on chat.deepseek.com, only in a tab where the user opened AIExporter's popup, and uses the authenticated session already established by the user in the DeepSeek website.
+AIExporter operates on chat.deepseek.com and uses the authenticated session already established by the user in the DeepSeek website.
 
 AIExporter does not collect or store the user's DeepSeek login credentials.
 Grok
 
-AIExporter operates on grok.com, only in a tab where the user opened AIExporter's popup, and uses the authenticated session already established by the user in the Grok website.
+AIExporter operates on grok.com and uses the authenticated session already established by the user in the Grok website.
 
 AIExporter does not collect or store the user's Grok or X login credentials.
 Perplexity
 
-AIExporter operates on perplexity.ai, only in a tab where the user opened AIExporter's popup, and uses the authenticated session already established by the user in the Perplexity website.
+AIExporter operates on perplexity.ai and uses the authenticated session already established by the user in the Perplexity website.
 
 AIExporter does not collect or store the user's Perplexity login credentials.
 GitHub

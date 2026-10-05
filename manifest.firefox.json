@@ -13,14 +13,11 @@
     "alarms",
     "clipboardWrite",
     "downloads",
-    "scripting",
     "storage"
   ],
-  "host_permissions": [
-    "https://github.com/*",
-    "https://api.github.com/*"
-  ],
   "optional_host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*",
     "https://api.notion.com/*"
   ],
   "background": {
@@ -52,7 +49,10 @@
       "matches": [
         "https://chatgpt.com/*",
         "https://claude.ai/*",
-        "https://gemini.google.com/*"
+        "https://gemini.google.com/*",
+        "https://chat.deepseek.com/*",
+        "https://grok.com/*",
+        "https://www.perplexity.ai/*"
       ],
       "js": [
         "content.js"
