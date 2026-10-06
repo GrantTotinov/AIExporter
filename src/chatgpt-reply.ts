@@ -24,12 +24,15 @@
  * web"). They're gathered by walking from the answer up to the
  * question.
  *
+ * Model. The reply's metadata names the model that wrote it.
+ *
  * Field names follow the ChatGPT web app's own API, as read by
  * open-source exporters (pionxzh/chatgpt-exporter among them).
  * Imported only by content.ts, so Rollup inlines it into
  * content.js (see the top of content.ts).
  */
 import { ReplySources } from "./reply-sources.ts";
+import { modelName } from "./message-metadata.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -432,4 +435,21 @@ export function chatGptThinking(
   return found
     .filter((piece, index) => !piece.startsWith("*") || found.indexOf(piece) === index)
     .join("\n\n");
+}
+
+/*
+ * ---------------------------------------------------------
+ * MODEL
+ * ---------------------------------------------------------
+ *
+ * The model that wrote a reply ("gpt-4o", "o3"): the one
+ * ChatGPT's router settled on (resolved_model_slug) when it says
+ * so, otherwise the one the reply was asked of (model_slug).
+ */
+export function chatGptModel(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  return (
+    modelName(metadata?.resolved_model_slug) ?? modelName(metadata?.model_slug)
+  );
 }

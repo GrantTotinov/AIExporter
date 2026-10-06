@@ -14,10 +14,17 @@
  * 3. Loads the ticked chats one at a time (LOAD_CONVERSATION with
  *    their id), turns each into a file of the chosen type, and
  *    downloads them all in one ZIP.
+ * 4. Remembers which chats the ZIP held, so the next time the list
+ *    can show just those not saved yet or changed since.
  */
 import { loadSettings, type Settings } from "./settings.ts";
 import { applyTranslations, getLocale, initI18n, t } from "./i18n.ts";
-import { buildDocumentBlob, isDocumentFormat } from "./file-export.ts";
+import { formatLabel } from "./format-labels.ts";
+import {
+  buildDocumentBlob,
+  fileExtension,
+  isDocumentFormat,
+} from "./file-export.ts";
 import {
   CHAT_SITE_NAMES,
   getChatSite,
@@ -34,12 +41,17 @@ import {
   type Message,
 } from "./export-builders.ts";
 import {
+  SAVED_CHATS_KEY,
   conversationFileBase,
   filterConversations,
   localDate,
+  needsSaving,
+  savedChats,
   uniqueName,
+  withSavedChats,
   type ConversationFilter,
   type DatePreset,
+  type SavedChats,
 } from "./bulk-export.ts";
 import type {
   ConversationListPage,
@@ -149,6 +161,8 @@ let running = false;
 let stopRequested = false;
 let lastClickedIndex: number | null = null;
 let lastFailed: ConversationSummary[] = [];
+/* The chats saved here before, and when they'd last been used then */
+let saved: SavedChats = {};
 
 /*
  * ---------------------------------------------------------
@@ -330,6 +344,7 @@ function currentFilter(): ConversationFilter {
     preset: datePresetSelect.value as DatePreset,
     from: dateFromInput.value,
     to: dateToInput.value,
+    saved,
   };
 }
 
@@ -372,6 +387,15 @@ function renderList(): void {
 
     row.append(checkbox, title);
 
+    // Saved in an earlier ZIP, and not used since
+    if (!needsSaving(conversation, saved)) {
+      const badge = document.createElement("span");
+      badge.className = "chat-row-saved";
+      badge.textContent = t("bulk.saved");
+      badge.title = t("bulk.savedTitle");
+      row.append(badge);
+    }
+
     const time = conversation.updatedAt ?? conversation.createdAt;
 
     if (time !== null) {
@@ -409,19 +433,6 @@ function updateSelectionUi(): void {
         });
   exportButton.disabled = running || !listLoaded || count === 0;
   exportLabel.textContent = t("bulk.export");
-}
-
-function formatLabel(format: ExportFormat): string {
-  return format === "txt"
-    ? t("popup.format.txt")
-    : {
-        pdf: "PDF",
-        docx: "Word",
-        html: "HTML",
-        md: "Markdown",
-        json: "JSON",
-        csv: "CSV",
-      }[format];
 }
 
 chatList.addEventListener("click", (event) => {
@@ -646,6 +657,48 @@ async function restoreFormat(): Promise<void> {
 
 /*
  * ---------------------------------------------------------
+ * CHATS SAVED BEFORE
+ * ---------------------------------------------------------
+ *
+ * See SAVED_CHATS_KEY in bulk-export.ts. A chat counts as saved
+ * once the ZIP holding it is on disk - not when the download
+ * merely starts, since the person can still cancel "Save as".
+ */
+async function loadSaved(): Promise<void> {
+  try {
+    const stored = await chrome.storage.local.get(SAVED_CHATS_KEY);
+
+    saved = savedChats(stored[SAVED_CHATS_KEY], site);
+  } catch (error) {
+    devWarn("AI Exporter: couldn't read the chats saved before", error);
+  }
+}
+
+async function rememberSaved(
+  conversationsSaved: ConversationSummary[],
+): Promise<void> {
+  if (!site || conversationsSaved.length === 0) {
+    return;
+  }
+
+  try {
+    const stored = await chrome.storage.local.get(SAVED_CHATS_KEY);
+    const updated = withSavedChats(
+      stored[SAVED_CHATS_KEY],
+      site,
+      conversationsSaved,
+    );
+
+    await chrome.storage.local.set({ [SAVED_CHATS_KEY]: updated });
+    saved = updated[site];
+    renderList();
+  } catch (error) {
+    devWarn("AI Exporter: couldn't remember the saved chats", error);
+  }
+}
+
+/*
+ * ---------------------------------------------------------
  * EXPORT
  * ---------------------------------------------------------
  */
@@ -703,7 +756,7 @@ async function buildConversationFiles(
 
     return [
       {
-        path: `${folder}/${name}.${format}`,
+        path: `${folder}/${name}.${fileExtension(format, blob)}`,
         bytes: new Uint8Array(await blob.arrayBuffer()),
       },
     ];
@@ -782,6 +835,7 @@ async function downloadZip(
   entries: ZipEntry[],
   filename: string,
   settings: Settings,
+  onSaved: () => void,
 ): Promise<void> {
   const blob = createZipBlob(entries);
   /*
@@ -805,6 +859,10 @@ async function downloadZip(
     ) {
       chrome.downloads.onChanged.removeListener(release);
       URL.revokeObjectURL(url);
+
+      if (delta.state.current === "complete") {
+        onSaved();
+      }
     }
   };
 
@@ -822,7 +880,7 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
   const entries: ZipEntry[] = [{ path: `${folder}/`, bytes: new Uint8Array() }];
   const usedNames = new Set<string>();
   const failed: { conversation: ConversationSummary; error: string }[] = [];
-  let saved = 0;
+  const inZip: ConversationSummary[] = [];
   let tabGone = false;
 
   stopRequested = false;
@@ -854,7 +912,7 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
             name,
           )),
         );
-        saved++;
+        inZip.push(conversation);
         break;
       } catch (error) {
         if (error instanceof TabUnavailableError) {
@@ -878,9 +936,9 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
     await sleep(PAUSE_BETWEEN_CHATS_MS);
   }
 
-  const notStarted = targets.slice(saved + failed.length);
+  const notStarted = targets.slice(inZip.length + failed.length);
 
-  showProgress(saved + failed.length, targets.length, "");
+  showProgress(inZip.length + failed.length, targets.length, "");
 
   if (failed.length > 0 || notStarted.length > 0) {
     entries.push({
@@ -904,9 +962,11 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
 
   let downloadError: string | null = null;
 
-  if (saved > 0) {
+  if (inZip.length > 0) {
     try {
-      await downloadZip(entries, `${folder}.zip`, settings);
+      await downloadZip(entries, `${folder}.zip`, settings, () => {
+        void rememberSaved(inZip);
+      });
     } catch (error) {
       downloadError = errorMessage(error);
     }
@@ -915,7 +975,7 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
   lastFailed = [...failed.map((item) => item.conversation), ...notStarted];
   setRunning(false);
   showResult({
-    saved,
+    saved: inZip.length,
     total: targets.length,
     failed,
     stopped: stopRequested,
@@ -1010,6 +1070,7 @@ async function init(): Promise<void> {
   pageSubtitle.textContent = t("bulk.subtitle", { site: siteName });
 
   await restoreFormat();
+  await loadSaved();
   await loadList();
 }
 

@@ -279,7 +279,11 @@ export function findManifestProblems(manifest, hasFile) {
     );
   } else if (csp !== null && typeof csp === "object") {
     for (const [key, policy] of Object.entries(csp)) {
-      if (/unsafe-eval|unsafe-inline|https?:/.test(String(policy))) {
+      // 'wasm-unsafe-eval' only lets WebAssembly compile (HarfBuzz,
+      // see src/text-shaping.ts); it can't turn text into code.
+      const loosened = String(policy).replace(/'wasm-unsafe-eval'/g, "");
+
+      if (/unsafe-eval|unsafe-inline|https?:/.test(loosened)) {
         problems.push(
           `content_security_policy.${key} allows code from outside the package: ${policy}`,
         );

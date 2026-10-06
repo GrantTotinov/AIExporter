@@ -86,3 +86,53 @@ describe("HTML export", () => {
     expect(page.title).toBe("ChatGPT");
   });
 });
+
+describe("HTML export: table of contents", () => {
+  const chat = (questions: string[]) =>
+    questions.flatMap((question, index) => [
+      { id: `q${index}`, role: "user" as const, order: index * 2, content: question },
+      { id: `a${index}`, role: "assistant" as const, order: index * 2 + 1, content: "An answer." },
+    ]);
+
+  it("lists the questions of a longer chat, each a link to where it's asked", async () => {
+    const html = await buildHtmlDocument(
+      chat([
+        "How do I cook **rice**?",
+        "![Image 1](images/image-001.png)\nWhat's \\(this\\) photo?",
+        `And ${"very ".repeat(30)}long?`,
+      ]),
+      [],
+      DEFAULT_SETTINGS,
+      { tabTitle: "Cooking - ChatGPT", tabUrl: "https://chatgpt.com/c/1" },
+    );
+    const page = new DOMParser().parseFromString(html, "text/html");
+    const links = [...page.querySelectorAll<HTMLAnchorElement>("nav.toc a")];
+
+    expect(page.querySelector("nav.toc summary")?.textContent).toBe("Contents · 3 questions");
+    expect(page.querySelector("nav.toc details")?.hasAttribute("open")).toBe(false);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "#message-1",
+      "#message-3",
+      "#message-5",
+    ]);
+    expect(links[0].textContent).toBe("How do I cook rice?");
+    expect(links[1].textContent).toBe("What's (this) photo?");
+    expect(Array.from(links[2].textContent ?? "").length).toBeLessThanOrEqual(90);
+    expect(links[2].textContent?.endsWith("…")).toBe(true);
+
+    for (const link of links) {
+      expect(page.getElementById(link.getAttribute("href")!.slice(1))?.className).toBe(
+        "message message--user",
+      );
+    }
+  });
+
+  it("leaves it out of a short chat", async () => {
+    const html = await buildHtmlDocument(chat(["Hi?", "Bye?"]), [], DEFAULT_SETTINGS, {
+      tabTitle: "Short - ChatGPT",
+      tabUrl: "https://chatgpt.com/c/1",
+    });
+
+    expect(new DOMParser().parseFromString(html, "text/html").querySelector(".toc")).toBeNull();
+  });
+});

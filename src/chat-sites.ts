@@ -28,7 +28,16 @@ export type ChatSite =
   | "gemini"
   | "deepseek"
   | "grok"
-  | "perplexity";
+  | "perplexity"
+  | "copilot"
+  | "mistral"
+  | "meta"
+  | "kimi"
+  | "doubao"
+  | "qwen"
+  | "qianwen"
+  | "yuanbao"
+  | "zai";
 
 export const CHAT_SITES: readonly ChatSite[] = [
   "chatgpt",
@@ -37,6 +46,15 @@ export const CHAT_SITES: readonly ChatSite[] = [
   "deepseek",
   "grok",
   "perplexity",
+  "copilot",
+  "mistral",
+  "meta",
+  "kimi",
+  "doubao",
+  "qwen",
+  "qianwen",
+  "yuanbao",
+  "zai",
 ];
 
 /* The addresses each site's pages live at; the first is its own. */
@@ -47,6 +65,15 @@ const CHAT_SITE_ORIGINS: Record<ChatSite, readonly string[]> = {
   deepseek: ["https://chat.deepseek.com"],
   grok: ["https://grok.com"],
   perplexity: ["https://www.perplexity.ai", "https://perplexity.ai"],
+  copilot: ["https://copilot.microsoft.com"],
+  mistral: ["https://chat.mistral.ai"],
+  meta: ["https://www.meta.ai"],
+  kimi: ["https://www.kimi.com"],
+  doubao: ["https://www.doubao.com"],
+  qwen: ["https://chat.qwen.ai"],
+  qianwen: ["https://www.qianwen.com"],
+  yuanbao: ["https://yuanbao.tencent.com"],
+  zai: ["https://chat.z.ai"],
 };
 
 export const CHAT_SITE_NAMES: Record<ChatSite, string> = {
@@ -56,6 +83,15 @@ export const CHAT_SITE_NAMES: Record<ChatSite, string> = {
   deepseek: "DeepSeek",
   grok: "Grok",
   perplexity: "Perplexity",
+  copilot: "Copilot",
+  mistral: "Mistral",
+  meta: "Meta AI",
+  kimi: "Kimi",
+  doubao: "Doubao",
+  qwen: "Qwen",
+  qianwen: "Qianwen",
+  yuanbao: "Yuanbao",
+  zai: "Z.ai",
 };
 
 /* The page the popup opens for a site */
@@ -66,7 +102,23 @@ export const CHAT_SITE_START_URLS: Record<ChatSite, string> = {
   deepseek: "https://chat.deepseek.com/",
   grok: "https://grok.com/",
   perplexity: "https://www.perplexity.ai/",
+  copilot: "https://copilot.microsoft.com/",
+  mistral: "https://chat.mistral.ai/chat",
+  meta: "https://www.meta.ai/",
+  kimi: "https://www.kimi.com/",
+  doubao: "https://www.doubao.com/chat/",
+  qwen: "https://chat.qwen.ai/",
+  qianwen: "https://www.qianwen.com/",
+  yuanbao: "https://yuanbao.tencent.com/chat",
+  zai: "https://chat.z.ai/",
 };
+
+/*
+ * Sites read from the page rather than an API (see
+ * dom-conversation.ts): only the open conversation can be exported,
+ * so "Save many chats" isn't offered there.
+ */
+export const PAGE_READ_SITES: readonly ChatSite[] = ["mistral", "meta"];
 
 export function isChatSite(value: unknown): value is ChatSite {
   return (CHAT_SITES as readonly unknown[]).includes(value);
@@ -98,10 +150,11 @@ export function getChatSite(url: string | undefined): ChatSite | null {
  * These are the patterns content.ts and the site modules read
  * the conversation ID with: getConversationIdFromUrl() there,
  * and getClaudeConversationId(), getGeminiConversationId(),
- * getDeepSeekConversationId(), getGrokConversationId() and
- * getPerplexityThreadSlug(). Importing those would pull the site
- * modules out of content.js into a shared chunk, so they're
- * repeated, and tests/chat-sites.test.ts checks that they agree.
+ * getDeepSeekConversationId(), getGrokConversationId(),
+ * getPerplexityThreadSlug() and those of the sites added in 2.4.
+ * Importing those would pull the site modules out of content.js
+ * into a shared chunk, so they're repeated, and
+ * tests/chat-sites.test.ts checks that they agree.
  */
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -115,6 +168,19 @@ const GROK_CONVERSATION_PATH =
   /^(?:\/[a-z]{2}(?:-[A-Za-z]{2,4})?)?\/(?:c|chat)\/([0-9a-f-]{36})\/?$/i;
 
 const PERPLEXITY_THREAD_PATH = /^\/search\/[^/]{1,512}\/?$/;
+
+const CONVERSATION_PATHS: Partial<Record<ChatSite, RegExp>> = {
+  copilot: /^\/chats\/[A-Za-z0-9_-]{8,128}\/?$/,
+  mistral: /^\/chat\/(?!projects(?:\/|$))[A-Za-z0-9_-]{8,128}\/?$/,
+  kimi: /^\/chat\/(?!history\/?$)[A-Za-z0-9_-]{8,128}\/?$/,
+  doubao: /^\/chat\/\d{4,32}\/?$/,
+  qwen: /^\/c\/[A-Za-z0-9_-]{8,128}\/?$/,
+  qianwen: /^\/chat\/[A-Za-z0-9_-]{8,128}\/?$/,
+  yuanbao: /^\/chat\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{8,128}\/?$/,
+  zai: /^\/c\/[A-Za-z0-9_-]{8,128}\/?$/,
+  // Meta AI's conversation addresses vary; any page but the start one.
+  meta: /^\/(?!$)[^?#]+$/,
+};
 
 function hasConversationId(site: ChatSite, pathname: string): boolean {
   switch (site) {
@@ -136,6 +202,8 @@ function hasConversationId(site: ChatSite, pathname: string): boolean {
     }
     case "perplexity":
       return PERPLEXITY_THREAD_PATH.test(pathname);
+    default:
+      return CONVERSATION_PATHS[site]?.test(pathname) ?? false;
   }
 }
 
@@ -156,7 +224,7 @@ export function stripChatSiteSuffix(title: string): string {
   return title
     .replace(/^[\u{200E}\u{200F}]+|[\u{200E}\u{200F}]+$/gu, "")
     .replace(
-      /\s*[-|·–—]\s*(?:ChatGPT|Claude|(?:Google\s+)?Gemini|DeepSeek|Grok|Perplexity(?:\s+AI)?)\s*$/i,
+      /\s*[-|·–—_]\s*(?:ChatGPT|Claude|(?:Google\s+)?Gemini|DeepSeek|Grok|Perplexity(?:\s+AI)?|(?:Microsoft\s+)?Copilot|Le\s+Chat(?:\s+(?:by\s+)?Mistral(?:\s+AI)?)?|Mistral(?:\s+AI)?|Meta\s+AI|Kimi(?:\s+AI)?|豆包|Doubao|Qwen(?:\s+Chat)?|通义千问|千问|Qianwen|腾讯元宝|元宝|Yuanbao|Z\.ai(?:\s+Chat)?)\s*$/i,
       "",
     )
     .trim();

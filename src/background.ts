@@ -17,9 +17,12 @@ import {
   listNotionPages,
 } from "./notion.ts";
 import type { NotionBlock } from "./notion-blocks.ts";
-import { initI18n } from "./i18n.ts";
+import { initI18n, t } from "./i18n.ts";
 import { decodeBase64, copyToArrayBuffer } from "./zip.ts";
 import { asciiFileName, isSafeFileName } from "./file-names.ts";
+import { getChatSite, isChatConversationUrl } from "./chat-sites.ts";
+import { buildClipboardContent } from "./clipboard-export.ts";
+import type { Message } from "./export-builders.ts";
 import {
   UPDATE_CHECK_INTERVAL_MS,
   UPDATE_NOTICE_KEY,
@@ -391,6 +394,104 @@ async function setupOffscreenDocument(): Promise<void> {
   await creatingOffscreenDocument;
 }
 
+/*
+ * ---------------------------------------------------------
+ * CLIPBOARD
+ * ---------------------------------------------------------
+ *
+ * A copied chat goes on the clipboard as Markdown (text/plain)
+ * and, when it comes with one, as formatted HTML (text/html) too -
+ * see clipboard-export.ts. Chrome's service worker has no
+ * clipboard, so the offscreen document writes it there. Firefox
+ * has no offscreen documents, but runs this file as an event page
+ * with a clipboard of its own, which the clipboardWrite permission
+ * lets it write - so it copies right here, the way offscreen.ts
+ * does (a classic script that can't share code with this one).
+ */
+function hasOffscreenDocuments(): boolean {
+  return typeof chrome.offscreen?.createDocument === "function";
+}
+
+function copyWithExecCommand(text: string, html: string): boolean {
+  if (typeof document === "undefined" || !document.body) {
+    return false;
+  }
+
+  const textarea = document.createElement("textarea");
+  const fill = (event: ClipboardEvent): void => {
+    if (!html) {
+      return;
+    }
+
+    event.preventDefault();
+    event.clipboardData?.setData("text/plain", text);
+    event.clipboardData?.setData("text/html", html);
+  };
+
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.append(textarea);
+  document.addEventListener("copy", fill);
+
+  try {
+    textarea.select();
+
+    return document.execCommand("copy");
+  } finally {
+    document.removeEventListener("copy", fill);
+    textarea.remove();
+  }
+}
+
+async function copyInThisPage(text: string, html: string): Promise<boolean> {
+  try {
+    if (html && navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        }),
+      ]);
+
+      return true;
+    }
+
+    if (!html && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+
+      return true;
+    }
+  } catch (error) {
+    devError("AI Exporter: clipboard API failed, trying execCommand", error);
+  }
+
+  return copyWithExecCommand(text, html);
+}
+
+async function copyToClipboard(
+  text: string,
+  html: string,
+): Promise<{ success: boolean; error?: string }> {
+  if (!hasOffscreenDocuments()) {
+    return (await copyInThisPage(text, html))
+      ? { success: true }
+      : { success: false, error: "Clipboard write failed" };
+  }
+
+  await setupOffscreenDocument();
+
+  return chrome.runtime.sendMessage({
+    type: "OFFSCREEN_COPY",
+    data: text,
+    ...(html ? { html } : {}),
+  });
+}
+
+function isValidClipboardText(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_EXPORT_CONTENT_LENGTH;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "COPY_TO_CLIPBOARD") {
     return false;
@@ -400,16 +501,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (
+    !isValidClipboardText(message.data) ||
+    (message.html !== undefined && !isValidClipboardText(message.html))
+  ) {
+    sendResponse({ success: false, error: "Invalid copy request." });
+
+    return true;
+  }
+
   void trackTask(async () => {
     try {
-      await setupOffscreenDocument();
-
-      const response = await chrome.runtime.sendMessage({
-        type: "OFFSCREEN_COPY",
-        data: message.data,
-      });
-
-      sendResponse(response);
+      sendResponse(await copyToClipboard(message.data, message.html ?? ""));
     } catch (error) {
       devError("AI Exporter: background clipboard failed", error);
 
@@ -428,6 +531,208 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
    * immediately and you get a DOMException.
    */
   return true;
+});
+
+/*
+ * ---------------------------------------------------------
+ * KEYBOARD SHORTCUTS
+ * ---------------------------------------------------------
+ *
+ * The manifest's "commands": Alt+Shift+E opens the popup (the
+ * browser does that one itself, as _execute_action), and
+ * Alt+Shift+M copies the chat open in the active tab without
+ * opening anything - the same copy as the popup's "Copy the whole
+ * chat" (M for Markdown: Chrome keeps Alt+Shift+C for itself).
+ * The page itself says how the copy went (SHOW_TOAST in
+ * content.ts); a page of no chat site, which AI Exporter can't
+ * write on, gets a mark on the toolbar button instead.
+ */
+const COPY_CHAT_COMMAND = "copy-chat";
+/* Error messages longer than this are technical; a plain one replaces them */
+const MAX_SHORTCUT_ERROR_LENGTH = 90;
+const BADGE_MS = 4000;
+/* As in popup.ts: the wait for a reloaded tab's content script */
+const RELOAD_SETTLE_MS = 2000;
+const CONTENT_SCRIPT_WAIT_MS = 15_000;
+const CONTENT_SCRIPT_POLL_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function hasContentScript(tabId: number): Promise<boolean> {
+  try {
+    const answer = await chrome.tabs.sendMessage(tabId, {
+      type: "AIEXPORTER_PING",
+    });
+
+    return answer?.ok === true;
+  } catch {
+    /* Nothing in the tab answers. */
+    return false;
+  }
+}
+
+/*
+ * Every chat site's pages get content.js from the manifest, but
+ * Chrome only adds it to pages loaded after AI Exporter was
+ * installed or updated. A tab open since before is reloaded, as the
+ * popup does it (see popup.ts) - the page waits for its content
+ * script, ChatGPT's page bridge for the page's own first requests.
+ * False when the content script doesn't come in time.
+ */
+async function ensureContentScript(tabId: number): Promise<boolean> {
+  if (await hasContentScript(tabId)) {
+    return true;
+  }
+
+  await chrome.tabs.reload(tabId);
+  await sleep(RELOAD_SETTLE_MS);
+
+  const deadline = Date.now() + CONTENT_SCRIPT_WAIT_MS;
+
+  do {
+    if (await hasContentScript(tabId)) {
+      return true;
+    }
+
+    await sleep(CONTENT_SCRIPT_POLL_MS);
+  } while (Date.now() < deadline);
+
+  return false;
+}
+
+function showPageToast(
+  tabId: number,
+  text: string,
+  tone: "info" | "success" | "error" = "success",
+): Promise<void> {
+  return chrome.tabs
+    .sendMessage(tabId, { type: "SHOW_TOAST", text, tone })
+    .then(() => undefined)
+    .catch(() => {
+      /* The page went away meanwhile - nothing to show it on. */
+    });
+}
+
+/* A "!" on the toolbar button, with what to do as its tooltip */
+function flashBadge(tabId: number, title: string): void {
+  if (!chrome.action?.setBadgeText) {
+    return;
+  }
+
+  void chrome.action.setBadgeBackgroundColor({ tabId, color: "#cf222e" });
+  void chrome.action.setBadgeText({ tabId, text: "!" });
+  void chrome.action.setTitle({ tabId, title });
+
+  setTimeout(() => {
+    void chrome.action.setBadgeText({ tabId, text: "" }).catch(() => undefined);
+    void chrome.action
+      .setTitle({
+        tabId,
+        title: chrome.runtime.getManifest().action?.default_title ?? "AI Exporter",
+      })
+      .catch(() => undefined);
+  }, BADGE_MS);
+}
+
+function pasteShortcut(): string {
+  return navigator.userAgent.includes("Mac") ? "⌘V" : t("popup.pasteShortcut");
+}
+
+async function copyChatWithShortcut(
+  commandTab: chrome.tabs.Tab | undefined,
+): Promise<void> {
+  const tab =
+    commandTab?.id !== undefined
+      ? commandTab
+      : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+
+  if (tab?.id === undefined) {
+    return;
+  }
+
+  const tabId = tab.id;
+
+  if (!getChatSite(tab.url)) {
+    flashBadge(tabId, t("popup.error.openSupportedSite"));
+
+    return;
+  }
+
+  let reachable = false;
+
+  try {
+    reachable = await ensureContentScript(tabId);
+  } catch (error) {
+    devError("AI Exporter: couldn't reach the chat page", error);
+  }
+
+  if (!reachable) {
+    flashBadge(tabId, t("popup.error.loadConversationFailed"));
+
+    return;
+  }
+
+  if (!isChatConversationUrl(tab.url)) {
+    await showPageToast(tabId, t("popup.chat.openTitle"), "error");
+
+    return;
+  }
+
+  await showPageToast(tabId, t("shortcut.copying"), "info");
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: "LOAD_CONVERSATION",
+      downloadImagesLocally: false,
+    });
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? t("popup.error.loadConversationFailed"));
+    }
+
+    const messages = ((response.data?.messages ?? []) as Message[])
+      .slice()
+      .sort((a, b) => a.order - b.order);
+
+    if (messages.length === 0) {
+      throw new Error(t("popup.error.noMessagesFound"));
+    }
+
+    const { text, html } = await buildClipboardContent(messages, {
+      tabTitle: tab.title,
+      tabUrl: tab.url,
+    });
+    const copied = await copyToClipboard(text, html);
+
+    if (!copied?.success) {
+      throw new Error(t("popup.toast.copyFailed"));
+    }
+
+    await showPageToast(
+      tabId,
+      t("popup.toast.copied", { shortcut: pasteShortcut() }),
+    );
+  } catch (error) {
+    devError("AI Exporter: copying with the shortcut failed", error);
+
+    const message = error instanceof Error ? error.message : "";
+
+    await showPageToast(
+      tabId,
+      message && message.length <= MAX_SHORTCUT_ERROR_LENGTH
+        ? message
+        : t("popup.toast.copyFailed"),
+      "error",
+    );
+  }
+}
+
+chrome.commands?.onCommand.addListener((command, tab) => {
+  if (command === COPY_CHAT_COMMAND) {
+    void trackTask(() => copyChatWithShortcut(tab));
+  }
 });
 
 /*

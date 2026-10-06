@@ -176,6 +176,24 @@ describe("findManifestProblems", () => {
 
     expect(problems).toHaveLength(6);
   });
+
+  it("lets WebAssembly compile, which can't run text as code", () => {
+    const chrome = JSON.parse(readText("../manifest.chrome.json"));
+
+    expect(chrome.content_security_policy.extension_pages).toContain("'wasm-unsafe-eval'");
+    expect(findManifestProblems(chrome, everyFileExists)).toEqual([]);
+    expect(
+      findManifestProblems(
+        {
+          ...chrome,
+          content_security_policy: {
+            extension_pages: "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'",
+          },
+        },
+        everyFileExists,
+      ),
+    ).toHaveLength(1);
+  });
 });
 
 describe("checkDist", () => {

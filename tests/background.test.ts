@@ -40,6 +40,14 @@ const runtimeRequestUpdateCheck = vi.fn();
 const alarmsCreate = vi.fn();
 const alarmsClear = vi.fn();
 const offscreenCreateDocument = vi.fn();
+const tabsQuery = vi.fn();
+const tabsReload = vi.fn();
+const actionSetBadgeText = vi.fn();
+const actionSetBadgeBackgroundColor = vi.fn();
+const actionSetTitle = vi.fn();
+const onCommandListeners: Array<
+  (command: string, tab?: chrome.tabs.Tab) => void
+> = [];
 const onMessageListeners: Array<
   (
     message: any,
@@ -171,6 +179,20 @@ vi.stubGlobal("chrome", {
   },
   tabs: {
     sendMessage: tabsSendMessage,
+    query: tabsQuery,
+    reload: tabsReload,
+  },
+  commands: {
+    onCommand: {
+      addListener: (listener: (typeof onCommandListeners)[number]) => {
+        onCommandListeners.push(listener);
+      },
+    },
+  },
+  action: {
+    setBadgeText: actionSetBadgeText,
+    setBadgeBackgroundColor: actionSetBadgeBackgroundColor,
+    setTitle: actionSetTitle,
   },
   storage: {
     sync: {
@@ -252,6 +274,7 @@ async function startBackground(): Promise<void> {
   onUpdateAvailableListeners.length = 0;
   onInstalledListeners.length = 0;
   onAlarmListeners.length = 0;
+  onCommandListeners.length = 0;
 
   await import("../src/background");
 }
@@ -1319,6 +1342,281 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
       }
 
       expect(runtimeRequestUpdateCheck).not.toHaveBeenCalled();
+    });
+  });
+
+  /*
+   * A copied chat goes on the clipboard as Markdown and as
+   * formatted HTML (see clipboard-export.ts): through the offscreen
+   * document in Chrome, and right in the event page in Firefox,
+   * which has no offscreen documents.
+   */
+  describe("copying a chat", () => {
+    it("hands the text and the formatted chat to the offscreen document", async () => {
+      runtimeSendMessage.mockResolvedValue({ success: true });
+
+      const response = await dispatchMessage({
+        type: "COPY_TO_CLIPBOARD",
+        data: "## User",
+        html: "<h2>User</h2>",
+      });
+
+      expect(response).toEqual({ success: true });
+      expect(runtimeSendMessage).toHaveBeenCalledWith({
+        type: "OFFSCREEN_COPY",
+        data: "## User",
+        html: "<h2>User</h2>",
+      });
+    });
+
+    it("turns down a copy that isn't text", async () => {
+      const response = await dispatchMessage({
+        type: "COPY_TO_CLIPBOARD",
+        data: { text: "## User" },
+      });
+
+      expect(response).toEqual({ success: false, error: "Invalid copy request." });
+      expect(offscreenCreateDocument).not.toHaveBeenCalled();
+    });
+
+    describe("in Firefox (no offscreen documents)", () => {
+      const chromeApi = globalThis.chrome as unknown as { offscreen?: unknown };
+      const globals = globalThis as unknown as { ClipboardItem?: unknown };
+      const clipboardWrite = vi.fn();
+      let offscreen: unknown;
+
+      class FakeClipboardItem {
+        items: Record<string, Blob>;
+
+        constructor(items: Record<string, Blob>) {
+          this.items = items;
+        }
+      }
+
+      beforeEach(() => {
+        offscreen = chromeApi.offscreen;
+        delete chromeApi.offscreen;
+        clipboardWrite.mockReset().mockResolvedValue(undefined);
+        globals.ClipboardItem = FakeClipboardItem;
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { write: clipboardWrite, writeText: vi.fn() },
+        });
+      });
+
+      afterEach(() => {
+        chromeApi.offscreen = offscreen;
+        delete globals.ClipboardItem;
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      });
+
+      it("writes both versions itself", async () => {
+        const response = await dispatchMessage({
+          type: "COPY_TO_CLIPBOARD",
+          data: "## User",
+          html: "<h2>User</h2>",
+        });
+
+        expect(response).toEqual({ success: true });
+        expect(offscreenCreateDocument).not.toHaveBeenCalled();
+
+        const [[[item]]] = clipboardWrite.mock.calls as [[[FakeClipboardItem]]];
+
+        expect(await item.items["text/plain"].text()).toBe("## User");
+        expect(await item.items["text/html"].text()).toBe("<h2>User</h2>");
+      });
+
+      it("says so when the clipboard can't be written", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        clipboardWrite.mockRejectedValue(new Error("denied"));
+
+        const response = await dispatchMessage({
+          type: "COPY_TO_CLIPBOARD",
+          data: "## User",
+          html: "<h2>User</h2>",
+        });
+
+        expect(response).toEqual({ success: false, error: "Clipboard write failed" });
+      });
+    });
+  });
+
+  /*
+   * Alt+Shift+M copies the chat open in the active tab without the
+   * popup; the page says how it went.
+   */
+  describe("copying with the keyboard shortcut", () => {
+    const CHAT_URL = "https://chatgpt.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
+    const MESSAGES = [
+      { id: "2", role: "assistant", content: "Lisbon.", order: 1 },
+      { id: "1", role: "user", content: "Where should I go?", order: 0 },
+    ];
+
+    let pageAnswers: Record<string, unknown>;
+
+    beforeEach(() => {
+      pageAnswers = {
+        AIEXPORTER_PING: { ok: true },
+        LOAD_CONVERSATION: { success: true, data: { messages: MESSAGES, images: [] } },
+        SHOW_TOAST: { ok: true },
+      };
+      tabsSendMessage.mockReset().mockImplementation(
+        async (_tabId: number, message: { type: string }) => pageAnswers[message.type],
+      );
+      runtimeSendMessage.mockResolvedValue({ success: true });
+      tabsReload.mockReset().mockResolvedValue(undefined);
+      actionSetBadgeText.mockReset().mockResolvedValue(undefined);
+      actionSetBadgeBackgroundColor.mockReset().mockResolvedValue(undefined);
+      actionSetTitle.mockReset().mockResolvedValue(undefined);
+    });
+
+    function press(command: string, tab: Partial<chrome.tabs.Tab>): void {
+      for (const listener of onCommandListeners) {
+        listener(command, tab as chrome.tabs.Tab);
+      }
+    }
+
+    function toasts(): { text: string; tone: string }[] {
+      return tabsSendMessage.mock.calls
+        .map(([, message]) => message)
+        .filter((message) => message.type === "SHOW_TOAST");
+    }
+
+    it("copies the chat as text and formatted, and says so on the page", async () => {
+      press("copy-chat", { id: 7, url: CHAT_URL, title: "Trip - ChatGPT" });
+
+      await vi.waitFor(() =>
+        expect(toasts().map((toast) => toast.text)).toEqual([
+          "Copying the chat…",
+          "Copied! Paste it anywhere with Ctrl+V.",
+        ]),
+      );
+
+      const copy = runtimeSendMessage.mock.calls
+        .map(([message]) => message)
+        .find((message) => message.type === "OFFSCREEN_COPY");
+
+      expect(copy.data).toBe("## User\n\nWhere should I go?\n\n## Assistant\n\nLisbon.");
+      expect(copy.html).toContain("<h2>User</h2>");
+      expect(tabsSendMessage).toHaveBeenCalledWith(7, {
+        type: "LOAD_CONVERSATION",
+        downloadImagesLocally: false,
+      });
+      expect(tabsReload).not.toHaveBeenCalled();
+    });
+
+    /*
+     * Chrome only gives content.js to pages loaded after AI Exporter
+     * was installed or updated.
+     */
+    it("reloads a tab opened before AI Exporter, then copies its chat", async () => {
+      vi.useFakeTimers();
+
+      try {
+        let reloaded = false;
+
+        tabsReload.mockImplementation(async () => {
+          setTimeout(() => {
+            reloaded = true;
+          }, 2500);
+        });
+        tabsSendMessage.mockImplementation(
+          async (_tabId: number, message: { type: string }) => {
+            if (!reloaded) {
+              throw new Error("Could not establish connection.");
+            }
+
+            return pageAnswers[message.type];
+          },
+        );
+
+        press("copy-chat", {
+          id: 9,
+          url: "https://grok.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+          title: "Cats - Grok",
+        });
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(tabsReload).toHaveBeenCalledWith(9);
+        expect(toasts().map((toast) => toast.tone)).toEqual(["info", "success"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("marks the toolbar button when the tab never answers", async () => {
+      vi.useFakeTimers();
+
+      try {
+        tabsSendMessage.mockRejectedValue(new Error("Could not establish connection."));
+
+        press("copy-chat", {
+          id: 9,
+          url: "https://grok.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+          title: "Cats - Grok",
+        });
+        await vi.advanceTimersByTimeAsync(20_000);
+
+        expect(tabsReload).toHaveBeenCalledTimes(1);
+        expect(actionSetBadgeText).toHaveBeenCalledWith({ tabId: 9, text: "!" });
+        expect(toasts()).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks for a chat on another page of a chat site", async () => {
+      press("copy-chat", { id: 7, url: "https://chatgpt.com/", title: "ChatGPT" });
+
+      await vi.waitFor(() =>
+        expect(toasts()).toEqual([
+          { type: "SHOW_TOAST", text: "Open a chat first", tone: "error" },
+        ]),
+      );
+      expect(tabsSendMessage).not.toHaveBeenCalledWith(7, expect.objectContaining({
+        type: "LOAD_CONVERSATION",
+      }));
+    });
+
+    it("marks the toolbar button on a page of no chat site", async () => {
+      press("copy-chat", { id: 3, url: "https://example.com/", title: "Example" });
+
+      await vi.waitFor(() =>
+        expect(actionSetBadgeText).toHaveBeenCalledWith({ tabId: 3, text: "!" }),
+      );
+      expect(actionSetTitle).toHaveBeenCalledWith({
+        tabId: 3,
+        title: "Open a chat on a supported AI site first: ChatGPT, Claude, Gemini, DeepSeek, Copilot, Kimi, Qwen and more.",
+      });
+      expect(tabsSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("says what went wrong when the chat can't be read", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      pageAnswers.LOAD_CONVERSATION = {
+        success: false,
+        error: "Sign in to ChatGPT to export this conversation.",
+      };
+
+      press("copy-chat", { id: 7, url: CHAT_URL, title: "Trip - ChatGPT" });
+
+      await vi.waitFor(() =>
+        expect(toasts().at(-1)).toEqual({
+          type: "SHOW_TOAST",
+          text: "Sign in to ChatGPT to export this conversation.",
+          tone: "error",
+        }),
+      );
+      expect(runtimeSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "OFFSCREEN_COPY" }),
+      );
+    });
+
+    it("leaves other commands to the browser", async () => {
+      press("_execute_action", { id: 7, url: CHAT_URL });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tabsSendMessage).not.toHaveBeenCalled();
     });
   });
 });

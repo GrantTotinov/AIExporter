@@ -9,7 +9,8 @@
  * message's raw Markdown (preprocessRawContent), fences pasted
  * code in user messages (fenceUserContent), and splits the text
  * into blocks (parseBlocks) and styled inline runs (parseInline).
- * Needs a DOM, for decoding HTML entities.
+ * Decodes HTML entities with the DOM where there is one, and on
+ * its own where there isn't (see decodeHtmlEntities).
  */
 import { MATH_CLOSE, MATH_OPEN } from "./math.ts";
 import { NOTE_CLOSE, NOTE_OPEN, stripNotes } from "./source-notes.ts";
@@ -28,7 +29,79 @@ import { NOTE_CLOSE, NOTE_OPEN, stripNotes } from "./source-notes.ts";
  */
 let entityDecoder: HTMLTextAreaElement | undefined;
 
+/*
+ * Where there's no DOM - Chrome's background service worker, which
+ * builds the chat the copy shortcut puts on the clipboard (see
+ * clipboard-export.ts) - numeric entities and the named ones that
+ * turn up in chat replies are decoded here; any other name is left
+ * as it is.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  laquo: "«",
+  raquo: "»",
+  middot: "·",
+  bull: "•",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  deg: "°",
+  plusmn: "±",
+  times: "×",
+  divide: "÷",
+  le: "≤",
+  ge: "≥",
+  ne: "≠",
+  larr: "←",
+  rarr: "→",
+  uarr: "↑",
+  darr: "↓",
+  harr: "↔",
+  euro: "€",
+  pound: "£",
+  yen: "¥",
+  cent: "¢",
+  sect: "§",
+  para: "¶",
+};
+
+const ENTITY_RE = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z][a-zA-Z0-9]{1,31}));/g;
+
+function decodeEntitiesWithoutDom(text: string): string {
+  return text.replace(
+    ENTITY_RE,
+    (entity, decimal: string | undefined, hex: string | undefined, name: string | undefined) => {
+      if (name !== undefined) {
+        return NAMED_ENTITIES[name] ?? entity;
+      }
+
+      const code = decimal !== undefined ? Number(decimal) : parseInt(hex ?? "", 16);
+
+      // What a browser makes of a code point no text may hold
+      return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff)
+        ? String.fromCodePoint(code)
+        : "�";
+    },
+  );
+}
+
 function decodeHtmlEntities(text: string): string {
+  if (typeof document === "undefined") {
+    return decodeEntitiesWithoutDom(text);
+  }
+
   entityDecoder ??= document.createElement("textarea");
   entityDecoder.innerHTML = text;
   return entityDecoder.value;

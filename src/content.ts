@@ -60,7 +60,12 @@ import {
   type ConversationListPage,
   type ConversationSummary,
 } from "./conversation-list.ts";
-import { chatGptThinking, convertChatGptCitations } from "./chatgpt-reply.ts";
+import {
+  chatGptModel,
+  chatGptThinking,
+  convertChatGptCitations,
+} from "./chatgpt-reply.ts";
+import { messageMetadata, timeFromSeconds } from "./message-metadata.ts";
 import {
   buildDeepSeekHistoryPath,
   buildDeepSeekListPath,
@@ -97,6 +102,80 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import { record, type SiteConversationPage } from "./site-json.ts";
+import {
+  KIMI_LIST_PATH,
+  KIMI_MESSAGES_PATH,
+  convertKimiMessages,
+  getKimiConversationId,
+  kimiHeaders,
+  kimiListBody,
+  kimiMessagesBody,
+  parseKimiConversationList,
+  parseKimiMessagesPage,
+  readKimiToken,
+} from "./kimi-conversation.ts";
+import {
+  DOUBAO_HEADERS,
+  DOUBAO_LIST_PATH,
+  DOUBAO_MESSAGES_PATH,
+  convertDoubaoMessages,
+  doubaoListBody,
+  doubaoMessagesBody,
+  doubaoQuery,
+  getDoubaoConversationId,
+  parseDoubaoConversationList,
+  parseDoubaoMessagesPage,
+} from "./doubao-conversation.ts";
+import {
+  QWEN_HEADERS,
+  buildQwenChatPath,
+  buildQwenListPath,
+  buildZaiBatchPath,
+  buildZaiChatPath,
+  buildZaiListPath,
+  convertQwenChat,
+  convertZaiChat,
+  getQwenConversationId,
+  parseQwenConversationList,
+  parseZaiConversationList,
+  zaiMessageIds,
+} from "./qwen-conversation.ts";
+import {
+  convertQianwenTurns,
+  getQianwenConversationId,
+  parseQianwenConversationList,
+  parseQianwenTurnsPage,
+  qianwenHeaders,
+  qianwenListBody,
+  qianwenTurnsQuery,
+  qianwenUrl,
+  qianwenVersion,
+  unwrapQianwen,
+  type QianwenClient,
+} from "./qianwen-conversation.ts";
+import {
+  YUANBAO_DETAIL_PATH,
+  YUANBAO_LIST_PATH,
+  convertYuanbaoConversation,
+  getYuanbaoAgentId,
+  getYuanbaoConversation,
+  getYuanbaoConversationId,
+  parseYuanbaoConversationList,
+  parseYuanbaoDetailPage,
+  unwrapYuanbao,
+  yuanbaoDetailBody,
+  yuanbaoListBody,
+} from "./yuanbao-conversation.ts";
+import {
+  buildCopilotHistoryPath,
+  buildCopilotListPath,
+  convertCopilotHistory,
+  getCopilotConversationId,
+  parseCopilotConversationList,
+  readCopilotToken,
+} from "./copilot-conversation.ts";
+import { readDomConversation, type DomSite } from "./dom-conversation.ts";
 
 /*
  * ---------------------------------------------------------
@@ -114,7 +193,21 @@ import {
  * overlay (further below) needs, translated the same way as
  * everything in src/locales/*.json.
  */
-const CONTENT_LOCALES = ["en", "es", "fr", "de", "ru", "zh"] as const;
+const CONTENT_LOCALES = [
+  "en",
+  "es",
+  "fr",
+  "de",
+  "ru",
+  "zh",
+  "ja",
+  "ko",
+  "hi",
+  "pt",
+  "id",
+  "tr",
+  "it",
+] as const;
 type ContentLocale = (typeof CONTENT_LOCALES)[number];
 
 const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
@@ -226,6 +319,132 @@ const CONTENT_STRINGS: Record<ContentLocale, Record<string, string>> = {
     emailSubject: "AI Exporter 反馈",
     emailPlaceholder: "请在此输入您的消息：",
   },
+  ja: {
+    title: "エクスポート完了",
+    subtitle: "チャットを保存しました。",
+    freeTitle: "誰でも無料",
+    freeText:
+      "広告なし、アカウント不要、トラッキングなし。AI Exporter は個人開発者がひとりで作っています。レビューやコーヒーの支援が、無料のまま改良を続ける力になります。",
+    review: "レビューを書く",
+    coffee: "コーヒーをおごる",
+    feedbackTitle: "質問、アイデア、不具合はありますか？",
+    feedbackText: "直接ご連絡ください。すべてのメッセージに目を通しています。",
+    writeToMe: "メールを書く",
+    copyEmail: "メールアドレスをコピー",
+    copied: "コピーしました",
+    github: "または GitHub で報告",
+    close: "閉じる",
+    emailSubject: "AI Exporter へのフィードバック",
+    emailPlaceholder: "ここにメッセージを書いてください：",
+  },
+  ko: {
+    title: "내보내기 완료",
+    subtitle: "채팅이 저장되었습니다.",
+    freeTitle: "모두에게 무료",
+    freeText:
+      "광고도, 계정도, 추적도 없습니다. AI Exporter는 독립 개발자 한 명이 만듭니다. 리뷰나 커피 한 잔이 무료로 유지하고 계속 개선하는 데 도움이 됩니다.",
+    review: "리뷰 남기기",
+    coffee: "커피 사주기",
+    feedbackTitle: "질문, 아이디어 또는 문제가 있나요?",
+    feedbackText: "직접 연락해 주세요. 모든 메시지를 읽습니다.",
+    writeToMe: "메일 보내기",
+    copyEmail: "이메일 주소 복사",
+    copied: "복사됨",
+    github: "또는 GitHub에 제보",
+    close: "닫기",
+    emailSubject: "AI Exporter 피드백",
+    emailPlaceholder: "여기에 메시지를 작성하세요:",
+  },
+  hi: {
+    title: "एक्सपोर्ट पूरा हुआ",
+    subtitle: "आपकी चैट सेव हो गई है।",
+    freeTitle: "सबके लिए मुफ़्त",
+    freeText:
+      "न विज्ञापन, न खाता, न ट्रैकिंग। AI Exporter को एक स्वतंत्र डेवलपर ने बनाया है - एक रिव्यू या एक कॉफ़ी इसे मुफ़्त रखने और बेहतर बनाने में मदद करती है।",
+    review: "रिव्यू लिखें",
+    coffee: "मुझे एक कॉफ़ी पिलाएँ",
+    feedbackTitle: "सवाल, सुझाव या कोई समस्या?",
+    feedbackText: "मुझे सीधे लिखें - हर संदेश पढ़ा जाता है।",
+    writeToMe: "मुझे लिखें",
+    copyEmail: "ईमेल पता कॉपी करें",
+    copied: "कॉपी हो गया",
+    github: "या GitHub पर रिपोर्ट करें",
+    close: "बंद करें",
+    emailSubject: "AI Exporter प्रतिक्रिया",
+    emailPlaceholder: "अपना संदेश यहाँ लिखें:",
+  },
+  pt: {
+    title: "Exportação concluída",
+    subtitle: "Sua conversa foi salva.",
+    freeTitle: "Grátis para todos",
+    freeText:
+      "Sem anúncios, sem conta e sem rastreamento. O AI Exporter é feito por uma única pessoa — uma avaliação ou um café ajudam a mantê-lo gratuito e melhorando.",
+    review: "Deixar uma avaliação",
+    coffee: "Me pague um café",
+    feedbackTitle: "Dúvidas, ideias ou algum problema?",
+    feedbackText: "Escreva direto para mim — leio todas as mensagens.",
+    writeToMe: "Escrever para mim",
+    copyEmail: "Copiar endereço de e-mail",
+    copied: "Copiado",
+    github: "ou relate no GitHub",
+    close: "Fechar",
+    emailSubject: "Feedback sobre o AI Exporter",
+    emailPlaceholder: "Escreva sua mensagem aqui:",
+  },
+  id: {
+    title: "Ekspor selesai",
+    subtitle: "Obrolan Anda telah disimpan.",
+    freeTitle: "Gratis untuk semua",
+    freeText:
+      "Tanpa iklan, tanpa akun, tanpa pelacakan. AI Exporter dibuat oleh satu developer independen — ulasan atau traktiran kopi membantunya tetap gratis dan terus berkembang.",
+    review: "Tulis ulasan",
+    coffee: "Traktir saya kopi",
+    feedbackTitle: "Ada pertanyaan, ide, atau masalah?",
+    feedbackText: "Tulis langsung kepada saya — saya membaca setiap pesan.",
+    writeToMe: "Tulis kepada saya",
+    copyEmail: "Salin alamat email",
+    copied: "Disalin",
+    github: "atau laporkan di GitHub",
+    close: "Tutup",
+    emailSubject: "Masukan untuk AI Exporter",
+    emailPlaceholder: "Tulis pesan Anda di sini:",
+  },
+  tr: {
+    title: "Dışa aktarma tamamlandı",
+    subtitle: "Sohbetiniz kaydedildi.",
+    freeTitle: "Herkes için ücretsiz",
+    freeText:
+      "Reklam yok, hesap yok, takip yok. AI Exporter'ı bağımsız tek bir geliştirici yapıyor — bir değerlendirme veya bir kahve, ücretsiz kalmasına ve gelişmesine yardımcı olur.",
+    review: "Değerlendirme yaz",
+    coffee: "Bana bir kahve ısmarla",
+    feedbackTitle: "Sorunuz, fikriniz veya bir sorun mu var?",
+    feedbackText: "Bana doğrudan yazın — her mesajı okuyorum.",
+    writeToMe: "Bana yazın",
+    copyEmail: "E-posta adresini kopyala",
+    copied: "Kopyalandı",
+    github: "veya GitHub'da bildirin",
+    close: "Kapat",
+    emailSubject: "AI Exporter geri bildirimi",
+    emailPlaceholder: "Mesajınızı buraya yazın:",
+  },
+  it: {
+    title: "Esportazione completata",
+    subtitle: "La tua chat è stata salvata.",
+    freeTitle: "Gratis per tutti",
+    freeText:
+      "Niente pubblicità, niente account, niente tracciamento. AI Exporter è creato da una sola persona — una recensione o un caffè aiutano a mantenerlo gratuito e a migliorarlo.",
+    review: "Lascia una recensione",
+    coffee: "Offrimi un caffè",
+    feedbackTitle: "Domande, idee o un problema?",
+    feedbackText: "Scrivimi direttamente — leggo ogni messaggio.",
+    writeToMe: "Scrivimi",
+    copyEmail: "Copia l'indirizzo e-mail",
+    copied: "Copiato",
+    github: "oppure segnalalo su GitHub",
+    close: "Chiudi",
+    emailSubject: "Feedback su AI Exporter",
+    emailPlaceholder: "Scrivi qui il tuo messaggio:",
+  },
 };
 
 let contentLocale: ContentLocale = "en";
@@ -327,12 +546,40 @@ const IS_GROK_SITE = window.location.hostname === "grok.com";
 const IS_PERPLEXITY_SITE = /^(?:www\.)?perplexity\.ai$/.test(
   window.location.hostname,
 );
+
+/* The sites added in 2.4 (see LOAD THE SITES ADDED IN 2.4 below) */
+type NewSite =
+  | "copilot"
+  | "mistral"
+  | "meta"
+  | "kimi"
+  | "doubao"
+  | "qwen"
+  | "qianwen"
+  | "yuanbao"
+  | "zai";
+
+const NEW_SITE_HOSTS: Record<string, NewSite> = {
+  "copilot.microsoft.com": "copilot",
+  "chat.mistral.ai": "mistral",
+  "www.meta.ai": "meta",
+  "www.kimi.com": "kimi",
+  "www.doubao.com": "doubao",
+  "chat.qwen.ai": "qwen",
+  "www.qianwen.com": "qianwen",
+  "yuanbao.tencent.com": "yuanbao",
+  "chat.z.ai": "zai",
+};
+
+const NEW_SITE: NewSite | null = NEW_SITE_HOSTS[window.location.hostname] ?? null;
+
 const IS_CHATGPT_SITE =
   !IS_CLAUDE_SITE &&
   !IS_GEMINI_SITE &&
   !IS_DEEPSEEK_SITE &&
   !IS_GROK_SITE &&
-  !IS_PERPLEXITY_SITE;
+  !IS_PERPLEXITY_SITE &&
+  NEW_SITE === null;
 
 function injectPageBridge(): void {
   if (document.documentElement.dataset.aiExporterBridgeInjected === "true") {
@@ -381,6 +628,24 @@ interface Message {
   thinking?: string;
   /* The web pages a reply cites, numbered as its notes are */
   sources?: ReplySource[];
+  /* When it was sent, in milliseconds since the epoch (see message-metadata.ts) */
+  time?: number;
+  /* The AI model that wrote a reply, when the site names it */
+  model?: string;
+}
+
+/*
+ * What a site parser's message carries besides its parts, copied
+ * into the export's message - each only when there is one.
+ */
+function messageExtras(
+  message: Pick<Message, "thinking" | "sources" | "time" | "model">,
+): Pick<Message, "thinking" | "sources" | "time" | "model"> {
+  return {
+    ...(message.thinking ? { thinking: message.thinking } : {}),
+    ...(message.sources ? { sources: message.sources } : {}),
+    ...messageMetadata(message.time, message.model),
+  };
 }
 
 interface ExportImageFile {
@@ -1503,6 +1768,10 @@ async function loadEntireConversation(
     return loadPerplexityConversation(downloadImagesLocally, requestedId);
   }
 
+  if (NEW_SITE) {
+    return loadNewSiteConversation(NEW_SITE, downloadImagesLocally, requestedId);
+  }
+
   await waitForBridge();
 
   const conversationId = requestedId ?? getConversationIdFromUrl();
@@ -1689,6 +1958,8 @@ async function loadEntireConversation(
         return null;
       }
 
+      const time = timeFromSeconds(message.create_time);
+
       if (role === "user") {
         return {
           id,
@@ -1696,6 +1967,7 @@ async function loadEntireConversation(
           content: extracted.content,
           order,
           imagePaths: extracted.imagePaths,
+          ...messageMetadata(time),
         };
       }
 
@@ -1716,6 +1988,7 @@ async function loadEntireConversation(
         order,
         imagePaths: extracted.imagePaths,
         ...replyExtras(thinking, sources),
+        ...messageMetadata(time, chatGptModel(message.metadata)),
       };
     }),
   );
@@ -2032,8 +2305,7 @@ async function loadClaudeConversation(
                   ),
                 ),
               ],
-              ...(message.thinking ? { thinking: message.thinking } : {}),
-              ...(message.sources ? { sources: message.sources } : {}),
+              ...messageExtras(message),
             }
           : null;
       },
@@ -2423,8 +2695,7 @@ async function loadGeminiConversation(
                   ),
                 ),
               ],
-              ...(message.thinking ? { thinking: message.thinking } : {}),
-              ...(message.sources ? { sources: message.sources } : {}),
+              ...messageExtras(message),
             }
           : null;
       },
@@ -2473,6 +2744,8 @@ interface SiteExportMessage {
   parts: SiteMessagePart[];
   thinking?: string;
   sources?: ReplySource[];
+  time?: number;
+  model?: string;
 }
 
 /* A long Perplexity thread, fifty questions a page */
@@ -2652,8 +2925,7 @@ async function toExportMessages(
                 renderedParts.flatMap((part) => (part.imagePath ? [part.imagePath] : [])),
               ),
             ],
-            ...(message.thinking ? { thinking: message.thinking } : {}),
-            ...(message.sources ? { sources: message.sources } : {}),
+            ...messageExtras(message),
           }
         : null;
     }),
@@ -2813,6 +3085,430 @@ async function loadPerplexityConversation(
   devLog("AI Exporter: Perplexity export", { thread, messages: messages.length });
 
   return toExportMessages(messages, downloadImagesLocally);
+}
+
+/*
+ * ---------------------------------------------------------
+ * LOAD THE SITES ADDED IN 2.4
+ * ---------------------------------------------------------
+ *
+ * Microsoft Copilot, Kimi, Doubao, Qwen Chat, Qianwen, Yuanbao and
+ * Z.ai are read from their web apps' APIs like the sites above,
+ * with the session the page has (its cookies, or the token its web
+ * app keeps in localStorage); the *-conversation.ts modules read
+ * the answers. Le Chat and Meta AI have no API to read, so the
+ * open conversation is read from the page (dom-conversation.ts).
+ */
+const NEW_SITE_NAMES: Record<NewSite, string> = {
+  copilot: "Copilot",
+  mistral: "Le Chat",
+  meta: "Meta AI",
+  kimi: "Kimi",
+  doubao: "Doubao",
+  qwen: "Qwen",
+  qianwen: "Qianwen",
+  yuanbao: "Yuanbao",
+  zai: "Z.ai",
+};
+
+function storedItem(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storedEntries(): [string, string | null][] {
+  try {
+    const storage = window.localStorage;
+
+    return Array.from({ length: storage.length }, (_, index) => {
+      const key = storage.key(index) ?? "";
+
+      return [key, storage.getItem(key)] as [string, string | null];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function cookieValue(name: string): string {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|;\\s*)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`),
+  );
+
+  try {
+    return match ? decodeURIComponent(match[1]) : "";
+  } catch {
+    return match?.[1] ?? "";
+  }
+}
+
+/* The addresses the page has requested, newest last */
+function requestedUrls(): string[] {
+  try {
+    return performance.getEntriesByType("resource").map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function pageTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function newRequestId(): string {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function missingConversationId(siteName: string): Error {
+  return new Error(
+    `Could not determine the ${siteName} conversation ID from the current URL.`,
+  );
+}
+
+async function loadKimiConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getKimiConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Kimi");
+  }
+
+  const messages: Record<string, unknown>[] = [];
+  let pageToken = "";
+
+  for (let page = 0; page < MAX_THREAD_PAGES; page++) {
+    const parsed = parseKimiMessagesPage(
+      await fetchSiteJson("Kimi", KIMI_MESSAGES_PATH, {
+        method: "POST",
+        body: kimiMessagesBody(id, pageToken),
+        headers: kimiRequestHeaders(),
+      }),
+    );
+
+    messages.push(...parsed.messages);
+    reportProgress(messages.length);
+
+    if (!parsed.nextPageToken || parsed.nextPageToken === pageToken || parsed.messages.length === 0) {
+      break;
+    }
+
+    pageToken = parsed.nextPageToken;
+  }
+
+  return toExportMessages(convertKimiMessages(messages), downloadImagesLocally);
+}
+
+function kimiRequestHeaders(): Record<string, string> {
+  const token = readKimiToken(storedItem("access_token"));
+
+  if (!token) {
+    throw new Error("Sign in to Kimi to export this conversation.");
+  }
+
+  return kimiHeaders(token, navigator.language || "zh-CN", pageTimeZone());
+}
+
+function doubaoRequestQuery(): string {
+  return doubaoQuery(
+    requestedUrls(),
+    storedItem("desktop_device_id"),
+    storedItem("flow_tea_user_id"),
+    navigator.language || "zh-CN",
+  );
+}
+
+async function loadDoubaoConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getDoubaoConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Doubao");
+  }
+
+  const query = doubaoRequestQuery();
+  const messages: Record<string, unknown>[] = [];
+  let anchor = Number.MAX_SAFE_INTEGER;
+
+  for (let page = 0; page < MAX_THREAD_PAGES; page++) {
+    const parsed = parseDoubaoMessagesPage(
+      await fetchSiteJson("Doubao", `${DOUBAO_MESSAGES_PATH}${query}`, {
+        method: "POST",
+        body: doubaoMessagesBody(id, anchor, newRequestId()),
+        headers: DOUBAO_HEADERS,
+      }),
+    );
+
+    messages.push(...parsed.messages);
+    reportProgress(messages.length);
+
+    if (!parsed.hasMore || parsed.nextAnchor === null || parsed.nextAnchor >= anchor) {
+      break;
+    }
+
+    anchor = parsed.nextAnchor;
+  }
+
+  return toExportMessages(convertDoubaoMessages(messages), downloadImagesLocally);
+}
+
+async function loadQwenConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getQwenConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Qwen");
+  }
+
+  const data = await fetchSiteJson("Qwen", buildQwenChatPath(id), { headers: QWEN_HEADERS });
+
+  return toExportMessages(convertQwenChat(data), downloadImagesLocally);
+}
+
+function zaiRequestHeaders(): Record<string, string> {
+  const token = storedItem("token");
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function loadZaiConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getQwenConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Z.ai");
+  }
+
+  const headers = zaiRequestHeaders();
+  const tree = await fetchSiteJson("Z.ai", buildZaiChatPath(id), { headers });
+  const ids = zaiMessageIds(tree);
+  const contents: Record<string, unknown> = {};
+
+  try {
+    for (let start = 0; start < ids.length; start += 100) {
+      const batch = record(
+        await fetchSiteJson("Z.ai", buildZaiBatchPath(id), {
+          method: "POST",
+          body: JSON.stringify({ ids: ids.slice(start, start + 100) }),
+          headers,
+        }),
+      );
+
+      Object.assign(contents, record("data" in batch ? batch.data : batch));
+      reportProgress(Object.keys(contents).length);
+    }
+  } catch (error) {
+    // Older chats keep their text in the tree itself.
+    devWarn("AI Exporter: Z.ai message contents unavailable", error);
+  }
+
+  return toExportMessages(convertZaiChat(tree, contents), downloadImagesLocally);
+}
+
+function qianwenClient(): QianwenClient {
+  return {
+    deviceId: storedItem("uc-stat-dn") ?? "",
+    version: qianwenVersion(requestedUrls()),
+    language: navigator.language || "zh-CN",
+    timeZone: pageTimeZone(),
+    xsrfToken: cookieValue("XSRF-TOKEN"),
+  };
+}
+
+async function fetchQianwen(
+  client: QianwenClient,
+  path: string,
+  query: Record<string, string>,
+  body?: string,
+): Promise<Record<string, unknown>> {
+  return unwrapQianwen(
+    await fetchSiteJson("Qianwen", qianwenUrl(client, path, query), {
+      method: body ? "POST" : "GET",
+      headers: qianwenHeaders(client),
+      ...(body ? { body } : {}),
+    }),
+  );
+}
+
+async function loadQianwenConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getQianwenConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Qianwen");
+  }
+
+  const client = qianwenClient();
+  const turns: Record<string, unknown>[] = [];
+  let pos = "";
+
+  for (let page = 1; page <= MAX_THREAD_PAGES; page++) {
+    const parsed = parseQianwenTurnsPage(
+      await fetchQianwen(client, "/api/v1/session/msg/list", qianwenTurnsQuery(id, page, pos)),
+    );
+
+    turns.push(...parsed.turns);
+    reportProgress(turns.length * 2);
+
+    if (!parsed.nextPos || parsed.nextPos === pos || parsed.turns.length === 0) {
+      break;
+    }
+
+    pos = parsed.nextPos;
+  }
+
+  // A turn listed without its answer has it in its own detail.
+  for (const [index, turn] of turns.entries()) {
+    const answered =
+      (Array.isArray(turn.response_messages) && turn.response_messages.length > 0) ||
+      (Array.isArray(turn.qwen_response_messages) && turn.qwen_response_messages.length > 0);
+    const requestId = typeof turn.req_id === "string" ? turn.req_id : "";
+
+    if (!answered && requestId) {
+      try {
+        turns[index] = {
+          ...turn,
+          ...(await fetchQianwen(client, "/api/v1/session/req/detail", {
+            session_id: id,
+            req_id: requestId,
+          })),
+        };
+      } catch (error) {
+        devWarn("AI Exporter: a Qianwen answer couldn't be loaded", error);
+      }
+    }
+  }
+
+  return toExportMessages(convertQianwenTurns(turns), downloadImagesLocally);
+}
+
+async function loadYuanbaoConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const conversation = requestedId
+    ? { agentId: getYuanbaoAgentId(window.location.pathname), conversationId: requestedId }
+    : getYuanbaoConversation(window.location.pathname);
+
+  if (!conversation) {
+    throw missingConversationId("Yuanbao");
+  }
+
+  const convs: Record<string, unknown>[] = [];
+  let offset = 0;
+
+  for (let page = 0; page < MAX_THREAD_PAGES; page++) {
+    const parsed = parseYuanbaoDetailPage(
+      unwrapYuanbao(
+        await fetchSiteJson("Yuanbao", YUANBAO_DETAIL_PATH, {
+          method: "POST",
+          body: yuanbaoDetailBody(conversation.agentId, conversation.conversationId, offset),
+        }),
+      ),
+      offset,
+    );
+
+    convs.push(...parsed.convs);
+    reportProgress(convs.length);
+
+    if (parsed.nextOffset === null) {
+      break;
+    }
+
+    offset = parsed.nextOffset;
+  }
+
+  return toExportMessages(convertYuanbaoConversation(convs), downloadImagesLocally);
+}
+
+function copilotRequestHeaders(): Record<string, string> {
+  const token = readCopilotToken(storedEntries());
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function loadCopilotConversation(
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const id = requestedId ?? getCopilotConversationId(window.location.pathname);
+
+  if (!id) {
+    throw missingConversationId("Copilot");
+  }
+
+  const data = await fetchSiteJson("Copilot", buildCopilotHistoryPath(id), {
+    headers: copilotRequestHeaders(),
+  });
+
+  return toExportMessages(convertCopilotHistory(data), downloadImagesLocally);
+}
+
+/* Le Chat and Meta AI: the conversation the page shows */
+async function loadPageConversation(
+  site: DomSite,
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  const siteName = NEW_SITE_NAMES[site];
+
+  if (requestedId) {
+    throw new Error(`${siteName} chats can only be exported one at a time, from the open chat.`);
+  }
+
+  const messages = readDomConversation(site, document);
+
+  if (messages.length === 0) {
+    throw new Error(
+      `No messages found on this ${siteName} page. Open a chat and wait for it to load, then try again.`,
+    );
+  }
+
+  return toExportMessages(messages, downloadImagesLocally);
+}
+
+function loadNewSiteConversation(
+  site: NewSite,
+  downloadImagesLocally: boolean,
+  requestedId?: string,
+): Promise<ConversationLoadResult> {
+  switch (site) {
+    case "kimi":
+      return loadKimiConversation(downloadImagesLocally, requestedId);
+    case "doubao":
+      return loadDoubaoConversation(downloadImagesLocally, requestedId);
+    case "qwen":
+      return loadQwenConversation(downloadImagesLocally, requestedId);
+    case "zai":
+      return loadZaiConversation(downloadImagesLocally, requestedId);
+    case "qianwen":
+      return loadQianwenConversation(downloadImagesLocally, requestedId);
+    case "yuanbao":
+      return loadYuanbaoConversation(downloadImagesLocally, requestedId);
+    case "copilot":
+      return loadCopilotConversation(downloadImagesLocally, requestedId);
+    case "mistral":
+    case "meta":
+      return loadPageConversation(site, downloadImagesLocally, requestedId);
+  }
 }
 
 /*
@@ -3478,6 +4174,97 @@ function showExportSuccessOverlay(): void {
 
 /*
  * ---------------------------------------------------------
+ * TOAST
+ * ---------------------------------------------------------
+ *
+ * A short note in the corner of the page about a keyboard
+ * shortcut's work: background.ts copies the chat without opening
+ * the popup, so the page is where it says "Copying…" and then
+ * "Copied". The text comes translated already (SHOW_TOAST) and is
+ * shown as text, never as markup. Styled like the success overlay:
+ * scoped under its ID, with every inherited style reset.
+ */
+const TOAST_ID = "ai-exporter-toast";
+const TOAST_MS = 3500;
+const ERROR_TOAST_MS = 7000;
+/* Work in progress gives way to its outcome, or else goes after this */
+const INFO_TOAST_MS = 120_000;
+const MAX_TOAST_LENGTH = 300;
+
+const TOAST_STYLES = `
+  #${TOAST_ID} {
+    all: initial;
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 2147483647;
+    box-sizing: border-box;
+    max-width: min(420px, calc(100vw - 40px));
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: #1f2328;
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+    font: 500 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-wrap: anywhere;
+  }
+  #${TOAST_ID}[data-tone="success"] { background: #116329; }
+  #${TOAST_ID}[data-tone="error"] { background: #a40e26; }
+`;
+
+let toastTimer: number | undefined;
+
+function showToast(text: string, tone: "info" | "success" | "error"): void {
+  let toast = document.getElementById(TOAST_ID);
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = TOAST_ID;
+
+    const style = document.createElement("style");
+    style.textContent = TOAST_STYLES;
+
+    const message = document.createElement("span");
+    message.className = "aie-toast-text";
+
+    toast.append(style, message);
+    document.body.appendChild(toast);
+  }
+
+  toast.dataset.tone = tone;
+  toast.setAttribute("role", tone === "error" ? "alert" : "status");
+
+  const message = toast.querySelector<HTMLElement>(".aie-toast-text");
+
+  if (message) {
+    message.textContent = text.slice(0, MAX_TOAST_LENGTH);
+  }
+
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(
+    () => document.getElementById(TOAST_ID)?.remove(),
+    tone === "info" ? INFO_TOAST_MS : tone === "error" ? ERROR_TOAST_MS : TOAST_MS,
+  );
+}
+
+chrome.runtime.onMessage.addListener(
+  (message: { type: string; text?: unknown; tone?: unknown }, _sender, sendResponse) => {
+    if (message.type !== "SHOW_TOAST" || typeof message.text !== "string") {
+      return false;
+    }
+
+    showToast(
+      message.text,
+      message.tone === "error" || message.tone === "info" ? message.tone : "success",
+    );
+    sendResponse({ ok: true });
+
+    return false;
+  },
+);
+
+/*
+ * ---------------------------------------------------------
  * LIST CONVERSATIONS
  * ---------------------------------------------------------
  *
@@ -3739,10 +4526,132 @@ async function listPerplexityPage(
 }
 
 /*
+ * The lists of the sites added in 2.4, for "Save many chats" (Le
+ * Chat and Meta AI have none: only their open chat can be read).
+ */
+function newSitePage(
+  page: SiteConversationPage,
+  path: (id: string) => string,
+): ConversationListPage {
+  return {
+    conversations: page.conversations.map((conversation) => ({
+      ...conversation,
+      url: `${window.location.origin}${path(conversation.id)}`,
+    })),
+    nextCursor: page.nextCursor,
+  };
+}
+
+async function listNewSitePage(
+  site: NewSite,
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  switch (site) {
+    case "kimi":
+      return newSitePage(
+        parseKimiConversationList(
+          await fetchSiteJson("Kimi", KIMI_LIST_PATH, {
+            method: "POST",
+            body: kimiListBody(cursor),
+            headers: kimiRequestHeaders(),
+          }),
+        ),
+        (id) => `/chat/${id}`,
+      );
+    case "doubao":
+      return newSitePage(
+        parseDoubaoConversationList(
+          await fetchSiteJson("Doubao", `${DOUBAO_LIST_PATH}${doubaoRequestQuery()}`, {
+            method: "POST",
+            body: doubaoListBody(cursor, newRequestId()),
+            headers: DOUBAO_HEADERS,
+          }),
+        ),
+        (id) => `/chat/${id}`,
+      );
+    case "qwen":
+      return newSitePage(
+        parseQwenConversationList(
+          await fetchSiteJson("Qwen", buildQwenListPath(cursor), { headers: QWEN_HEADERS }),
+          cursor,
+        ),
+        (id) => `/c/${id}`,
+      );
+    case "zai":
+      return newSitePage(
+        parseZaiConversationList(
+          await fetchSiteJson("Z.ai", buildZaiListPath(cursor), { headers: zaiRequestHeaders() }),
+          cursor,
+        ),
+        (id) => `/c/${id}`,
+      );
+    case "qianwen": {
+      const client = qianwenClient();
+
+      return newSitePage(
+        parseQianwenConversationList(
+          await fetchQianwen(client, "/api/v2/session/page/list", {}, qianwenListBody(cursor)),
+        ),
+        (id) => `/chat/${id}`,
+      );
+    }
+    case "yuanbao": {
+      const agentId = getYuanbaoAgentId(window.location.pathname);
+
+      return newSitePage(
+        parseYuanbaoConversationList(
+          unwrapYuanbao(
+            await fetchSiteJson("Yuanbao", YUANBAO_LIST_PATH, {
+              method: "POST",
+              body: yuanbaoListBody(agentId, cursor),
+            }),
+          ),
+          cursor,
+        ),
+        (id) => `/chat/${agentId}/${id}`,
+      );
+    }
+    case "copilot":
+      return newSitePage(
+        parseCopilotConversationList(
+          await fetchSiteJson("Copilot", buildCopilotListPath(cursor), {
+            headers: copilotRequestHeaders(),
+          }),
+        ),
+        (id) => `/chats/${id}`,
+      );
+    case "mistral":
+    case "meta":
+      throw new Error(
+        `${NEW_SITE_NAMES[site]} chats can only be exported one at a time, from the open chat.`,
+      );
+  }
+}
+
+/*
  * The conversation id a sidebar link's path names, for the
  * site this page is on.
  */
 function conversationIdFromPath(pathname: string): string | null {
+  switch (NEW_SITE) {
+    case "kimi":
+      return getKimiConversationId(pathname);
+    case "doubao":
+      return getDoubaoConversationId(pathname);
+    case "qwen":
+    case "zai":
+      return getQwenConversationId(pathname);
+    case "qianwen":
+      return getQianwenConversationId(pathname);
+    case "yuanbao":
+      return getYuanbaoConversationId(pathname);
+    case "copilot":
+      return getCopilotConversationId(pathname);
+    case "mistral":
+    case "meta":
+      return null;
+  }
+
   if (IS_CLAUDE_SITE) {
     return getClaudeConversationId(pathname);
   }
@@ -3811,7 +4720,9 @@ async function listConversationsPage(
             ? await listGrokPage(cursor)
             : IS_PERPLEXITY_SITE
               ? await listPerplexityPage(cursor)
-              : await listChatGptPage(cursor);
+              : NEW_SITE
+                ? await listNewSitePage(NEW_SITE, cursor)
+                : await listChatGptPage(cursor);
 
     devLog(
       `AI Exporter: listed ${page.conversations.length} chats in ${Date.now() - started} ms`,

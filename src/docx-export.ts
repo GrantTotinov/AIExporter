@@ -15,11 +15,12 @@
  * keeps its syntax colors (see code-highlight.ts), lists and
  * tables are real Word lists and tables, links stay clickable,
  * and right-to-left paragraphs are marked as such. Formulas are
- * typeset by MathJax and placed as sharp, high-resolution
- * pictures (Word's own equation format can't be produced from
- * TeX without a full converter); without a canvas to draw them
- * on, their TeX source is shown instead. Downloaded images are
- * embedded, scaled to fit the page.
+ * Word's own equations (OMML, see omml.ts) - editable, searchable
+ * and copyable like one typed in Word; one that can't be converted
+ * is typeset by MathJax and placed as a sharp, high-resolution
+ * picture, and without a canvas to draw that on, its TeX source is
+ * shown instead. Downloaded images are embedded, scaled to fit the
+ * page.
  */
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
@@ -27,6 +28,7 @@ import { highlightCode, type TokenKind } from "./code-highlight.ts";
 import { parseInline, type Block, type InlineRun } from "./markdown-parse.ts";
 import type { RenderedMath } from "./math-render.ts";
 import type { MathSpan } from "./math.ts";
+import { OMML_NAMESPACE, mathMlToOmml } from "./omml.ts";
 import { hasRtl, isRtlParagraph } from "./bidi.ts";
 import { createZipBlob, decodeBase64, type ZipEntry } from "./zip.ts";
 import {
@@ -92,7 +94,8 @@ const NS =
   'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
   'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
-  'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" ' +
+  OMML_NAMESPACE;
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -303,6 +306,29 @@ async function pictureFromImage(
 interface MathPicture extends Picture {
   /* How far below the text baseline it reaches, in half-points */
   lower: number;
+}
+
+/*
+ * Each formula as a Word equation (see omml.ts), or null where it
+ * can't be one. MathJax - a large module - is only loaded when the
+ * conversation has formulas.
+ */
+async function formulaEquations(formulas: MathSpan[]): Promise<(string | null)[]> {
+  if (formulas.length === 0) {
+    return [];
+  }
+
+  try {
+    const { texToMathML } = await import("./math-render.ts");
+
+    return formulas.map((formula) => {
+      const mathMl = texToMathML(formula.tex, formula.display);
+
+      return mathMl ? mathMlToOmml(mathMl, formula.display) : null;
+    });
+  } catch {
+    return formulas.map(() => null);
+  }
 }
 
 async function pictureFromFormula(
@@ -569,11 +595,22 @@ export async function buildDocxBlob(
     source.tabUrl,
   );
   const formulas = conversation.formulas;
-  const rendered = await renderFormulas(formulas);
+  const equations = await formulaEquations(formulas);
+  // Pictures only for the formulas Word's equations can't hold
+  const rendered = await renderFormulas(
+    formulas.filter((_, index) => !equations[index]),
+  );
+  let nextRendered = 0;
   const mathPictures = await Promise.all(
-    rendered.map((svg, index) =>
-      svg ? pictureFromFormula(svg, formulas[index]) : null,
-    ),
+    formulas.map((formula, index) => {
+      if (equations[index]) {
+        return null;
+      }
+
+      const svg = rendered[nextRendered++];
+
+      return svg ? pictureFromFormula(svg, formula) : null;
+    }),
   );
   const writer = new DocxWriter();
   const site = getChatSite(source.tabUrl);
@@ -622,9 +659,14 @@ export async function buildDocxBlob(
         if (run.math !== undefined) {
           const formula = formulas[run.math];
           const picture = mathPictures[run.math];
+          const equation = equations[run.math];
 
           if (!formula) {
             return "";
+          }
+
+          if (equation) {
+            return equation;
           }
 
           if (!picture) {
@@ -904,6 +946,11 @@ export async function buildDocxBlob(
       );
     }
 
+    // When it was sent and by which model, in small gray type
+    if (message.details) {
+      body.push(paragraph(textRun(message.details), { style: "MessageDetails" }));
+    }
+
     currentSources = message.sources;
 
     if (message.thinking.length > 0) {
@@ -1128,6 +1175,12 @@ const STYLES_XML =
     "Code",
   ) +
   paragraphStyle("TableText", "Table Text", '<w:spacing w:after="0"/>', "") +
+  paragraphStyle(
+    "MessageDetails",
+    "Message Details",
+    '<w:keepNext/><w:spacing w:before="0" w:after="100"/>',
+    '<w:color w:val="656D76"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+  ) +
   paragraphStyle(
     "Spacer",
     "Spacer",

@@ -22,6 +22,9 @@ import type {
   LiteNode,
 } from "mathjax-full/js/adaptors/lite/Element.js";
 import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
+import { SerializedMmlVisitor } from "mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js";
+import { STATE } from "mathjax-full/js/core/MathItem.js";
+import type { MmlNode } from "mathjax-full/js/core/MmlTree/MmlNode.js";
 import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
 import { mathTextStyle, type MathTextStyle } from "./svg-pdf.ts";
 
@@ -188,5 +191,26 @@ export function renderTex(
     return null;
   } finally {
     measureText = undefined;
+  }
+}
+
+const mathMl = new SerializedMmlVisitor();
+
+/*
+ * A formula as MathML, which omml.ts turns into the equations Word
+ * edits - the step before MathJax would lay it out. Null when the
+ * TeX doesn't parse.
+ */
+export function texToMathML(tex: string, display: boolean): string | null {
+  try {
+    const root = document.convert(untag(tex), {
+      display,
+      end: STATE.CONVERT,
+    }) as MmlNode;
+    const markup = mathMl.visitTree(root);
+
+    return markup.includes("<merror") ? null : markup;
+  } catch {
+    return null;
   }
 }

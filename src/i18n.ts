@@ -32,9 +32,29 @@ import fr from "./locales/fr.json";
 import de from "./locales/de.json";
 import ru from "./locales/ru.json";
 import zh from "./locales/zh.json";
+import ja from "./locales/ja.json";
+import ko from "./locales/ko.json";
+import hi from "./locales/hi.json";
+import pt from "./locales/pt.json";
+import id from "./locales/id.json";
+import tr from "./locales/tr.json";
+import it from "./locales/it.json";
 import { loadSettings } from "./settings.ts";
 
-export type Locale = "en" | "es" | "fr" | "de" | "ru" | "zh";
+export type Locale =
+  | "en"
+  | "es"
+  | "fr"
+  | "de"
+  | "ru"
+  | "zh"
+  | "ja"
+  | "ko"
+  | "hi"
+  | "pt"
+  | "id"
+  | "tr"
+  | "it";
 
 const DICTIONARIES: Record<Locale, Record<string, string>> = {
   en,
@@ -43,6 +63,13 @@ const DICTIONARIES: Record<Locale, Record<string, string>> = {
   de,
   ru,
   zh,
+  ja,
+  ko,
+  hi,
+  pt,
+  id,
+  tr,
+  it,
 };
 
 export const SUPPORTED_LOCALES: { code: Locale; label: string }[] = [
@@ -52,6 +79,13 @@ export const SUPPORTED_LOCALES: { code: Locale; label: string }[] = [
   { code: "de", label: "Deutsch" },
   { code: "ru", label: "Русский" },
   { code: "zh", label: "中文" },
+  { code: "ja", label: "日本語" },
+  { code: "ko", label: "한국어" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "pt", label: "Português (Brasil)" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "tr", label: "Türkçe" },
+  { code: "it", label: "Italiano" },
 ];
 
 let currentLocale: Locale = "en";

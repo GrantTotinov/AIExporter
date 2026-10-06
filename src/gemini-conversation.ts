@@ -30,6 +30,11 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import {
+  messageMetadata,
+  modelName,
+  timeFromSecondsAndNanos,
+} from "./message-metadata.ts";
 
 /*
  * ---------------------------------------------------------
@@ -59,6 +64,10 @@ export interface GeminiExportMessage {
   thinking?: string;
   /* The web pages the reply cites, numbered as its notes are */
   sources?: ReplySource[];
+  /* When the turn was sent, in milliseconds since the epoch */
+  time?: number;
+  /* The model that wrote the reply ("Gemini 2.5 Flash") */
+  model?: string;
 }
 
 /*
@@ -657,10 +666,27 @@ function getPromptParts(
  * ---------------------------------------------------------
  *
  * A turn's reply ([3]) lists its drafts ("candidates") at [0]
- * and the id of the one on screen at [3]. A candidate is
- * [id, [markdown], ...], with its generated images in [12] and
- * Canvas and Deep Research documents in [30].
+ * and the id of the one on screen at [3], and names the model
+ * that wrote it at [21], the way the app labels it ("2.5 Flash").
+ * A candidate is [id, [markdown], ...], with its generated images
+ * in [12] and Canvas and Deep Research documents in [30].
  */
+
+/*
+ * Only a label of that shape counts - a version and a name - so
+ * whatever else Google might put there never reads as a model.
+ */
+const MODEL_LABEL_RE = /^(?:Gemini\s+)?\d+(?:\.\d+)?\s+[A-Za-z][A-Za-z0-9 .-]{0,40}$/;
+
+function getReplyModel(reply: unknown): string | undefined {
+  const label = stringValue(at(reply, 21))?.trim() ?? "";
+
+  if (!MODEL_LABEL_RE.test(label)) {
+    return undefined;
+  }
+
+  return modelName(label.startsWith("Gemini") ? label : `Gemini ${label}`);
+}
 
 function getShownCandidate(reply: unknown): unknown[] | null {
   const candidates = at(reply, 0);
@@ -989,10 +1015,12 @@ export function convertGeminiTurns(turns: unknown[]): GeminiExportMessage[] {
 
     seenTurnIds.add(turnId);
 
+    // The turn's one time stands for its prompt and its reply.
+    const metadata = messageMetadata(timeFromSecondsAndNanos(turn[4]));
     const promptParts = getPromptParts(turn[2], seenMedia);
 
     if (promptParts.length > 0) {
-      messages.push({ id: turnId, role: "user", parts: promptParts });
+      messages.push({ id: turnId, role: "user", parts: promptParts, ...metadata });
     }
 
     const candidate = getShownCandidate(turn[3]);
@@ -1008,6 +1036,7 @@ export function convertGeminiTurns(turns: unknown[]): GeminiExportMessage[] {
         parts: replyParts,
         // The thoughts, as the app shows them above the reply
         ...replyExtras(stringValue(at(candidate, 37, 0, 0)) ?? "", sources),
+        ...messageMetadata(metadata.time, getReplyModel(turn[3])),
       });
     }
   }

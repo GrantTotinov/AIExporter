@@ -285,6 +285,18 @@ describe("convertClaudeMessages", () => {
     ]);
   });
 
+  it("keeps when each message was sent", () => {
+    const question = message("human", [text("Hello")], {
+      created_at: "2026-09-01T10:00:00.123456Z",
+    });
+    const answer = message("assistant", [text("Hi!")], { created_at: "not a date" });
+
+    const [asked, answered] = convertClaudeMessages([question, answer]);
+
+    expect(asked.time).toBe(Date.UTC(2026, 8, 1, 10, 0, 0, 123));
+    expect(answered).not.toHaveProperty("time");
+  });
+
   it("skips unknown senders, messages without an id, and empty messages", () => {
     expect(
       convertClaudeMessages([

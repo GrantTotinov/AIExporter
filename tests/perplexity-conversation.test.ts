@@ -210,6 +210,20 @@ describe("convertPerplexityEntries", () => {
     ]);
   });
 
+  it("gives a question and its answer the time it was asked", () => {
+    const [question, answer] = convertPerplexityEntries([
+      { ...entry(), updated_datetime: "2026-10-02T08:05:00.5", created_datetime: "2026-10-02T08:00:00" },
+    ]);
+
+    // Without a time zone, as Perplexity writes it: UTC
+    expect(question.time).toBe(Date.UTC(2026, 9, 2, 8, 0, 0));
+    expect(answer.time).toBe(Date.UTC(2026, 9, 2, 8, 0, 0));
+    expect(
+      convertPerplexityEntries([{ ...entry(), updated_datetime: "2026-10-02T08:05:00Z" }])[0].time,
+    ).toBe(Date.UTC(2026, 9, 2, 8, 5, 0));
+    expect(convertPerplexityEntries([entry()])[0]).not.toHaveProperty("time");
+  });
+
   it("reads older entries, whose answer is JSON inside the final step", () => {
     const messages = convertPerplexityEntries([
       {

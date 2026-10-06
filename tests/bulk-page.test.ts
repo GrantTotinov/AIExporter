@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BULK_HTML from "../public/bulk.html?raw";
 import en from "../src/locales/en.json";
+import type { ConversationListPage } from "../src/conversation-list";
 
 /*
  * ---------------------------------------------------------
@@ -24,7 +25,7 @@ const BULK_BODY = BULK_HTML.slice(
 
 const NO_RECEIVER = "Could not establish connection. Receiving end does not exist.";
 
-const PAGE = {
+const PAGE: ConversationListPage = {
   conversations: [
     {
       id: "s1",
@@ -50,20 +51,36 @@ let tab: {
   host: string;
   hasContentScript: boolean;
 };
+/* The chats the tab lists */
+let listPage: ConversationListPage;
+/* chrome.storage.local */
+let localStore: Record<string, unknown>;
+let downloadListeners: ((delta: chrome.downloads.DownloadDelta) => void)[];
 
 const tabsSendMessage = vi.fn(async (_tabId: number, message: { type: string }) => {
   if (!tab.hasContentScript) {
     throw new Error(NO_RECEIVER);
   }
 
-  if (message.type === "AIEXPORTER_PING") {
-    return { ok: true, host: tab.host };
+  switch (message.type) {
+    case "AIEXPORTER_PING":
+      return { ok: true, host: tab.host };
+    case "LIST_CONVERSATIONS_PAGE":
+      return { success: true, data: listPage };
+    case "LOAD_CONVERSATION":
+      return {
+        success: true,
+        data: {
+          messages: [{ id: "m1", role: "user", content: "Hello", order: 0 }],
+          images: [],
+        },
+      };
+    default:
+      return { success: false, error: "unexpected message" };
   }
-
-  return message.type === "LIST_CONVERSATIONS_PAGE"
-    ? { success: true, data: PAGE }
-    : { success: false, error: "unexpected message" };
 });
+
+const downloadsDownload = vi.fn(async () => 1);
 
 const tabsGet = vi.fn(async (tabId: number) => ({
   id: tabId,
@@ -115,7 +132,14 @@ async function openBulkPage(search: string): Promise<void> {
       sync: {
         get: vi.fn(async (defaults: Record<string, unknown>) => ({ ...defaults })),
       },
-      local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) },
+      local: {
+        get: vi.fn(async (key: string) =>
+          key in localStore ? { [key]: structuredClone(localStore[key]) } : {},
+        ),
+        set: vi.fn(async (items: Record<string, unknown>) => {
+          Object.assign(localStore, structuredClone(items));
+        }),
+      },
       onChanged: { addListener: vi.fn() },
     },
     runtime: {
@@ -125,8 +149,15 @@ async function openBulkPage(search: string): Promise<void> {
     },
     tabs: { sendMessage: tabsSendMessage, get: tabsGet, reload: tabsReload },
     downloads: {
-      download: vi.fn(),
-      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+      download: downloadsDownload,
+      onChanged: {
+        addListener: (listener: (typeof downloadListeners)[number]) => {
+          downloadListeners.push(listener);
+        },
+        removeListener: (listener: (typeof downloadListeners)[number]) => {
+          downloadListeners = downloadListeners.filter((item) => item !== listener);
+        },
+      },
     },
     i18n: { getUILanguage: () => "en-US" },
   });
@@ -156,6 +187,13 @@ beforeEach(() => {
     host: "chat.deepseek.com",
     hasContentScript: true,
   };
+  listPage = PAGE;
+  localStore = {};
+  downloadListeners = [];
+  URL.createObjectURL = vi.fn(() => "blob:zip") as typeof URL.createObjectURL;
+  URL.revokeObjectURL = vi.fn();
+  // jsdom lays nothing out, so it has no scrolling into view.
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
@@ -271,5 +309,86 @@ describe("Save many chats: the chat site's tab", () => {
 
     expect(tabsSendMessage).not.toHaveBeenCalled();
     expect(byId("state-error").hidden).toBe(false);
+  });
+});
+
+describe("Save many chats: chats saved before", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const NOW = Date.now();
+  const chat = (id: string, title: string, daysAgo: number) => ({
+    id,
+    title,
+    url: `https://chat.deepseek.com/a/chat/s/${id}`,
+    createdAt: null,
+    updatedAt: NOW - daysAgo * DAY,
+  });
+
+  beforeEach(() => {
+    listPage = {
+      conversations: [chat("s1", "Rice", 1), chat("s2", "Bread", 5), chat("s3", "Soup", 9)],
+      nextCursor: null,
+    };
+    localStore = {
+      popupExportFormat: "md",
+      bulkSavedChats: {
+        // Rice as it is now, and Bread before it was used again
+        deepseek: { s1: NOW - 1 * DAY, s2: NOW - 6 * DAY },
+        grok: { s3: NOW },
+      },
+    };
+  });
+
+  function choosePreset(value: string): void {
+    const select = byId<HTMLSelectElement>("date-preset");
+
+    select.value = value;
+    select.dispatchEvent(new Event("change"));
+  }
+
+  it("marks the chats saved before and unchanged since", async () => {
+    await openBulkPage("?tab=9&site=deepseek");
+    await settle();
+
+    const badges = [...document.querySelectorAll(".chat-row")].map(
+      (row) => row.querySelector(".chat-row-saved")?.textContent ?? "",
+    );
+
+    expect(badges).toEqual([en["bulk.saved"], "", ""]);
+  });
+
+  it("can show just the chats not saved yet or changed since", async () => {
+    await openBulkPage("?tab=9&site=deepseek");
+    await settle();
+
+    choosePreset("unsaved");
+
+    expect(listedTitles()).toEqual(["Bread", "Soup"]);
+  });
+
+  it("remembers the chats a ZIP held once it's on disk", async () => {
+    await openBulkPage("?tab=9&site=deepseek");
+    await settle();
+
+    choosePreset("unsaved");
+    byId<HTMLInputElement>("select-all").click();
+    byId<HTMLButtonElement>("export").click();
+    await settle();
+
+    expect(downloadsDownload).toHaveBeenCalled();
+    // Not yet: "Save as" can still be cancelled.
+    expect(
+      (localStore.bulkSavedChats as Record<string, Record<string, number>>).deepseek,
+    ).not.toHaveProperty("s3");
+
+    for (const listener of downloadListeners) {
+      listener({ id: 1, state: { previous: "in_progress", current: "complete" } });
+    }
+
+    await vi.waitFor(() =>
+      expect(localStore.bulkSavedChats).toEqual({
+        deepseek: { s1: NOW - 1 * DAY, s2: NOW - 5 * DAY, s3: NOW - 9 * DAY },
+        grok: { s3: NOW },
+      }),
+    );
   });
 });

@@ -75,8 +75,22 @@ const MATH_WITH_DOLLAR_RE = new RegExp(
   "g",
 );
 
+/*
+ * Gemini, and the Chinese sites' models, write inline formulas
+ * between single dollar signs.
+ */
+const SINGLE_DOLLAR_SITES: readonly (ChatSite | null)[] = [
+  "gemini",
+  "kimi",
+  "doubao",
+  "qwen",
+  "qianwen",
+  "yuanbao",
+  "zai",
+];
+
 export function usesSingleDollarMath(site: ChatSite | null): boolean {
-  return site === "gemini";
+  return SINGLE_DOLLAR_SITES.includes(site);
 }
 
 function linePrefix(line: string): string {

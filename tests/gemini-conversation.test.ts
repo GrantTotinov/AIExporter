@@ -858,7 +858,12 @@ describe("convertGeminiTurns", () => {
         turn("r_1", prompt("Hi"), null),
       ]),
     ).toEqual([
-      { id: "r_1", role: "user", parts: [{ kind: "text", text: "Hi" }] },
+      {
+        id: "r_1",
+        role: "user",
+        parts: [{ kind: "text", text: "Hi" }],
+        time: 1790000000500,
+      },
     ]);
   });
 });

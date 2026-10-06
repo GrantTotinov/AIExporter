@@ -3,31 +3,40 @@ Privacy Policy for AIExporter
 
 Effective date: October 5, 2026
 
-AIExporter (formerly AI Exporter / GPTChatDownloader) is a Chrome extension that allows users to export their ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity conversations as PDF, Word, HTML, Markdown, plain text, JSON or CSV, copy conversations to the clipboard, and optionally save exports directly to a GitHub repository or a Notion workspace.
+AIExporter (formerly AI Exporter / GPTChatDownloader) is a browser extension that allows users to export their conversations on ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Microsoft Copilot, Mistral Le Chat, Meta AI, Kimi, Doubao, Qwen, Qianwen, Tencent Yuanbao and Z.ai as PDF, Word, HTML, an image (PNG), Markdown, plain text, JSON, CSV or Excel, copy conversations to the clipboard, open the data export that ChatGPT or Claude provides, and optionally save exports directly to a GitHub repository or a Notion workspace.
 
 This Privacy Policy explains what information AIExporter processes, how it is used, and where it is stored.
 
 1. Information AIExporter Processes
 
 AIExporter processes the following information when you use its features:
-ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity conversation content
+Conversation content from the supported AI chat sites
 
-When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai, gemini.google.com, chat.deepseek.com, grok.com or perplexity.ai. When you use Save many chats, it also reads the list of your conversations on that site (their titles and dates) so that you can choose which ones to save, and then each conversation you choose.
+When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai, gemini.google.com, chat.deepseek.com, grok.com, perplexity.ai, copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com or chat.z.ai. When you use Save many chats, it also reads the list of your conversations on that site (their titles and dates) so that you can choose which ones to save, and then each conversation you choose.
 
-AIExporter's content script runs on the pages of these six sites, and on no other website, so that it is ready when you ask for an export. It reads a conversation only when you export, copy or save it.
+AIExporter's content script runs on the pages of these fifteen sites, and on no other website, so that it is ready when you ask for an export. It reads a conversation only when you export, copy or save it, or press AIExporter's "Copy the open chat" keyboard shortcut.
 
 This may include:
 
     User messages
     Assistant messages
     The reasoning ("thinking") a model showed before answering, and the web pages an answer cites, when the site provides them
+    The date and time each message was sent, and the AI model that wrote an answer, when the site provides them
     Images attached to or generated in the conversation, when image bundling is enabled
     Conversation message identifiers
     Conversation structure and ordering information required to reconstruct the conversation
 
-The web pages an answer cites are only written into the export as links; AIExporter does not visit them. The thinking is included in an export only when the "The AI's thinking" setting is on, and the cited pages only while the "Sources and citations" setting is on.
+The web pages an answer cites are only written into the export as links; AIExporter does not visit them. The thinking is included in an export only when the "The AI's thinking" setting is on, the cited pages only while the "Sources and citations" setting is on, and the messages' dates and models only while the "Message dates and AI model" setting is on.
 
 On chat.deepseek.com, DeepSeek's API needs the sign-in token that DeepSeek's website keeps in the page's storage. AIExporter reads it there and sends it only to DeepSeek's own API, as the website itself does; it does not store it.
+
+Some of the other sites work the same way. On copilot.microsoft.com, www.kimi.com and chat.z.ai, AIExporter reads the sign-in token the website keeps in the page's storage; on www.doubao.com and www.qianwen.com, it reads the device identifiers and the request-protection token the website keeps in the page's storage or cookies. Each of these is sent only to that same site's own API (for Qianwen, chat2-api.qianwen.com), as the website itself does, and is never stored by AIExporter.
+
+On chat.mistral.ai and www.meta.ai, AIExporter does not call any API: it reads the conversation from the page that is open in your tab.
+
+ChatGPT or Claude data export
+
+If you open the data export that ChatGPT or Claude sends you (a ZIP file or its conversations.json) on AIExporter's "Open a data export" page, the file is read entirely inside your browser, from your own disk. It is not uploaded anywhere, and nothing from it is kept after you close the page, except the files you choose to save.
 
 AIExporter processes this information only to perform the export or copy operation requested by the user.
 
@@ -56,10 +65,12 @@ The Notion integration key is stored locally in the browser using the extension'
 Information is used only to provide the functionality requested by the user.
 Local export
 
-When you choose to export a conversation as .pdf, .docx, .html, .md, .txt, .json or .csv, the conversation content is processed locally by the extension and provided to Chrome's download functionality. PDF generation happens entirely within the browser; no conversation data leaves your device as part of this process.
+When you choose to export a conversation as .pdf, .docx, .html, .png, .md, .txt, .json, .csv or .xlsx, the conversation content is processed locally by the extension and provided to Chrome's download functionality. PDF generation happens entirely within the browser; no conversation data leaves your device as part of this process.
 Clipboard
 
-When you choose Copy Conversation, the exported conversation is written to the clipboard so that you can paste it elsewhere.
+When you choose Copy Conversation, or press its keyboard shortcut, the exported conversation is written to the clipboard - as Markdown text and as formatted text - so that you can paste it elsewhere.
+
+Google Docs, Continue in another AI and Cite work through the clipboard too. Google Docs copies the conversation and opens a new, empty Google Doc (docs.new) in a new tab; Continue in another AI copies it with a short instruction and opens the AI chat site you pick in a new tab. AIExporter does not type, paste or send anything into those tabs: the conversation reaches Google or the other AI service only if you paste it there yourself. Cite only copies a reference (the title, site, date and link) to the clipboard.
 GitHub export
 
 When you explicitly choose Save to GitHub, the selected conversation export is sent directly to GitHub's API and saved in the GitHub repository selected by you, under the exports/ directory.
@@ -112,6 +123,9 @@ It is removed when the user disconnects GitHub through the extension or when the
 Extension settings
 
 Export preferences, such as heading style, timestamp preference, message spacing, the file name pattern, whether sources and the AI's thinking are included, and export format, are stored using Chrome's extension storage so that the selected preferences can be used across browser sessions. The name of the GitHub repository and the ID of the Notion page an export was last saved to are kept in the extension's local storage, so that the popup can suggest them again.
+Chats saved with Save many chats
+
+Once a ZIP file made by Save many chats has been saved to your computer, the identifiers of the conversations it holds, and the time each one was last used, are kept in the extension's local storage, so that Save many chats can show which conversations are saved already and offer just the ones not saved yet or changed since. No conversation titles or content are kept. Removing the extension removes this list.
 Update status
 
 The version number of the newest AIExporter release and the time of the last update check are stored in the extension's local storage, so that the popup can show whether the installed version is up to date.
@@ -130,6 +144,8 @@ The extension communicates with the following external services when their funct
     Perplexity (perplexity.ai) — to access the currently open conversation using the user's existing authenticated Perplexity session, and, when image bundling is enabled, the servers that host the images attached to the conversation.
     GitHub (github.com and api.github.com) — when the user connects GitHub or explicitly saves an export to GitHub.
     Notion (api.notion.com) — when the user connects Notion, picks a page, or explicitly saves an export to Notion.
+    Microsoft Copilot (copilot.microsoft.com), Kimi (www.kimi.com), Doubao (www.doubao.com), Qwen (chat.qwen.ai), Qianwen (www.qianwen.com and chat2-api.qianwen.com), Tencent Yuanbao (yuanbao.tencent.com) and Z.ai (chat.z.ai) — to access the currently open conversation, or the list of your conversations for Save many chats, using the user's existing session on that site.
+    Mistral Le Chat (chat.mistral.ai) and Meta AI (www.meta.ai) — no requests are made; the conversation is read from the open page.
     Chrome Web Store or Firefox Add-ons (addons.mozilla.org) — to check whether a newer version of AIExporter is available. In Chrome, this check goes through the browser's own extension update service. In Firefox, the extension asks the public addons.mozilla.org API for AIExporter's current version, sending only AIExporter's public add-on ID and no cookies. No conversation content or personal data is included in either check.
 
 GitHub and Notion receive information according to the functionality and permissions authorized by the user.
@@ -142,7 +158,7 @@ You control when AIExporter processes a conversation.
 
 You can:
 
-    Export a conversation locally as PDF, Word, HTML, Markdown, plain text, JSON or CSV.
+    Export a conversation locally as PDF, Word, HTML, an image, Markdown, plain text, JSON, CSV or Excel.
     Copy a conversation to the clipboard.
     Choose whether to save an export to GitHub.
     Choose which GitHub repository receives an export.
@@ -166,7 +182,7 @@ The extension:
     Does not store GitHub passwords.
     Stores the Notion integration key locally rather than in synchronized Chrome storage.
     Sends conversation content to GitHub or Notion only when the user explicitly chooses a GitHub or Notion export.
-    Uses HTTPS when communicating with ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, GitHub, Notion and add-on store endpoints.
+    Uses HTTPS when communicating with the supported AI chat sites, GitHub, Notion and add-on store endpoints.
 
 No method of electronic storage or transmission can guarantee absolute security. Users should take appropriate care when exporting sensitive conversations to external destinations such as GitHub or Notion.
 
@@ -203,6 +219,11 @@ Perplexity
 AIExporter operates on perplexity.ai and uses the authenticated session already established by the user in the Perplexity website.
 
 AIExporter does not collect or store the user's Perplexity login credentials.
+Other AI chat sites
+
+AIExporter operates on copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com and chat.z.ai and uses the session already established by the user on each website.
+
+AIExporter does not collect or store the user's login credentials for any of these sites.
 GitHub
 
 GitHub integration uses GitHub's OAuth Device Flow and GitHub REST API.

@@ -25,6 +25,7 @@ export default defineConfig({
         offscreen: "src/offscreen.ts",
         options: "src/options.ts",
         bulk: "src/bulk.ts",
+        archive: "src/archive.ts",
       },
       output: {
         entryFileNames: "[name].js",

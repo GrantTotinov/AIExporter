@@ -5,13 +5,21 @@
  *
  * The parts of the bulk export page (bulk.ts) that don't touch
  * the DOM: searching and date-filtering the conversation list,
- * and naming the files inside the ZIP.
+ * remembering which chats were saved already, and naming the
+ * files inside the ZIP.
  */
 import type { ChatSite } from "./chat-sites.ts";
 import type { ConversationSummary } from "./conversation-list.ts";
 import { STANDARD_FILE_NAME, renderFileName, titleSlug } from "./file-names.ts";
 
-export type DatePreset = "all" | "7d" | "30d" | "90d" | "365d" | "custom";
+export type DatePreset =
+  | "all"
+  | "unsaved"
+  | "7d"
+  | "30d"
+  | "90d"
+  | "365d"
+  | "custom";
 
 export interface ConversationFilter {
   query: string;
@@ -19,6 +27,8 @@ export interface ConversationFilter {
   /* "YYYY-MM-DD" from the date inputs; used with preset "custom". */
   from: string;
   to: string;
+  /* The chats saved before (see savedChats); used with preset "unsaved". */
+  saved?: SavedChats;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -68,6 +78,80 @@ export function filterRange(
 }
 
 /*
+ * ---------------------------------------------------------
+ * CHATS SAVED BEFORE
+ * ---------------------------------------------------------
+ *
+ * Every chat a "Save many chats" ZIP held, by site, with the time
+ * it had last been used when it was saved - so the list can offer
+ * just the chats that aren't saved yet or have changed since, for
+ * keeping a backup up to date without saving everything again.
+ * Kept in chrome.storage.local under SAVED_CHATS_KEY, as
+ * { chatgpt: { [chat id]: last used }, claude: {...}, ... }; a
+ * chat the site gave no date for is kept with 0.
+ */
+export const SAVED_CHATS_KEY = "bulkSavedChats";
+
+export type SavedChats = Record<string, number>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/* One site's saved chats, from what's stored */
+export function savedChats(stored: unknown, site: ChatSite | null): SavedChats {
+  const forSite = site && isRecord(stored) ? stored[site] : undefined;
+
+  if (!isRecord(forSite)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(forSite).filter(
+      (entry): entry is [string, number] =>
+        typeof entry[1] === "number" && Number.isFinite(entry[1]),
+    ),
+  );
+}
+
+/* What's stored, with these chats added to the site's as saved now */
+export function withSavedChats(
+  stored: unknown,
+  site: ChatSite,
+  conversations: ConversationSummary[],
+): Record<string, SavedChats> {
+  const all = isRecord(stored) ? (stored as Record<string, SavedChats>) : {};
+
+  return {
+    ...all,
+    [site]: {
+      ...savedChats(stored, site),
+      ...Object.fromEntries(
+        conversations.map((conversation) => [
+          conversation.id,
+          conversation.updatedAt ?? conversation.createdAt ?? 0,
+        ]),
+      ),
+    },
+  };
+}
+
+/*
+ * Whether a chat's saved copy is out of date: it was never saved,
+ * or it was used again after. One the site gives no date for counts
+ * as unchanged once saved - there's no telling otherwise.
+ */
+export function needsSaving(
+  conversation: ConversationSummary,
+  saved: SavedChats,
+): boolean {
+  const savedAt = saved[conversation.id];
+  const time = conversation.updatedAt ?? conversation.createdAt;
+
+  return savedAt === undefined || (time !== null && time > savedAt);
+}
+
+/*
  * Case- and accent-insensitive, every word of the query somewhere
  * in the title. A conversation without a date is kept by any date
  * filter: the site didn't say when it was used (a sidebar scraped
@@ -86,6 +170,10 @@ export function filterConversations(
 
   return conversations.filter((conversation) => {
     const time = conversation.updatedAt ?? conversation.createdAt;
+
+    if (filter.preset === "unsaved" && !needsSaving(conversation, filter.saved ?? {})) {
+      return false;
+    }
 
     if (time !== null) {
       if ((start !== null && time < start) || (end !== null && time >= end)) {

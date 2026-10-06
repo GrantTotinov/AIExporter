@@ -483,6 +483,15 @@ export function buildNotionPage(
       );
     }
 
+    // When it was sent and by which model, in gray under the name
+    if (message.details) {
+      blocks.push(
+        block("paragraph", {
+          rich_text: textPieces(message.details, { italic: true, color: "gray" }),
+        }),
+      );
+    }
+
     currentSources = message.sources;
 
     if (message.thinking.length > 0) {

@@ -36,6 +36,7 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import { messageMetadata, timeFromSeconds } from "./message-metadata.ts";
 
 export interface DeepSeekImage {
   /* The file's address; null if none was given. */
@@ -53,6 +54,8 @@ export interface DeepSeekExportMessage {
   parts: DeepSeekMessagePart[];
   thinking?: string;
   sources?: ReplySource[];
+  /* When it was sent, in milliseconds since the epoch */
+  time?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -519,6 +522,7 @@ export function convertDeepSeekConversation(data: unknown): DeepSeekExportMessag
   for (const message of activeBranch(session, records(data.chat_messages))) {
     const id = idValue(message.message_id);
     const role = stringValue(message.role).toUpperCase();
+    const metadata = messageMetadata(timeFromSeconds(message.inserted_at));
 
     if (role === "USER") {
       const text = messageText(message, ["REQUEST"]);
@@ -528,7 +532,7 @@ export function convertDeepSeekConversation(data: unknown): DeepSeekExportMessag
       ];
 
       if (parts.length > 0) {
-        messages.push({ id, role: "user", parts });
+        messages.push({ id, role: "user", parts, ...metadata });
       }
 
       continue;
@@ -551,6 +555,7 @@ export function convertDeepSeekConversation(data: unknown): DeepSeekExportMessag
         role: "assistant",
         parts: [{ kind: "text", text }],
         ...replyExtras(messageThinking(message), sources),
+        ...metadata,
       });
     }
   }

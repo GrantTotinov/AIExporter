@@ -90,6 +90,10 @@ const includeThinkingInput = document.getElementById(
   "includeThinking",
 ) as HTMLInputElement;
 
+const includeMessageDetailsInput = document.getElementById(
+  "includeMessageDetails",
+) as HTMLInputElement;
+
 const includeTimestampInput = document.getElementById(
   "includeTimestamp",
 ) as HTMLInputElement;
@@ -137,6 +141,14 @@ const steppers = Array.from(
 
 const openDownloadSettingsButton = document.getElementById(
   "open-download-settings",
+) as HTMLButtonElement;
+
+const shortcutLabels = Array.from(
+  document.querySelectorAll<HTMLElement>(".shortcut[data-command]"),
+);
+
+const openShortcutSettingsButton = document.getElementById(
+  "open-shortcut-settings",
 ) as HTMLButtonElement;
 
 const searchInput = document.getElementById("search") as HTMLInputElement;
@@ -364,6 +376,7 @@ function readSettingsFromForm(): Settings {
     fileNameTemplate: readFileNameTemplate(),
     includeSources: includeSourcesInput.checked,
     includeThinking: includeThinkingInput.checked,
+    includeMessageDetails: includeMessageDetailsInput.checked,
     downloadImagesLocally: downloadImagesLocallyInput.checked,
     theme: getRadioValue("theme", savedSettings.theme),
     language: languageInput.value as Settings["language"],
@@ -390,6 +403,7 @@ function applySettingsToForm(settings: Settings): void {
   downloadImagesLocallyInput.checked = settings.downloadImagesLocally;
   includeSourcesInput.checked = settings.includeSources;
   includeThinkingInput.checked = settings.includeThinking;
+  includeMessageDetailsInput.checked = settings.includeMessageDetails;
   includeTimestampInput.checked = settings.includeTimestamp;
   markdownPropertiesInput.checked = settings.markdownProperties;
 
@@ -565,6 +579,7 @@ function renderTranslations(): void {
   });
   renderGithub();
   renderNotion();
+  void renderShortcuts();
   applySearch();
 }
 
@@ -785,7 +800,11 @@ function updatePagePreview(): void {
 
 let toastTimer: number | undefined;
 
-function showToast(message: string, tone: "success" | "error" = "success"): void {
+function showToast(
+  message: string,
+  tone: "success" | "error" = "success",
+  durationMs = tone === "error" ? 4000 : 1600,
+): void {
   toastText.textContent = message;
   toast.dataset.tone = tone;
   toast.classList.add("is-visible");
@@ -793,7 +812,7 @@ function showToast(message: string, tone: "success" | "error" = "success"): void
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(
     () => toast.classList.remove("is-visible"),
-    tone === "error" ? 4000 : 1600,
+    durationMs,
   );
 }
 
@@ -1241,6 +1260,73 @@ openDownloadSettingsButton.addEventListener("click", () => {
     : "chrome://settings/downloads";
 
   chrome.tabs.create({ url });
+});
+
+/*
+ * ---------------------------------------------------------
+ * KEYBOARD SHORTCUTS
+ * ---------------------------------------------------------
+ *
+ * The keys the browser gave AI Exporter's commands (the manifests'
+ * "commands"): the suggested ones unless the person picked others -
+ * or none, when another extension had them first. They're read
+ * again whenever the page comes back into view, since they're
+ * changed on a page of the browser's own.
+ */
+async function renderShortcuts(): Promise<void> {
+  let commands: chrome.commands.Command[];
+
+  try {
+    commands = (await chrome.commands?.getAll()) ?? [];
+  } catch (error) {
+    devError("AI Exporter: couldn't read the keyboard shortcuts", error);
+    return;
+  }
+
+  if (commands.length === 0) {
+    // Nothing to go by: the suggested keys in the page stay.
+    return;
+  }
+
+  for (const label of shortcutLabels) {
+    const shortcut =
+      commands.find((command) => command.name === label.dataset.command)
+        ?.shortcut ?? "";
+
+    label.textContent = shortcut || t("options.shortcuts.notSet");
+    label.classList.toggle("is-unset", !shortcut);
+  }
+}
+
+window.addEventListener("focus", () => {
+  void renderShortcuts();
+});
+
+/*
+ * Only the browser can change an extension's shortcuts. Chrome has
+ * a page for it that an extension may open; Firefox opens its own
+ * from commands.openShortcutSettings() (Firefox 137 and later) - an
+ * older one only lets the person get there, so it says how.
+ */
+openShortcutSettingsButton.addEventListener("click", () => {
+  const commands = chrome.commands as
+    | (typeof chrome.commands & { openShortcutSettings?: () => Promise<void> })
+    | undefined;
+
+  if (typeof commands?.openShortcutSettings === "function") {
+    void commands.openShortcutSettings();
+  } else if (navigator.userAgent.includes("Firefox")) {
+    // Long enough to read the way there
+    showToast(
+      t("options.shortcuts.firefoxHint", {
+        shortcut: navigator.userAgent.includes("Mac") ? "⌘⇧A" : "Ctrl+Shift+A",
+      }),
+      "error",
+      8000,
+    );
+  } else {
+    void chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+  }
 });
 
 /*

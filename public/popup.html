@@ -488,6 +488,160 @@
         color: var(--accent-text);
       }
 
+
+      /*
+       * Google Docs / Continue in / Cite, under the main actions. Each
+       * button is as wide as its label; when a language's labels don't
+       * fit in one row, a button moves to the next row instead of
+       * having its label cut short.
+       */
+      .more-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .more-action {
+        display: inline-flex;
+        flex: 1 1 auto;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        min-height: 36px;
+        padding: 0 8px;
+        border: 1px solid var(--card-border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .more-action > span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .more-action .icon {
+        flex: none;
+        width: 15px;
+        height: 15px;
+        color: var(--text-muted);
+      }
+
+      .more-action:hover:not(:disabled),
+      .more-action[aria-expanded="true"] {
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+
+      .more-action:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .more-action.is-busy {
+        opacity: 0.7;
+        cursor: progress;
+      }
+
+      .link-row {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 2px 0;
+        border: 0;
+        background: none;
+        color: var(--text-muted);
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+
+      .link-row .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      .link-row:hover {
+        color: var(--accent-text);
+        text-decoration: underline;
+      }
+
+      .more-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--card);
+      }
+
+      .more-panel-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .more-panel-hint {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      .citation {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .citation + .citation {
+        padding-top: 8px;
+        border-top: 1px solid var(--divider);
+      }
+
+      .citation-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .citation-copy {
+        padding: 2px 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .citation-copy:hover {
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+
+      .citation-text {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        user-select: text;
+      }
+
       /* Save as a file / Copy */
       .actions {
         display: flex;
@@ -603,14 +757,16 @@
         stroke: var(--heart);
       }
 
+      /* Wraps like .more-actions when the labels are long */
       .support-row {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
       }
 
       .support-button {
         display: inline-flex;
-        flex: 1;
+        flex: 1 1 auto;
         align-items: center;
         justify-content: center;
         gap: 6px;
@@ -1538,6 +1694,19 @@
           d="M8 4H7a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1-2 2.5 2.5 2.5 0 0 1 2 2.5V18a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v3.5a2.5 2.5 0 0 0 2 2.5 2.5 2.5 0 0 0-2 2.5V18a2 2 0 0 1-2 2h-1"
         />
       </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="M20.5 16l-5-5-8.5 8.5" />
+      </symbol>
+      <symbol id="i-sheet" viewBox="0 0 24 24">
+        <path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" />
+        <path d="M14 3.5v5h5M8.5 12.5h7M8.5 16h7M12 12.5V19" />
+      </symbol>
+      <symbol id="i-quote" viewBox="0 0 24 24">
+        <path d="M9.5 7.5H6a1.5 1.5 0 0 0-1.5 1.5v3A1.5 1.5 0 0 0 6 13.5h3.5V9A1.5 1.5 0 0 0 9.5 7.5zM9.5 13.5c0 2-1.2 3.4-3.5 4" />
+        <path d="M19.5 7.5H16a1.5 1.5 0 0 0-1.5 1.5v3a1.5 1.5 0 0 0 1.5 1.5h3.5V9a1.5 1.5 0 0 0 0-1.5zM19.5 13.5c0 2-1.2 3.4-3.5 4" />
+      </symbol>
       <symbol id="i-table" viewBox="0 0 24 24">
         <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
         <path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" />
@@ -1658,7 +1827,8 @@
           </p>
           <p class="chat-card-desc" data-i18n="popup.chat.unsupportedText">
             AI Exporter saves chats from ChatGPT, Claude, Gemini, DeepSeek,
-            Grok and Perplexity. Open one there, then click AI Exporter again.
+            Grok, Perplexity, Copilot, Kimi, Qwen, Doubao and more. Open one
+            there, then click AI Exporter again.
           </p>
         </div>
         <div class="site-links" id="site-links" hidden>
@@ -1728,6 +1898,105 @@
               <use href="#i-external" />
             </svg>
           </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://copilot.microsoft.com/"
+            data-site-name="Copilot"
+          >
+            Copilot
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://chat.mistral.ai/chat"
+            data-site-name="Le Chat"
+          >
+            Le Chat
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://www.meta.ai/"
+            data-site-name="Meta AI"
+          >
+            Meta AI
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://www.kimi.com/"
+            data-site-name="Kimi"
+          >
+            Kimi
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://www.doubao.com/chat/"
+            data-site-name="Doubao"
+          >
+            Doubao
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://chat.qwen.ai/"
+            data-site-name="Qwen"
+          >
+            Qwen
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://www.qianwen.com/"
+            data-site-name="Qianwen"
+          >
+            Qianwen
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://yuanbao.tencent.com/chat"
+            data-site-name="Yuanbao"
+          >
+            Yuanbao
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="site-link"
+            data-site-url="https://chat.z.ai/"
+            data-site-name="Z.ai"
+          >
+            Z.ai
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-external" />
+            </svg>
+          </button>
         </div>
       </section>
 
@@ -1787,6 +2056,76 @@
             <use href="#i-chevron-right" />
           </svg>
         </button>
+
+        <div class="more-actions">
+          <button type="button" class="more-action" id="to-google-docs">
+            <svg class="icon" aria-hidden="true"><use href="#i-file-text" /></svg>
+            <span data-i18n="popup.more.googleDocs">Google Docs</span>
+          </button>
+          <button
+            type="button"
+            class="more-action"
+            id="continue-chat"
+            aria-expanded="false"
+            aria-controls="continue-panel"
+          >
+            <svg class="icon" aria-hidden="true"><use href="#i-swap" /></svg>
+            <span data-i18n="popup.more.continue">Continue in…</span>
+          </button>
+          <button
+            type="button"
+            class="more-action"
+            id="cite-chat"
+            aria-expanded="false"
+            aria-controls="cite-panel"
+          >
+            <svg class="icon" aria-hidden="true"><use href="#i-quote" /></svg>
+            <span data-i18n="popup.more.cite">Cite</span>
+          </button>
+        </div>
+
+        <button type="button" class="link-row" id="open-archive">
+          <svg class="icon" aria-hidden="true"><use href="#i-archive" /></svg>
+          <span data-i18n="popup.openArchive">Open a ChatGPT or Claude data export</span>
+        </button>
+
+        <div class="more-panel" id="continue-panel" hidden>
+          <p class="more-panel-title" data-i18n="popup.continue.title">
+            Continue this chat in
+          </p>
+          <p class="more-panel-hint" data-i18n="popup.continue.hint">
+            The chat is copied, and the assistant opens in a new tab: paste
+            it there.
+          </p>
+          <div class="site-links" id="continue-targets"></div>
+        </div>
+
+        <div class="more-panel" id="cite-panel" hidden>
+          <p class="more-panel-title" data-i18n="popup.cite.title">
+            Cite this chat
+          </p>
+          <div class="citation">
+            <div class="citation-head">
+              <span>APA 7</span>
+              <button type="button" class="citation-copy" data-style="apa" data-i18n="popup.cite.copy">Copy</button>
+            </div>
+            <p class="citation-text" id="cite-apa"></p>
+          </div>
+          <div class="citation">
+            <div class="citation-head">
+              <span>MLA 9</span>
+              <button type="button" class="citation-copy" data-style="mla" data-i18n="popup.cite.copy">Copy</button>
+            </div>
+            <p class="citation-text" id="cite-mla"></p>
+          </div>
+          <div class="citation">
+            <div class="citation-head">
+              <span>Chicago</span>
+              <button type="button" class="citation-copy" data-style="chicago" data-i18n="popup.cite.copy">Copy</button>
+            </div>
+            <p class="citation-text" id="cite-chicago"></p>
+          </div>
+        </div>
       </div>
 
       <section class="support">
@@ -1946,6 +2285,10 @@
               <span class="format-face">HTML</span>
             </label>
             <label class="format">
+              <input type="radio" name="format" value="png" />
+              <span class="format-face" data-i18n="popup.format.png">Image</span>
+            </label>
+            <label class="format">
               <input type="radio" name="format" value="md" />
               <span class="format-face">Markdown</span>
             </label>
@@ -1960,6 +2303,10 @@
             <label class="format">
               <input type="radio" name="format" value="csv" />
               <span class="format-face">CSV</span>
+            </label>
+            <label class="format">
+              <input type="radio" name="format" value="xlsx" />
+              <span class="format-face">Excel</span>
             </label>
           </div>
           <p class="format-hint" id="format-hint" aria-live="polite">

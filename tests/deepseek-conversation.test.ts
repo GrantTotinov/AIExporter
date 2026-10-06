@@ -235,6 +235,7 @@ describe("convertDeepSeekConversation", () => {
         id: "1",
         role: "user",
         parts: [{ kind: "text", text: "How do I cook rice?" }],
+        time: 1759400000000,
       },
       {
         id: "3",
@@ -247,8 +248,14 @@ describe("convertDeepSeekConversation", () => {
         ],
         thinking: "The person wants plain rice.",
         sources: [RICE_GUIDE, WATER_RATIO],
+        time: 1759400020000,
       },
-      { id: "4", role: "user", parts: [{ kind: "text", text: "Thanks!" }] },
+      {
+        id: "4",
+        role: "user",
+        parts: [{ kind: "text", text: "Thanks!" }],
+        time: 1759400030000,
+      },
     ]);
   });
 

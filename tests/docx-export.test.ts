@@ -136,8 +136,11 @@ describe("Word export", () => {
     expect(document).toContain("<w:numId");
     expect(document).toContain("<w:bidi/>");
     expect(document).toContain("<w:drawing>");
-    // No canvas in jsdom: formulas fall back to their source.
-    expect(document).toContain("\\frac{a}{b}");
+    // Formulas are Word equations, inline and on a line of their own.
+    expect(document).toContain('xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
+    expect(document).toMatch(/Inline math <\/w:t><\/w:r><m:oMath><m:sSup>/);
+    expect(document).toContain('<w:pStyle w:val="MathDisplay"/></w:pPr><m:oMathPara><m:oMath><m:f>');
+    expect(document).not.toContain("\\frac{a}{b}");
     expect(files.get("word/_rels/document.xml.rels")).toContain(
       'Target="https://example.com/a?b=1&amp;c=2" TargetMode="External"',
     );

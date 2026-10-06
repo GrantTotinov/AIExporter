@@ -53,7 +53,23 @@ import {
  */
 export { fenceUserContent, parseBlocks, parseInline, preprocessRawContent };
 import type { RenderedMath } from "./math-render.ts";
-import { drawMath, type MathTextStyle } from "./svg-pdf.ts";
+import {
+  drawMath,
+  tracePath,
+  type Matrix,
+  type MathTextStyle,
+} from "./svg-pdf.ts";
+import {
+  cannotEndLine,
+  cannotStartLine,
+  cjkBreakPieces,
+  fallbackFontFor,
+  fallbackFontsFor,
+  splitByFont,
+  wrapByColumns,
+  type FallbackFont,
+} from "./script-fonts.ts";
+import type { ShapedText, Shaper } from "./text-shaping.ts";
 import { shapeArabicText } from "./arabic-shaping.ts";
 import { highlightCode, type TokenKind } from "./code-highlight.ts";
 import {
@@ -79,6 +95,7 @@ import {
   stripNotes,
   type MessageSource,
 } from "./source-notes.ts";
+import { messageDetails } from "./message-details.ts";
 
 const PT_TO_MM = 25.4 / 72;
 
@@ -180,6 +197,60 @@ function loadFontData(): Promise<Map<string, LoadedFont>> {
   ).then((entries) => new Map(entries));
 
   return fontDataPromise;
+}
+
+/*
+ * ---------------------------------------------------------
+ * FALLBACK FONTS (see script-fonts.ts)
+ * ---------------------------------------------------------
+ *
+ * Fetched the first time a conversation needs one, then kept for
+ * the rest of the popup session like the DejaVu fonts. A "shaped"
+ * font also gets a HarfBuzz shaper; should HarfBuzz fail to load,
+ * its script is drawn as plain text in the font instead - letters
+ * in the wrong order, but letters.
+ */
+interface LoadedFallback {
+  font: FallbackFont;
+  base64: string;
+  coverage: Set<number>;
+  shaper?: Shaper;
+}
+
+const fallbackFontCache = new Map<string, Promise<LoadedFallback>>();
+
+function loadFallbackFont(font: FallbackFont): Promise<LoadedFallback> {
+  let pending = fallbackFontCache.get(font.file);
+
+  if (!pending) {
+    pending = (async () => {
+      const response = await fetch(chrome.runtime.getURL(`fonts/${font.file}`));
+      const blob = await response.blob();
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let shaper: Shaper | undefined;
+
+      if (font.kind === "shaped") {
+        try {
+          shaper = (await import("./text-shaping.ts")).createShaper(bytes);
+        } catch {
+          shaper = undefined;
+        }
+      }
+
+      return {
+        font,
+        base64: await encodeBlobBase64(blob),
+        coverage: readCmapCoverage(bytes),
+        ...(shaper ? { shaper } : {}),
+      };
+    })();
+
+    // A font that couldn't be read is tried again by the next export.
+    pending.catch(() => fallbackFontCache.delete(font.file));
+    fallbackFontCache.set(font.file, pending);
+  }
+
+  return pending;
 }
 
 function registerFonts(doc: jsPDF, fontData: Map<string, LoadedFont>): void {
@@ -382,6 +453,10 @@ export function fitToFont(text: string, coverage: Set<number>): string {
 }
 
 
+/* A run, and the fallback font its text is drawn in (see withFace) */
+type RunStyle = InlineStyle & { face?: string };
+type FaceRun = InlineRun & { face?: string };
+
 interface TocEntry {
   label: string;
   snippet: string;
@@ -550,6 +625,42 @@ export async function buildPdfBlob(
     doc.setProperties({ title: documentTitle });
   }
 
+  /*
+   * The fonts for scripts DejaVu doesn't have, loaded for the text
+   * this document will draw (see script-fonts.ts). A font that
+   * fails to load leaves its script as U+FFFD, as before.
+   */
+  const fallbacks = new Map<FallbackFont, LoadedFallback>();
+  const neededFallbacks = fallbackFontsFor([
+    documentTitle,
+    pdf.userInfoText,
+    settings.includeTimestamp ? new Date().toLocaleString() : "",
+    ...messages.flatMap((message) => [
+      message.content,
+      message.thinking ?? "",
+      messageDetails(message),
+      ...(message.sources ?? []).map((source) => source.title),
+    ]),
+  ]);
+
+  for (const result of await Promise.allSettled(
+    neededFallbacks.map(loadFallbackFont),
+  )) {
+    if (result.status === "fulfilled") {
+      const loaded = result.value;
+
+      doc.addFileToVFS(loaded.font.file, loaded.base64);
+      doc.addFont(loaded.font.file, loaded.font.family, "normal");
+      coverageByFont.set(`${loaded.font.family}/normal`, loaded.coverage);
+      fallbacks.set(loaded.font, loaded);
+    }
+  }
+
+  /* A loaded fallback font that has the character */
+  function fallbackCovers(font: FallbackFont, code: number): boolean {
+    return fallbacks.get(font)?.coverage.has(code) ?? false;
+  }
+
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - pdf.marginLeft - pdf.marginRight;
@@ -599,17 +710,35 @@ export async function buildPdfBlob(
   );
   let renderedFormulas: (RenderedMath | null)[] = [];
 
-  function mathTextFont(style: MathTextStyle): [string, FontStyle] {
-    if (style.monospace) {
-      return [MONO_FONT, style.bold ? "bold" : "normal"];
+  /*
+   * The font for text inside a formula (\text{...}): Chinese,
+   * Japanese or Korean there is set in their fallback font.
+   */
+  function mathTextFont(style: MathTextStyle, text = ""): [string, FontStyle] {
+    const [family, fontStyle]: [string, FontStyle] = style.monospace
+      ? [MONO_FONT, style.bold ? "bold" : "normal"]
+      : runFont(style);
+    const coverage = coverageByFont.get(`${family}/${fontStyle}`);
+
+    for (const char of text) {
+      const code = char.codePointAt(0) ?? 0;
+      const fallback = fallbackFontFor(code);
+
+      if (
+        fallback?.kind === "cjk" &&
+        !coverage?.has(code) &&
+        fallbackCovers(fallback, code)
+      ) {
+        return [fallback.family, "normal"];
+      }
     }
 
-    return runFont(style);
+    return [family, fontStyle];
   }
 
   // Text inside formulas is measured in the font it's drawn in.
   function measureMathText(text: string, style: MathTextStyle): number {
-    const [family, fontStyle] = mathTextFont(style);
+    const [family, fontStyle] = mathTextFont(style, text);
     doc.setFont(family, fontStyle);
     return doc.getStringUnitWidth(fit(text, family, fontStyle));
   }
@@ -643,7 +772,11 @@ export async function buildPdfBlob(
     }
   }
 
-  function runFont(run: InlineStyle): [string, FontStyle] {
+  function runFont(run: RunStyle): [string, FontStyle] {
+    if (run.face) {
+      return [run.face, "normal"];
+    }
+
     const italic = run.italic && !run.upright;
 
     if (run.code && !run.sans) {
@@ -699,9 +832,48 @@ export async function buildPdfBlob(
     return candidates.find((candidate) => fontCovers(candidate, text)) ?? run;
   }
 
-  function setRunFont(run: InlineStyle, fontSize: number): void {
+  function setRunFont(run: RunStyle, fontSize: number): void {
     doc.setFont(...runFont(run));
     doc.setFontSize(run.sup ? fontSize * NOTE_SCALE : fontSize);
+  }
+
+  /*
+   * The same run drawn in a fallback font: one object per run and
+   * font, so consecutive words in it still share a doc.text() call.
+   */
+  const faceRuns = new WeakMap<InlineRun, Map<string, FaceRun>>();
+
+  function withFace(run: InlineRun, family: string): FaceRun {
+    let byFamily = faceRuns.get(run);
+
+    if (!byFamily) {
+      byFamily = new Map();
+      faceRuns.set(run, byFamily);
+    }
+
+    let faceRun = byFamily.get(family);
+
+    if (!faceRun) {
+      faceRun = { ...run, face: family };
+      byFamily.set(family, faceRun);
+    }
+
+    return faceRun;
+  }
+
+  function runColor(run: InlineStyle): Rgb {
+    return run.link
+      ? LINK_COLOR
+      : run.code
+        ? CODE_TEXT_COLOR
+        : run.muted
+          ? MUTED_COLOR
+          : textColor;
+  }
+
+  /* Bold text in a fallback font, which has no bold of its own */
+  function fauxBoldWidth(fontSize: number): number {
+    return mm(fontSize) * 0.035;
   }
 
   /*
@@ -720,11 +892,25 @@ export async function buildPdfBlob(
 
   interface Word {
     text: string;
-    run: InlineRun;
+    run: FaceRun;
     width: number;
     math?: MathLayout;
-    /* Kept on the line of the word before it (a note's number) */
+    /*
+     * Kept on the line of the word before it: a note's number, a
+     * comma after a Hindi word, a "。" after an English one.
+     */
     glue?: boolean;
+    /*
+     * A line may break before it although no space comes first:
+     * Chinese and Japanese, and words right next to them.
+     */
+    breakBefore?: boolean;
+    /* A piece of Chinese or Japanese a line may break around */
+    breaksAnywhere?: boolean;
+    /* The fallback font it's drawn in, if any */
+    fallback?: string;
+    /* Glyphs HarfBuzz placed (see text-shaping.ts) */
+    shaped?: { loaded: LoadedFallback; text: ShapedText; scale: number; size: number };
   }
 
   function isSpace(word: Word): boolean {
@@ -838,18 +1024,176 @@ export async function buildPdfBlob(
         continue;
       }
 
-      // Collapse the double spaces a dropped emoji leaves behind.
-      const text = fit(run.text, ...runFont(run)).replace(/ {2,}/g, " ");
-      setRunFont(run, fontSize);
-
-      for (const part of text.split(/(\s+)/)) {
-        if (part !== "") {
-          words.push({ text: part, run, width: doc.getTextWidth(part) });
-        }
-      }
+      tokenizeScripts(run, fontSize, words);
     }
 
     return words;
+  }
+
+  /*
+   * Adds a word, deciding whether a line may break between it and
+   * the word before it when no space comes between them.
+   */
+  function addWord(words: Word[], word: Word): void {
+    const before = words[words.length - 1];
+
+    if (
+      before &&
+      !word.glue &&
+      !before.math &&
+      !isSpace(word) &&
+      !isSpace(before)
+    ) {
+      if (cannotStartLine(word.text) || cannotEndLine(before.text)) {
+        word.glue = true;
+      } else if (word.breaksAnywhere || before.breaksAnywhere) {
+        word.breakBefore = true;
+      } else if ((word.fallback ?? "") !== (before.fallback ?? "")) {
+        word.glue = true;
+      }
+    }
+
+    words.push(word);
+  }
+
+  /*
+   * A left-to-right run's words, each piece in a font that has its
+   * letters: the run's own font, or a fallback for Chinese,
+   * Japanese, Korean, and the scripts HarfBuzz shapes.
+   */
+  function tokenizeScripts(run: InlineRun, fontSize: number, words: Word[]): void {
+    const [family, style] = runFont(run);
+    const coverage = coverageByFont.get(`${family}/${style}`);
+    const segments =
+      fallbacks.size === 0
+        ? [{ text: run.text, font: null }]
+        : splitByFont(
+            run.text,
+            (code) => coverage?.has(code) ?? false,
+            fallbackCovers,
+          );
+
+    for (const segment of segments) {
+      const loaded = segment.font ? fallbacks.get(segment.font) : undefined;
+
+      if (!loaded) {
+        // Collapse the double spaces a dropped emoji leaves behind.
+        const text = fit(segment.text, family, style).replace(/ {2,}/g, " ");
+        setRunFont(run, fontSize);
+
+        for (const part of text.split(/(\s+)/)) {
+          if (part !== "") {
+            addWord(words, { text: part, run, width: doc.getTextWidth(part) });
+          }
+        }
+
+        continue;
+      }
+
+      // A fallback's stretch never holds a space (see splitByFont).
+      if (loaded.shaper) {
+        addWord(words, shapedWord(segment.text, run, loaded, fontSize));
+        continue;
+      }
+
+      const faceRun = withFace(run, loaded.font.family);
+      const text = fit(segment.text, loaded.font.family, "normal");
+      const breaksAnywhere = loaded.font.breaksAnywhere === true;
+
+      setRunFont(faceRun, fontSize);
+
+      for (const piece of breaksAnywhere ? cjkBreakPieces(text) : [text]) {
+        if (piece !== "") {
+          addWord(words, {
+            text: piece,
+            run: faceRun,
+            width: doc.getTextWidth(piece),
+            fallback: loaded.font.family,
+            ...(breaksAnywhere ? { breaksAnywhere } : {}),
+          });
+        }
+      }
+    }
+  }
+
+  function shapedWord(
+    text: string,
+    run: InlineRun,
+    loaded: LoadedFallback,
+    fontSize: number,
+  ): Word {
+    const shaper = loaded.shaper!;
+    const size = run.sup ? fontSize * NOTE_SCALE : fontSize;
+    const shapedText = shaper.shape(text);
+    const scale = mm(size) / shaper.unitsPerEm;
+
+    return {
+      text,
+      run,
+      width: shapedText.advance * scale,
+      fallback: loaded.font.family,
+      shaped: { loaded, text: shapedText, scale, size },
+    };
+  }
+
+  /*
+   * A shaped word's glyphs, filled as one path - and its text laid
+   * over them invisibly, stretched to the same width, so the PDF
+   * can be searched and its text copied.
+   */
+  function drawShapedWord(word: Word, x: number, baseline: number, color: Rgb): void {
+    const { loaded, text, scale, size } = word.shaped!;
+    const shaper = loaded.shaper!;
+    let penX = x;
+    let traced = false;
+
+    for (const glyph of text.glyphs) {
+      const matrix: Matrix = [
+        scale,
+        0,
+        0,
+        -scale,
+        penX + glyph.dx * scale,
+        baseline - glyph.dy * scale,
+      ];
+
+      traced = tracePath(doc, shaper.outline(glyph.id), matrix) || traced;
+      penX += glyph.advance * scale;
+    }
+
+    if (traced) {
+      doc.setFillColor(...color);
+
+      if (word.run.bold) {
+        const lineWidth = doc.getLineWidth();
+
+        doc.setDrawColor(...color);
+        doc.setLineWidth(fauxBoldWidth(size));
+        doc.fillStroke();
+        doc.setLineWidth(lineWidth);
+      } else {
+        doc.fill();
+      }
+    }
+
+    const family = loaded.font.family;
+    const searchable = fit(word.text, family, "normal");
+
+    if (searchable.trim() !== "") {
+      doc.setFont(family, "normal");
+      doc.setFontSize(size);
+
+      const natural = doc.getTextWidth(searchable);
+
+      // The scaling would stay on for all the text after it (PDF
+      // keeps it in the graphics state), hence the save and restore.
+      doc.saveGraphicsState();
+      doc.text(searchable, x, baseline, {
+        renderingMode: "invisible",
+        ...(natural > 0 ? { horizontalScale: word.width / natural } : {}),
+      });
+      doc.restoreGraphicsState();
+    }
   }
 
   /*
@@ -890,7 +1234,9 @@ export async function buildPdfBlob(
     maxWidth: number,
     fontSize: number,
   ): Word[] {
-    const plain = line.map((word) => (word.math ? OBJECT_CHAR : word.text));
+    const plain = line.map((word) =>
+      word.math || word.shaped ? OBJECT_CHAR : word.text,
+    );
 
     if (
       line.length === 0 ||
@@ -918,7 +1264,7 @@ export async function buildPdfBlob(
       const owner = owners[order[i]];
       const word = line[owner];
 
-      if (word.math) {
+      if (word.math || word.shaped) {
         visual.push(word);
         i++;
         continue;
@@ -932,7 +1278,7 @@ export async function buildPdfBlob(
       }
 
       setRunFont(word.run, fontSize);
-      visual.push({ text, run: word.run, width: doc.getTextWidth(text) });
+      visual.push({ ...word, text, width: doc.getTextWidth(text) });
     }
 
     if (rtl) {
@@ -1032,7 +1378,7 @@ export async function buildPdfBlob(
 
       const parts = word.math
         ? [fitMath(word, maxWidth)]
-        : word.width > maxWidth
+        : word.width > maxWidth && !word.shaped
           ? splitOversizedWord(word, maxWidth, fontSize)
           : [word];
 
@@ -1041,16 +1387,22 @@ export async function buildPdfBlob(
           let carried: Word[] = [];
 
           // A note's number moves to the next line together with the
-          // word it belongs to, so no line starts with one.
+          // word it belongs to, so no line starts with one - and so
+          // does a closing mark. The word starts after the last space,
+          // or where Chinese or Japanese let the line break.
           if (part.glue) {
-            let lastSpace = current.length - 1;
+            let start = current.length;
 
-            while (lastSpace >= 0 && !isSpace(current[lastSpace])) {
-              lastSpace--;
+            while (start > 0 && !isSpace(current[start - 1])) {
+              start--;
+
+              if (current[start].breakBefore) {
+                break;
+              }
             }
 
-            if (lastSpace >= 0) {
-              carried = current.splice(lastSpace + 1);
+            if (start > 0) {
+              carried = current.splice(start);
             }
           }
 
@@ -1123,7 +1475,7 @@ export async function buildPdfBlob(
     style: MathTextStyle,
     color: Rgb,
   ): void {
-    const [family, fontStyle] = mathTextFont(style);
+    const [family, fontStyle] = mathTextFont(style, text);
 
     doc.setFont(family, fontStyle);
     doc.setFontSize(size / PT_TO_MM);
@@ -1256,18 +1608,23 @@ export async function buildPdfBlob(
 
       forEachSpan(
         line,
-        (word) => (word.math || word.text === "" ? undefined : word.run),
+        (word) =>
+          word.math || word.shaped || word.text === "" ? undefined : word.run,
         (first, last, run) => {
+          const color = runColor(run);
+
           setRunFont(run, fontSize);
-          doc.setTextColor(
-            ...(run.link
-              ? LINK_COLOR
-              : run.code
-                ? CODE_TEXT_COLOR
-                : run.muted
-                  ? MUTED_COLOR
-                  : textColor),
-          );
+          doc.setTextColor(...color);
+
+          // A fallback font has no bold: its letters get an outline.
+          const fauxBold = Boolean(run.face && run.bold);
+          const lineWidth = doc.getLineWidth();
+
+          if (fauxBold) {
+            doc.setDrawColor(...color);
+            doc.setLineWidth(fauxBoldWidth(fontSize));
+          }
+
           doc.text(
             line
               .slice(first, last + 1)
@@ -1275,11 +1632,25 @@ export async function buildPdfBlob(
               .join(""),
             starts[first],
             run.sup ? y - mm(fontSize) * NOTE_RISE : y,
+            fauxBold ? { renderingMode: "fillThenStroke" } : undefined,
           );
+
+          if (fauxBold) {
+            doc.setLineWidth(lineWidth);
+          }
         },
       );
 
       line.forEach((word, i) => {
+        if (word.shaped) {
+          drawShapedWord(
+            word,
+            starts[i],
+            word.run.sup ? y - mm(fontSize) * NOTE_RISE : y,
+            runColor(word.run),
+          );
+        }
+
         if (word.math) {
           drawMath(doc, word.math.rendered, starts[i], y, word.math.unit, {
             color: word.run.link ? LINK_COLOR : textColor,
@@ -1310,6 +1681,10 @@ export async function buildPdfBlob(
     drawWrappedLines(lines, x, fontSize, lineHeight, true);
   }
 
+  /*
+   * A line of plain text - a role label, a message's details - laid
+   * out like any other, so it gets the fallback fonts too.
+   */
   function writePlainLine(
     text: string,
     fontSize: number,
@@ -1317,21 +1692,22 @@ export async function buildPdfBlob(
     style: "normal" | "bold" | "italic" = "normal",
     color: Rgb = TEXT_COLOR,
   ): void {
-    doc.setFont(SANS_FONT, style);
-    doc.setFontSize(fontSize);
-    doc.setTextColor(...color);
+    const run: InlineRun = {
+      text,
+      ...(style === "bold" ? { bold: true } : {}),
+      ...(style === "italic" ? { italic: true } : {}),
+    };
+    const savedColor = textColor;
 
-    const lines: string[] = doc.splitTextToSize(
-      fit(text, SANS_FONT, style),
-      contentWidth,
+    textColor = color;
+    drawWrappedLines(
+      wrapWords(tokenizeRuns([run], fontSize), contentWidth, fontSize),
+      pdf.marginLeft,
+      fontSize,
+      lineHeight,
+      true,
     );
-
-    for (const line of lines) {
-      ensureSpace(lineHeight);
-      doc.text(line, pdf.marginLeft, y);
-      y += lineHeight;
-    }
-
+    textColor = savedColor;
     doc.setTextColor(...TEXT_COLOR);
   }
 
@@ -1454,6 +1830,54 @@ export async function buildPdfBlob(
     doc.setFont(MONO_FONT, "normal");
     doc.setFontSize(codeFontSize);
 
+    const monoCoverage = coverageByFont.get(`${MONO_FONT}/normal`);
+    const monoCovers = (code: number) => monoCoverage?.has(code) ?? false;
+
+    /*
+     * A code token fitted to the monospace font - except Chinese,
+     * Japanese, Korean or a shaped script, kept for its fallback
+     * font (a comment in Chinese is common).
+     */
+    function fitCode(text: string): string {
+      if (fallbacks.size === 0) {
+        return fit(text, MONO_FONT, "normal");
+      }
+
+      return splitByFont(text, monoCovers, fallbackCovers)
+        .map((piece) => (piece.font ? piece.text : fit(piece.text, MONO_FONT, "normal")))
+        .join("");
+    }
+
+    /* Text in one color, each piece in its font; returns where it ends */
+    function drawCodeRun(text: string, x: number, color: Rgb): number {
+      const pieces =
+        fallbacks.size === 0
+          ? [{ text, font: null }]
+          : splitByFont(text, monoCovers, fallbackCovers);
+
+      for (const piece of pieces) {
+        const loaded = piece.font ? fallbacks.get(piece.font) : undefined;
+
+        if (loaded?.shaper) {
+          const word = shapedWord(piece.text, { text: piece.text }, loaded, codeFontSize);
+
+          drawShapedWord(word, x, y, color);
+          x += word.width;
+          continue;
+        }
+
+        doc.setFont(loaded ? loaded.font.family : MONO_FONT, "normal");
+        doc.setFontSize(codeFontSize);
+        doc.text(piece.text, x, y);
+        x += doc.getTextWidth(piece.text);
+      }
+
+      doc.setFont(MONO_FONT, "normal");
+      doc.setFontSize(codeFontSize);
+
+      return x;
+    }
+
     const codeInnerWidth = blockWidth - 4;
     const charWidth = doc.getTextWidth("M") || 1;
     const maxChars = Math.max(1, Math.floor(codeInnerWidth / charWidth));
@@ -1470,7 +1894,6 @@ export async function buildPdfBlob(
      * one.
      */
     function drawCodeText(text: string, x: number): void {
-      const monoCoverage = coverageByFont.get(`${MONO_FONT}/normal`);
       const pieces: { text: string; mono: boolean }[] = [];
 
       for (const char of text) {
@@ -1510,9 +1933,10 @@ export async function buildPdfBlob(
         }
 
         const run = text.slice(start, index);
-        doc.setTextColor(...CODE_TOKEN_COLORS[segment[start]]);
-        doc.text(run, x, y);
-        x += doc.getTextWidth(run);
+        const color = CODE_TOKEN_COLORS[segment[start]];
+
+        doc.setTextColor(...color);
+        x = drawCodeRun(run, x, color);
         start = index;
       }
 
@@ -1533,16 +1957,18 @@ export async function buildPdfBlob(
         line = shapeArabic(expanded);
       } else {
         for (const token of highlighted[lineIndex] ?? []) {
-          const text = fit(token.text, MONO_FONT, "normal");
+          const text = fitCode(token.text);
           line += text;
           kinds.push(...Array<TokenKind>(text.length).fill(token.kind));
         }
       }
 
-      const segments =
-        line.length === 0
+      // Wrapped by columns, a Chinese character taking two.
+      const segments = rtlText
+        ? line.length === 0
           ? [""]
-          : (line.match(new RegExp(`.{1,${wrapMaxChars}}`, "g")) ?? [""]);
+          : (line.match(new RegExp(`.{1,${wrapMaxChars}}`, "g")) ?? [""])
+        : wrapByColumns(line, wrapMaxChars);
       let offset = 0;
 
       segments.forEach((segment, segmentIndex) => {
@@ -1994,14 +2420,17 @@ export async function buildPdfBlob(
     );
   }
 
-  // A Hebrew or Arabic chat title is right-aligned, like the reply.
-  const titleRtl = isRtlParagraph(documentTitle);
-
   const hasHeader = Boolean(
     documentTitle || tabUrl || settings.includeTimestamp,
   );
+  // Laid out like a paragraph: a Hebrew or Arabic title is
+  // right-aligned, like the reply, and a Chinese one gets its font.
   const headerTitleLines = documentTitle
-    ? splitLines(documentTitle, titleFontSize, "bold")
+    ? wrapWords(
+        tokenizeRuns([{ text: documentTitle, bold: true }], titleFontSize),
+        contentWidth,
+        titleFontSize,
+      )
     : [];
   const headerUrlLines = tabUrl
     ? splitLines(tabUrl, metaFontSize, "normal")
@@ -2018,22 +2447,13 @@ export async function buildPdfBlob(
       return;
     }
 
-    doc.setFont(SANS_FONT, "bold");
-    doc.setFontSize(titleFontSize);
-    doc.setTextColor(...TEXT_COLOR);
-
-    for (const line of headerTitleLines) {
-      const visual = toVisual(line, titleRtl);
-
-      doc.text(
-        visual,
-        titleRtl
-          ? pageWidth - pdf.marginRight - doc.getTextWidth(visual)
-          : pdf.marginLeft,
-        y,
-      );
-      y += titleLineHeight;
-    }
+    drawWrappedLines(
+      headerTitleLines,
+      pdf.marginLeft,
+      titleFontSize,
+      titleLineHeight,
+      false,
+    );
 
     doc.setFont(SANS_FONT, "normal");
     doc.setFontSize(metaFontSize);
@@ -2051,8 +2471,10 @@ export async function buildPdfBlob(
       y += metaLineHeight;
     }
 
-    doc.setTextColor(...MUTED_COLOR);
-    doc.text(fit(headerMeta, SANS_FONT, "normal"), pdf.marginLeft, y);
+    const metaTop = y;
+
+    writePlainLine(headerMeta, metaFontSize, metaLineHeight, "normal", MUTED_COLOR);
+    y = metaTop;
 
     const ruleY = y + metaLineHeight * 0.5;
     doc.setDrawColor(200);
@@ -2125,12 +2547,15 @@ export async function buildPdfBlob(
     const hasRule = index > 0 && ruleBetweenMessages;
     const content = isUser ? fenceUserContent(preprocessed) : preprocessed;
     const blocks = parseBlocks(content, isUser);
+    // When it was sent and by which model, when they're exported
+    const details = messageDetails(message);
 
-    // Keep the separator and role label with the message's first
-    // lines, so neither is left alone at the bottom of a page.
+    // Keep the separator, role label and details with the message's
+    // first lines, so none is left alone at the bottom of a page.
     ensureSpace(
       (hasRule ? bodyLineHeight * 1.2 : 0) +
         (showRoleLabels ? headingLineHeight * 1.2 : 0) +
+        (details ? metaLineHeight + bodyLineHeight * 0.2 : 0) +
         keepWithNextHeight(blocks, 0),
     );
 
@@ -2161,6 +2586,11 @@ export async function buildPdfBlob(
         "bold",
         ROLE_COLOR[message.role],
       );
+      y += bodyLineHeight * 0.2;
+    }
+
+    if (details) {
+      writePlainLine(details, metaFontSize, metaLineHeight, "normal", MUTED_COLOR);
       y += bodyLineHeight * 0.2;
     }
 
@@ -2312,11 +2742,21 @@ export async function buildPdfBlob(
       const footerY = pageHeight - pdf.marginBottom + mm(9) * 1.4;
 
       if (pdf.includeUserInfo && pdf.userInfoText.trim() !== "") {
-        doc.text(
-          fit(visualPlain(pdf.userInfoText), SANS_FONT, "normal"),
-          pdf.marginLeft,
-          footerY,
+        // One line, clear of the page number.
+        const [firstLine = []] = wrapWords(
+          tokenizeRuns([{ text: pdf.userInfoText }], 9),
+          contentWidth - 20,
+          9,
         );
+        const saved = { y, textColor };
+
+        y = footerY;
+        textColor = [120, 120, 120];
+        drawWrappedLines([firstLine], pdf.marginLeft, 9, 0, false);
+        ({ y, textColor } = saved);
+        doc.setFont(SANS_FONT, "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(120);
       }
 
       if (pdf.includePageNumbers) {

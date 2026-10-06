@@ -223,6 +223,7 @@ describe("convertGrokResponses", () => {
           { kind: "text", text: "[Attachment: plan.pdf]" },
           { kind: "text", text: "Where should I travel in April?" },
         ],
+        time: Date.parse("2026-10-01T10:00:00.000Z"),
       },
       {
         id: "r3",
@@ -247,6 +248,7 @@ describe("convertGrokResponses", () => {
           { title: "Lisbon weather", url: "https://weather.example/lisbon" },
           { title: "Porto guide", url: "https://other.example/porto" },
         ],
+        time: Date.parse("2026-10-01T10:01:00.000Z"),
       },
     ]);
   });

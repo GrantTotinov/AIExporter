@@ -29,6 +29,9 @@ let githubStatus: { connected: boolean; login?: string } = { connected: false };
 /* What the person answers when the browser asks to allow GitHub */
 let allowGithub = true;
 
+/* The keys the browser gave the manifest's commands */
+let commandShortcuts: { name: string; shortcut: string }[] = [];
+
 const sendMessage = vi.fn(async (message: { type: string }) => {
   if (message.type === "GITHUB_GET_STATUS") {
     return { success: true, data: githubStatus };
@@ -76,6 +79,7 @@ async function loadOptionsPage(initial: Partial<Settings> = {}): Promise<void> {
     },
     permissions: { request: permissionsRequest },
     tabs: { create: tabsCreate },
+    commands: { getAll: vi.fn(async () => commandShortcuts) },
     i18n: { getUILanguage: () => "en-US" },
   });
 
@@ -107,6 +111,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   githubStatus = { connected: false };
   allowGithub = true;
+  commandShortcuts = [];
   vi.useFakeTimers();
 });
 
@@ -187,6 +192,22 @@ describe("options page", () => {
       await vi.advanceTimersByTimeAsync(300);
 
       expect(savedSettings().markdownProperties).toBe(false);
+    });
+
+    it("turns message dates and models on, off by default", async () => {
+      await loadOptionsPage();
+
+      const toggle = byId<HTMLInputElement>("includeMessageDetails");
+
+      expect(toggle.checked).toBe(false);
+      expect(byId("includeMessageDetails-desc").textContent?.trim()).toBe(
+        en["options.messageDetails.desc"],
+      );
+
+      toggle.click();
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(savedSettings().includeMessageDetails).toBe(true);
     });
 
     it("merges a burst of clicks into one write", async () => {
@@ -608,6 +629,41 @@ describe("options page", () => {
       expect(byId("fileNameExampleName").textContent).toBe(
         `${de["options.fileName.sampleTitle"]}.pdf`,
       );
+    });
+  });
+
+  describe("keyboard shortcuts", () => {
+    function shortcutChip(command: string): HTMLElement {
+      return document.querySelector(`.shortcut[data-command="${command}"]`) as HTMLElement;
+    }
+
+    it("shows the keys the browser gave, and when one has none", async () => {
+      commandShortcuts = [
+        { name: "_execute_action", shortcut: "Ctrl+Shift+Y" },
+        { name: "copy-chat", shortcut: "" },
+      ];
+
+      await loadOptionsPage();
+
+      await vi.waitFor(() =>
+        expect(shortcutChip("_execute_action").textContent).toBe("Ctrl+Shift+Y"),
+      );
+      expect(shortcutChip("copy-chat").textContent).toBe(en["options.shortcuts.notSet"]);
+      expect(shortcutChip("copy-chat").classList.contains("is-unset")).toBe(true);
+    });
+
+    it("keeps the suggested keys when the browser can't say", async () => {
+      await loadOptionsPage();
+
+      expect(shortcutChip("copy-chat").textContent).toBe("Alt+Shift+M");
+    });
+
+    it("opens the browser's page for changing them", async () => {
+      await loadOptionsPage();
+
+      byId<HTMLButtonElement>("open-shortcut-settings").click();
+
+      expect(tabsCreate).toHaveBeenCalledWith({ url: "chrome://extensions/shortcuts" });
     });
   });
 

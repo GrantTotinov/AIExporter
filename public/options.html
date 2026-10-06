@@ -1220,6 +1220,27 @@
           left 0.2s;
       }
 
+      .shortcut {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 8px;
+        background: var(--tile);
+        color: var(--text);
+        font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas,
+          monospace;
+        white-space: nowrap;
+      }
+
+      .shortcut.is-unset {
+        border-style: dashed;
+        color: var(--text-muted);
+        font-family: inherit;
+      }
+
       .status {
         display: inline-flex;
         align-items: center;
@@ -1761,6 +1782,14 @@
         <circle cx="12" cy="12" r="8.5" />
         <path d="M12 7.5V12l3 2" />
       </symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24">
+        <rect x="2.5" y="6" width="19" height="12" rx="2" />
+        <path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M6.5 14h.01M17.5 14h.01M9.5 14h5" />
+      </symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24">
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+        <path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2" />
+      </symbol>
       <symbol id="i-user" viewBox="0 0 24 24">
         <circle cx="12" cy="8" r="4" />
         <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
@@ -1908,6 +1937,12 @@
             </svg>
             <span data-i18n="options.saving.title">Saving files</span>
           </a>
+          <a class="nav-link" href="#shortcuts">
+            <svg class="icon" aria-hidden="true">
+              <use href="#i-keyboard" />
+            </svg>
+            <span data-i18n="options.shortcuts.title">Keyboard shortcuts</span>
+          </a>
           <a class="nav-link" href="#content">
             <svg class="icon" aria-hidden="true"><use href="#i-chat" /></svg>
             <span data-i18n="options.content.title">Chat contents</span>
@@ -2009,6 +2044,13 @@
                   <option value="de">Deutsch</option>
                   <option value="ru">Русский</option>
                   <option value="zh">中文</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                  <option value="hi">हिन्दी</option>
+                  <option value="pt">Português (Brasil)</option>
+                  <option value="id">Bahasa Indonesia</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="it">Italiano</option>
                 </select>
                 <svg class="icon" aria-hidden="true">
                   <use href="#i-chevron" />
@@ -2308,6 +2350,135 @@
           </div>
         </section>
 
+        <!-- ============== KEYBOARD SHORTCUTS ============== -->
+        <section class="card" id="shortcuts" aria-labelledby="shortcuts-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-keyboard" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="shortcuts-title"
+                data-i18n="options.shortcuts.title"
+              >
+                Keyboard shortcuts
+              </h2>
+              <p class="card-subtitle" data-i18n="options.shortcuts.subtitle">
+                Open AI Exporter or copy a chat without reaching for the mouse.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting"
+            data-help="options.shortcutOpen.help"
+            data-tip="options.shortcutOpen.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-external" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span class="setting-title" data-i18n="options.shortcutOpen.title"
+                    >Open AI Exporter</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.shortcutOpen.desc">
+                  Opens the AI Exporter window, as clicking its button does.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <kbd class="shortcut" data-command="_execute_action"
+                >Alt+Shift+E</kbd
+              >
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.shortcutCopy.help"
+            data-tip="options.shortcutCopy.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-chat" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span class="setting-title" data-i18n="options.shortcutCopy.title"
+                    >Copy the open chat</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.shortcutCopy.desc">
+                  Copies the whole chat without opening anything.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <kbd class="shortcut" data-command="copy-chat">Alt+Shift+M</kbd>
+            </div>
+          </div>
+
+          <div
+            class="setting"
+            data-help="options.shortcutChange.help"
+            data-tip="options.shortcutChange.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-keyboard" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span class="setting-title" data-i18n="options.shortcutChange.title"
+                    >Your own keys</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" data-i18n="options.shortcutChange.desc">
+                  Pick other keys for these, or turn one off.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <button type="button" class="button" id="open-shortcut-settings">
+                <span data-i18n="options.shortcutChange.open"
+                  >Change shortcuts</span
+                >
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-external" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
         <!-- ================ CHAT CONTENTS ================= -->
         <section class="card" id="content" aria-labelledby="content-title">
           <header class="card-header">
@@ -2467,6 +2638,54 @@
                   role="switch"
                   id="includeThinking"
                   aria-describedby="includeThinking-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.messageDetails.help"
+            data-tip="options.messageDetails.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-calendar" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="includeMessageDetails"
+                    data-i18n="options.messageDetails.title"
+                    >Message dates and AI model</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="includeMessageDetails-desc"
+                  data-i18n="options.messageDetails.desc"
+                >
+                  Show when each message was sent and which AI model answered.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="includeMessageDetails"
+                  aria-describedby="includeMessageDetails-desc"
                 />
                 <span class="switch-track" aria-hidden="true"></span>
               </span>

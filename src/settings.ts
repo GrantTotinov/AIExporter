@@ -58,6 +58,13 @@ export interface Settings {
    * ("thinking") is exported too, ahead of the answer itself.
    */
   includeThinking: boolean;
+  /*
+   * When true, every message is exported with the date and time it
+   * was sent, and a reply with the AI model that wrote it when the
+   * site names one (see message-details.ts) - next to its name in
+   * documents, as fields of their own in JSON and CSV.
+   */
+  includeMessageDetails: boolean;
   theme: "system" | "light" | "dark";
   /*
    * "auto" detects a supported language from the browser's
@@ -67,7 +74,21 @@ export interface Settings {
    * own locale. See src/i18n.ts for the detection logic and
    * the list of supported languages.
    */
-  language: "auto" | "en" | "es" | "fr" | "de" | "ru" | "zh";
+  language:
+    | "auto"
+    | "en"
+    | "es"
+    | "fr"
+    | "de"
+    | "ru"
+    | "zh"
+    | "ja"
+    | "ko"
+    | "hi"
+    | "pt"
+    | "id"
+    | "tr"
+    | "it";
   /*
    * Settings specific to the PDF export format (see
    * src/pdf-export.ts). Kept as a nested object rather than
@@ -122,6 +143,7 @@ export const DEFAULT_SETTINGS: Settings = {
   downloadImagesLocally: false,
   includeSources: true,
   includeThinking: false,
+  includeMessageDetails: false,
   theme: "system",
   language: "auto",
   pdf: DEFAULT_PDF_SETTINGS,

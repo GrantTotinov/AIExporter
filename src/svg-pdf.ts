@@ -20,7 +20,7 @@ import type jsPDF from "jspdf";
 import type { RenderedMath, SvgNode } from "./math-render.ts";
 
 export type Rgb = [number, number, number];
-type Matrix = [number, number, number, number, number, number];
+export type Matrix = [number, number, number, number, number, number];
 
 export interface MathTextStyle {
   bold: boolean;
@@ -202,7 +202,7 @@ function parseColor(
  * draws cubics); an elliptical arc - which MathJax never emits for
  * glyphs - falls back to a straight line to its end point.
  */
-type Segment =
+export type Segment =
   | { op: "M" | "L"; x: number; y: number }
   | { op: "C"; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
   | { op: "Z" };
@@ -394,8 +394,9 @@ function polygonSegments(points: string | undefined, closed: boolean): Segment[]
 /*
  * Builds the path in jsPDF's current path; returns false when there
  * was nothing to draw (jsPDF throws on painting an empty path).
+ * pdf-export.ts draws HarfBuzz's glyph outlines with it too.
  */
-function tracePath(doc: jsPDF, segments: Segment[], matrix: Matrix): boolean {
+export function tracePath(doc: jsPDF, segments: Segment[], matrix: Matrix): boolean {
   let started = false;
 
   for (const segment of segments) {

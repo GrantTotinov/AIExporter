@@ -468,6 +468,17 @@
         white-space: nowrap;
       }
 
+      .chat-row-saved {
+        flex: none;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
       .list-state {
         display: flex;
         flex-direction: column;
@@ -868,6 +879,15 @@
           d="M8 4H7a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1-2 2.5 2.5 2.5 0 0 1 2 2.5V18a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v3.5a2.5 2.5 0 0 0 2 2.5 2.5 2.5 0 0 0-2 2.5V18a2 2 0 0 1-2 2h-1"
         />
       </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="M20.5 16l-5-5-8.5 8.5" />
+      </symbol>
+      <symbol id="i-sheet" viewBox="0 0 24 24">
+        <path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" />
+        <path d="M14 3.5v5h5M8.5 12.5h7M8.5 16h7M12 12.5V19" />
+      </symbol>
       <symbol id="i-table" viewBox="0 0 24 24">
         <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
         <path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" />
@@ -967,6 +987,9 @@
               data-i18n-aria-label="bulk.date.label"
             >
               <option value="all" data-i18n="bulk.date.all">Any time</option>
+              <option value="unsaved" data-i18n="bulk.date.unsaved">
+                Not saved yet, or changed since
+              </option>
               <option value="7d" data-i18n="bulk.date.7d">Last 7 days</option>
               <option value="30d" data-i18n="bulk.date.30d">Last 30 days</option>
               <option value="90d" data-i18n="bulk.date.90d">
@@ -1101,6 +1124,13 @@
             </label>
           </div>
           <div class="format">
+            <input type="radio" name="format" id="format-png" value="png" />
+            <label for="format-png">
+              <svg class="icon" aria-hidden="true"><use href="#i-image" /></svg>
+              <span data-i18n="popup.format.png">Image</span>
+            </label>
+          </div>
+          <div class="format">
             <input type="radio" name="format" id="format-md" value="md" />
             <label for="format-md">
               <svg class="icon" aria-hidden="true"><use href="#i-hash" /></svg>
@@ -1126,6 +1156,13 @@
             <label for="format-csv">
               <svg class="icon" aria-hidden="true"><use href="#i-table" /></svg>
               CSV
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-xlsx" value="xlsx" />
+            <label for="format-xlsx">
+              <svg class="icon" aria-hidden="true"><use href="#i-sheet" /></svg>
+              Excel
             </label>
           </div>
         </div>

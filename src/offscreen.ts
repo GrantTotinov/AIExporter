@@ -72,7 +72,71 @@ function copyUsingExecCommand(text: string): boolean {
   return success;
 }
 
-async function copyToClipboard(text: string): Promise<boolean> {
+/*
+ * ---------------------------------------------------------
+ * FORMATTED TEXT
+ * ---------------------------------------------------------
+ *
+ * A copied chat comes with an HTML version too (see
+ * clipboard-export.ts), put on the clipboard next to the plain
+ * text so Word, Google Docs and mail paste it formatted.
+ * ClipboardItem writes both at once. Where that fails - this
+ * document never has focus, which navigator.clipboard can insist
+ * on - a "copy" event fills both in, the way a page's own copy
+ * handler does.
+ */
+async function copyRichUsingClipboardApi(
+  text: string,
+  html: string,
+): Promise<boolean> {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/plain": new Blob([text], { type: "text/plain" }),
+        "text/html": new Blob([html], { type: "text/html" }),
+      }),
+    ]);
+
+    return true;
+  } catch (error) {
+    devError("AI Exporter: navigator.clipboard.write failed", error);
+
+    return false;
+  }
+}
+
+function copyRichUsingExecCommand(text: string, html: string): boolean {
+  const fill = (event: ClipboardEvent): void => {
+    event.preventDefault();
+    event.clipboardData?.setData("text/plain", text);
+    event.clipboardData?.setData("text/html", html);
+  };
+
+  document.addEventListener("copy", fill);
+
+  try {
+    return copyUsingExecCommand(text);
+  } finally {
+    document.removeEventListener("copy", fill);
+  }
+}
+
+async function copyToClipboard(text: string, html = ""): Promise<boolean> {
+  if (html) {
+    if (
+      (await copyRichUsingClipboardApi(text, html)) ||
+      copyRichUsingExecCommand(text, html)
+    ) {
+      return true;
+    }
+
+    devLog("AI Exporter: formatted copy failed, copying the text alone");
+  }
+
   const modernResult = await copyUsingClipboardApi(text);
 
   if (modernResult) {
@@ -164,8 +228,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       const text = String(message.data ?? "");
+      const html = typeof message.html === "string" ? message.html : "";
 
-      const success = await copyToClipboard(text);
+      const success = await copyToClipboard(text, html);
 
       if (!success) {
         throw new Error("Clipboard write failed");

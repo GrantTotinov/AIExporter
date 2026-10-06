@@ -24,6 +24,7 @@ import {
   type Message,
 } from "./export-builders.ts";
 import { normalizeNotes, type MessageSource } from "./source-notes.ts";
+import { messageDetails } from "./message-details.ts";
 
 export interface PreparedMessage {
   role: Message["role"];
@@ -34,6 +35,14 @@ export interface PreparedMessage {
   thinking: Block[];
   /* The pages its notes cite, shown as a numbered list after it. */
   sources: MessageSource[];
+  /*
+   * When it was sent and the model that wrote it, shown next to its
+   * name ("2026-10-03 14:05 · gpt-4o"); "" when not exported.
+   */
+  details: string;
+  /* The same two on their own, for formats that mark them up */
+  time?: number;
+  model?: string;
 }
 
 export interface PreparedConversation {
@@ -64,7 +73,8 @@ export function documentTitle(tabTitle: string | undefined): string {
  * message's pasted code or terminal output is fenced so it keeps
  * its line breaks and indentation. The messages come with the
  * settings applied already (see applyContentSettings): a reply
- * only has thinking or sources here when they're to be exported.
+ * only has thinking, sources, a time or a model here when they're
+ * to be exported.
  */
 export function prepareConversation(
   messages: Message[],
@@ -107,6 +117,9 @@ export function prepareConversation(
           .filter((image): image is ExportImageFile => Boolean(image)),
         thinking,
         sources,
+        details: messageDetails(message),
+        ...(message.time !== undefined ? { time: message.time } : {}),
+        ...(message.model ? { model: message.model } : {}),
       };
     }),
   };

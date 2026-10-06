@@ -1,0 +1,1281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Exporter - Open a data export</title>
+    <link rel="icon" href="icons/icon48.png" />
+    <style>
+      :root {
+        color-scheme: light;
+
+        --bg: #f6f8fa;
+        --card: #ffffff;
+        --card-border: #d8dee4;
+        --border: #c9d1d9;
+        --divider: #eaeef2;
+        --text: #1b1f24;
+        --text-muted: #57606a;
+        --accent: #10a37f;
+        --accent-text: #0b7a5f;
+        --accent-soft: rgba(16, 163, 127, 0.1);
+        --accent-ring: rgba(16, 163, 127, 0.35);
+        /* Filled buttons: darker than --accent so white text
+           on them stays readable (4.6:1) */
+        --primary: #0d8466;
+        --primary-hover: #0b7359;
+        --tile: #f0f3f6;
+        --hover: rgba(31, 35, 40, 0.06);
+        --row-selected: rgba(16, 163, 127, 0.07);
+        --shadow: 0 1px 2px rgba(31, 35, 40, 0.04),
+          0 3px 12px rgba(31, 35, 40, 0.04);
+        --shadow-bar: 0 -6px 24px rgba(31, 35, 40, 0.08);
+        --danger: #cf222e;
+        --danger-surface: #fff1f0;
+        --warning-text: #7d4e00;
+        --warning-surface: #fff8c5;
+        --warning-border: #eed888;
+      }
+
+      :root[data-theme="light"] {
+        color-scheme: light;
+      }
+
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --card: #161b22;
+        --card-border: #30363d;
+        --border: #3d444d;
+        --divider: #21262d;
+        --text: #f0f6fc;
+        --text-muted: #9198a1;
+        --accent: #10a37f;
+        --accent-text: #2fbf8f;
+        --accent-soft: rgba(16, 163, 127, 0.16);
+        --accent-ring: rgba(16, 163, 127, 0.45);
+        --primary: #0d8466;
+        --primary-hover: #0f9675;
+        --tile: #21262d;
+        --hover: rgba(240, 246, 252, 0.06);
+        --row-selected: rgba(16, 163, 127, 0.12);
+        --shadow: none;
+        --shadow-bar: 0 -6px 24px rgba(0, 0, 0, 0.4);
+        --danger: #f85149;
+        --danger-surface: #2d1114;
+        --warning-text: #e3b341;
+        --warning-surface: rgba(187, 128, 9, 0.15);
+        --warning-border: rgba(187, 128, 9, 0.4);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme]) {
+          color-scheme: dark;
+          --bg: #0d1117;
+          --card: #161b22;
+          --card-border: #30363d;
+          --border: #3d444d;
+          --divider: #21262d;
+          --text: #f0f6fc;
+          --text-muted: #9198a1;
+          --accent: #10a37f;
+          --accent-text: #2fbf8f;
+          --accent-soft: rgba(16, 163, 127, 0.16);
+          --accent-ring: rgba(16, 163, 127, 0.45);
+          --primary: #0d8466;
+          --primary-hover: #0f9675;
+          --tile: #21262d;
+          --hover: rgba(240, 246, 252, 0.06);
+          --row-selected: rgba(16, 163, 127, 0.12);
+          --shadow: none;
+          --shadow-bar: 0 -6px 24px rgba(0, 0, 0, 0.4);
+          --danger: #f85149;
+          --danger-surface: #2d1114;
+          --warning-text: #e3b341;
+          --warning-surface: rgba(187, 128, 9, 0.15);
+          --warning-border: rgba(187, 128, 9, 0.4);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      html {
+        background: var(--bg);
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: var(--bg);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        font-size: 15px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .icon {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * PAGE LAYOUT
+       * ---------------------------------------------------
+       */
+
+      .page {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 24px 140px;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .brand-logo {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        flex: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.2;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .page-subtitle {
+        margin: 4px 0 0;
+        color: var(--text-muted);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 20px 24px;
+      }
+
+      .card-step {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        font-weight: 700;
+        flex: none;
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.3;
+        font-weight: 700;
+      }
+
+      .card-subtitle {
+        margin: 2px 0 0;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * CONTROLS
+       * ---------------------------------------------------
+       */
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+
+      .button .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      .button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+
+      .button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
+      .button--primary {
+        height: 48px;
+        padding: 0 22px;
+        border-color: var(--primary);
+        background: var(--primary);
+        color: #ffffff;
+        font-size: 15px;
+      }
+
+      .button--primary:hover:not(:disabled) {
+        background: var(--primary-hover);
+      }
+
+      .button--quiet {
+        height: 34px;
+        padding: 0 10px;
+        border-color: transparent;
+        background: transparent;
+        color: var(--text-muted);
+      }
+
+      .button--quiet:hover:not(:disabled) {
+        color: var(--text);
+      }
+
+      .button--danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      .button--danger:hover:not(:disabled) {
+        background: var(--danger-surface);
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 0 24px 16px;
+      }
+
+      .search {
+        position: relative;
+        flex: 1 1 260px;
+      }
+
+      .search .icon {
+        position: absolute;
+        left: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+
+      .field {
+        width: 100%;
+        height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .search .field {
+        padding-left: 42px;
+      }
+
+      .field::placeholder {
+        color: var(--text-muted);
+      }
+
+      .field:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
+      }
+
+      .date-filter {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 1 auto;
+      }
+
+      .date-filter > .icon {
+        color: var(--text-muted);
+      }
+
+      select.field {
+        width: auto;
+        min-width: 180px;
+        cursor: pointer;
+      }
+
+      .custom-range {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        flex-basis: 100%;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .custom-range label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .custom-range .field {
+        width: auto;
+        height: 40px;
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: var(--accent);
+        cursor: pointer;
+        flex: none;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * CHAT LIST
+       * ---------------------------------------------------
+       */
+
+      .list-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 24px;
+        border-top: 1px solid var(--divider);
+        border-bottom: 1px solid var(--divider);
+        background: var(--tile);
+        font-size: 14px;
+      }
+
+      .list-head label {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .list-count {
+        margin-left: auto;
+        color: var(--text-muted);
+      }
+
+      .chat-list {
+        max-height: min(56vh, 620px);
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow-y: auto;
+        border-radius: 0 0 16px 16px;
+      }
+
+      .chat-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 11px 24px;
+        border-bottom: 1px solid var(--divider);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .chat-row:last-child {
+        border-bottom: none;
+      }
+
+      .chat-row:hover {
+        background: var(--hover);
+      }
+
+      .chat-row.is-selected {
+        background: var(--row-selected);
+      }
+
+      .chat-row-title {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chat-row-title.is-untitled {
+        color: var(--text-muted);
+        font-style: italic;
+      }
+
+      .chat-row-date {
+        color: var(--text-muted);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .chat-row-saved {
+        flex: none;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .list-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 48px 24px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      .list-state p {
+        margin: 0;
+        max-width: 460px;
+        text-wrap: balance;
+      }
+
+      .list-state-title {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .list-state > .icon {
+        width: 32px;
+        height: 32px;
+      }
+
+      .list-state--error > .icon {
+        color: var(--danger);
+      }
+
+      .spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid var(--accent-soft);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .spinner--small {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+        flex: none;
+      }
+
+      .list-more {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 24px;
+        border-bottom: 1px solid var(--divider);
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .list-more .icon {
+        width: 16px;
+        height: 16px;
+        color: var(--warning-text);
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .spinner {
+          animation-duration: 2.4s;
+        }
+      }
+
+      /*
+       * ---------------------------------------------------
+       * FILE TYPE
+       * ---------------------------------------------------
+       */
+
+      .formats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        padding: 0 24px;
+      }
+
+      .format {
+        position: relative;
+      }
+
+      .format input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .format label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 14px 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+
+      .format label .icon {
+        width: 24px;
+        height: 24px;
+        color: var(--text-muted);
+      }
+
+      .format label:hover {
+        background: var(--hover);
+      }
+
+      .format input:checked + label {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        box-shadow: 0 0 0 1px var(--accent);
+      }
+
+      .format input:checked + label .icon {
+        color: var(--accent-text);
+      }
+
+      .format input:focus-visible + label {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .format-hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin: 14px 24px 22px;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .format-hint .icon {
+        width: 18px;
+        height: 18px;
+        margin-top: 2px;
+      }
+
+      /*
+       * ---------------------------------------------------
+       * BOTTOM BAR, PROGRESS AND RESULT
+       * ---------------------------------------------------
+       */
+
+      .bottom-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-top: 1px solid var(--card-border);
+        background: var(--card);
+        box-shadow: var(--shadow-bar);
+      }
+
+      .bottom-bar-inner {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 16px 24px;
+      }
+
+      .bottom-summary {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .bottom-summary strong {
+        display: block;
+      }
+
+      .bottom-summary span {
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .status-card {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 28px;
+      }
+
+      .status-head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .status-icon {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        flex: none;
+      }
+
+      .status-icon .icon {
+        width: 26px;
+        height: 26px;
+      }
+
+      .status-icon.is-warning {
+        background: var(--warning-surface);
+        color: var(--warning-text);
+      }
+
+      .status-title {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .status-text {
+        margin: 2px 0 0;
+        color: var(--text-muted);
+      }
+
+      .progress {
+        height: 10px;
+        border-radius: 999px;
+        background: var(--tile);
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        background: var(--accent);
+        transition: width 0.3s ease;
+      }
+
+      .progress-detail {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .progress-current {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .note {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin: 0;
+        padding: 12px 14px;
+        border: 1px solid var(--warning-border);
+        border-radius: 12px;
+        background: var(--warning-surface);
+        color: var(--warning-text);
+        font-size: 14px;
+      }
+
+      .note .icon {
+        width: 18px;
+        height: 18px;
+        margin-top: 2px;
+      }
+
+      .status-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .failed-list {
+        margin: 0;
+        padding: 12px 16px 12px 36px;
+        border: 1px solid var(--divider);
+        border-radius: 12px;
+        background: var(--tile);
+        font-size: 14px;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+
+      .failed-list li + li {
+        margin-top: 6px;
+      }
+
+      .failed-reason {
+        display: block;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          padding: 24px 16px 160px;
+        }
+
+        .toolbar,
+        .list-head,
+        .chat-row,
+        .formats {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .formats {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .date-filter,
+        select.field {
+          flex: 1 1 100%;
+          width: 100%;
+        }
+
+        .bottom-bar-inner {
+          flex-direction: column;
+          align-items: stretch;
+          padding: 12px 16px;
+        }
+      }
+
+      .drop-zone {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin: 0 24px;
+        padding: 26px 16px;
+        border: 2px dashed var(--border);
+        border-radius: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+
+      .drop-zone:hover,
+      .drop-zone.is-over {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .drop-zone .icon {
+        width: 30px;
+        height: 30px;
+        color: var(--accent-text);
+      }
+
+      .drop-zone-title {
+        margin: 0;
+        font-weight: 600;
+      }
+
+      .drop-zone-text,
+      .archive-help {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      .archive-help {
+        margin: 12px 24px 20px;
+        line-height: 1.6;
+      }
+
+      .archive-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 24px 0;
+        font-size: 14px;
+      }
+
+      .archive-status.is-error {
+        color: var(--danger);
+      }
+
+      @media (max-width: 640px) {
+        .drop-zone,
+        .archive-status,
+        .archive-help {
+          margin-left: 16px;
+          margin-right: 16px;
+        }
+      }
+
+      .chat-row-source {
+        flex: none;
+        padding: 1px 8px;
+        border: 1px solid var(--card-border);
+        border-radius: 999px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .chat-row-open {
+        flex: none;
+        padding: 3px 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .chat-row-open:hover {
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+
+      .preview {
+        width: min(760px, calc(100vw - 32px));
+        max-height: calc(100vh - 64px);
+        padding: 0;
+        border: 1px solid var(--card-border);
+        border-radius: 14px;
+        background: var(--card);
+        color: var(--text);
+      }
+
+      .preview::backdrop {
+        background: rgba(0, 0, 0, 0.4);
+      }
+
+      .preview-head {
+        position: sticky;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--card);
+      }
+
+      .preview-title {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .preview-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 16px 18px 20px;
+      }
+
+      .preview-message {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .preview-role {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--accent-text);
+      }
+
+      mark {
+        border-radius: 3px;
+        background: #fff3a3;
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Icon set: the popup's icons, 24x24 with a 1.8px round
+      stroke (see .icon).
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-4-4" />
+      </symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24">
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+        <path d="M3.5 10h17M8 3v4M16 3v4" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path
+          d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+        />
+      </symbol>
+      <symbol id="i-file-text" viewBox="0 0 24 24">
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        />
+        <path d="M14 3v5h5M9 13h6M9 17h4" />
+      </symbol>
+      <symbol id="i-file-word" viewBox="0 0 24 24">
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        />
+        <path d="M14 3v5h5M8.5 12l1.25 5 1.75-4 1.75 4 1.25-5" />
+      </symbol>
+      <symbol id="i-code" viewBox="0 0 24 24">
+        <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4.5l-3 15" />
+      </symbol>
+      <symbol id="i-hash" viewBox="0 0 24 24">
+        <path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18" />
+      </symbol>
+      <symbol id="i-text" viewBox="0 0 24 24">
+        <path d="M4 6h16M4 10h16M4 14h16M4 18h10" />
+      </symbol>
+      <symbol id="i-braces" viewBox="0 0 24 24">
+        <path
+          d="M8 4H7a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1-2 2.5 2.5 2.5 0 0 1 2 2.5V18a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v3.5a2.5 2.5 0 0 0 2 2.5 2.5 2.5 0 0 0-2 2.5V18a2 2 0 0 1-2 2h-1"
+        />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="M20.5 16l-5-5-8.5 8.5" />
+      </symbol>
+      <symbol id="i-sheet" viewBox="0 0 24 24">
+        <path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" />
+        <path d="M14 3.5v5h5M8.5 12.5h7M8.5 16h7M12 12.5V19" />
+      </symbol>
+      <symbol id="i-table" viewBox="0 0 24 24">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <rect x="3.5" y="4" width="17" height="4.5" rx="1.5" />
+        <path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5M10 12.5h4" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5M12 16.5v.01" />
+      </symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24">
+        <path
+          d="M10.3 4.2 2.9 17.2A2 2 0 0 0 4.6 20h14.8a2 2 0 0 0 1.7-2.8L13.7 4.2a2 2 0 0 0-3.4 0z"
+        />
+        <path d="M12 9.5v4M12 16.8v.01" />
+      </symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8 12.5 3 3 5.5-6" />
+      </symbol>
+      <symbol id="i-retry" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v4h-4" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5" />
+        <path
+          d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2"
+        />
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+      </symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24">
+        <path d="M9 19h6M10 22h4" />
+        <path
+          d="M8.5 13.5a6 6 0 1 1 7 0c-.8.7-1.5 1.6-1.5 2.5h-4c0-.9-.7-1.8-1.5-2.5z"
+        />
+      </symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24">
+        <path d="M12 15.5v-11M7.5 9 12 4.5 16.5 9" />
+        <path d="M4 16.5v2A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-2" />
+      </symbol>
+    </svg>
+
+    <div class="page">
+      <header class="page-header">
+        <img class="brand-logo" src="icons/icon128.png" alt="" width="52" height="52" />
+        <div>
+          <h1 data-i18n="archive.title">Open a data export</h1>
+          <p class="page-subtitle" data-i18n="archive.subtitle">
+            Every chat from the export ChatGPT or Claude emails you - searched and saved right here, on your computer.
+          </p>
+        </div>
+      </header>
+
+      <!-- ============ STEP 1: THE EXPORT ============ -->
+      <section class="card" aria-labelledby="pick-title">
+        <header class="card-header">
+          <span class="card-step" aria-hidden="true">1</span>
+          <div>
+            <h2 class="card-title" id="pick-title" data-i18n="archive.pick.title">Pick your export</h2>
+            <p class="card-subtitle" data-i18n="archive.pick.subtitle">
+              The ZIP file, or the conversations.json in it. Nothing is uploaded anywhere.
+            </p>
+          </div>
+        </header>
+        <label class="drop-zone" id="drop-zone">
+          <svg class="icon" aria-hidden="true"><use href="#i-upload" /></svg>
+          <p class="drop-zone-title" data-i18n="archive.pick.drop">Drop the file here, or click to choose it</p>
+          <p class="drop-zone-text">.zip · conversations.json</p>
+          <input type="file" id="archive-file" accept=".zip,.json,application/zip,application/json" hidden />
+        </label>
+        <p class="archive-status" id="archive-status" role="status" hidden></p>
+        <p class="archive-help" data-i18n-html="archive.pick.help">
+          <strong>ChatGPT:</strong> Settings → Data controls → Export data.<br />
+          <strong>Claude:</strong> Settings → Privacy → Export data.
+        </p>
+      </section>
+
+      <!-- ============ STEP 2: CHATS ============ -->
+      <section class="card" id="chats-card" aria-labelledby="chats-title" hidden>
+        <header class="card-header">
+          <span class="card-step" aria-hidden="true">2</span>
+          <div>
+            <h2 class="card-title" id="chats-title" data-i18n="bulk.chats.title">Choose chats</h2>
+            <p class="card-subtitle" data-i18n="archive.chats.subtitle">
+              Search every word of every chat. Open one to read it.
+            </p>
+          </div>
+        </header>
+        <div class="toolbar">
+          <div class="search">
+            <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+            <input
+              type="search"
+              class="field"
+              id="search"
+              data-i18n-placeholder="archive.search"
+              placeholder="Search titles and messages"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+        <div class="list-head">
+          <label>
+            <input type="checkbox" id="select-all" />
+            <span data-i18n="bulk.selectAll">Select all</span>
+          </label>
+          <span class="list-count" id="list-count"></span>
+        </div>
+        <ul class="chat-list" id="chat-list"></ul>
+      </section>
+
+      <!-- ============ STEP 3: FILE TYPE ============ -->
+      <section class="card" id="format-card" aria-labelledby="format-title" hidden>
+        <header class="card-header">
+          <span class="card-step" aria-hidden="true">3</span>
+          <div>
+            <h2 class="card-title" id="format-title" data-i18n="bulk.format.title">Choose a file type</h2>
+            <p class="card-subtitle" data-i18n="bulk.format.subtitle">
+              Every chat becomes one file of this type inside the ZIP.
+            </p>
+          </div>
+        </header>
+        <div class="formats" role="radiogroup" aria-labelledby="format-title">
+          <div class="format">
+            <input type="radio" name="format" id="format-pdf" value="pdf" checked />
+            <label for="format-pdf">
+              <svg class="icon" aria-hidden="true"><use href="#i-file-text" /></svg>
+              PDF
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-docx" value="docx" />
+            <label for="format-docx">
+              <svg class="icon" aria-hidden="true"><use href="#i-file-word" /></svg>
+              Word
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-html" value="html" />
+            <label for="format-html">
+              <svg class="icon" aria-hidden="true"><use href="#i-code" /></svg>
+              HTML
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-png" value="png" />
+            <label for="format-png">
+              <svg class="icon" aria-hidden="true"><use href="#i-image" /></svg>
+              <span data-i18n="popup.format.png">Image</span>
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-md" value="md" />
+            <label for="format-md">
+              <svg class="icon" aria-hidden="true"><use href="#i-hash" /></svg>
+              Markdown
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-txt" value="txt" />
+            <label for="format-txt">
+              <svg class="icon" aria-hidden="true"><use href="#i-text" /></svg>
+              <span data-i18n="popup.format.txt">Text</span>
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-json" value="json" />
+            <label for="format-json">
+              <svg class="icon" aria-hidden="true"><use href="#i-braces" /></svg>
+              JSON
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-csv" value="csv" />
+            <label for="format-csv">
+              <svg class="icon" aria-hidden="true"><use href="#i-table" /></svg>
+              CSV
+            </label>
+          </div>
+          <div class="format">
+            <input type="radio" name="format" id="format-xlsx" value="xlsx" />
+            <label for="format-xlsx">
+              <svg class="icon" aria-hidden="true"><use href="#i-sheet" /></svg>
+              Excel
+            </label>
+          </div>
+        </div>
+
+        <p class="format-hint">
+          <svg class="icon" aria-hidden="true"><use href="#i-bulb" /></svg>
+          <span id="format-hint"></span>
+        </p>
+      </section>
+
+      <!-- ============ PROGRESS / RESULT ============ -->
+      <section class="card status-card" id="progress-card" hidden>
+        <div class="status-head">
+          <span class="spinner" aria-hidden="true"></span>
+          <div>
+            <h2 class="status-title" data-i18n="bulk.progress.title">Saving your chats…</h2>
+            <p class="status-text" id="progress-count"></p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <dialog class="preview" id="preview" aria-labelledby="preview-title">
+      <div class="preview-head">
+        <h2 class="preview-title" id="preview-title"></h2>
+        <button type="button" class="button button--quiet" id="preview-close" data-i18n="archive.close">Close</button>
+      </div>
+      <div class="preview-body" id="preview-body"></div>
+    </dialog>
+
+    <div class="bottom-bar" id="bottom-bar" hidden>
+      <div class="bottom-bar-inner">
+        <div class="bottom-summary">
+          <strong id="summary-title"></strong>
+          <span id="summary-text"></span>
+        </div>
+        <button type="button" class="button button--primary" id="export" disabled>
+          <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
+          <span data-i18n="bulk.export">Download ZIP</span>
+        </button>
+      </div>
+    </div>
+
+    <script type="module" src="/archive.js"></script>
+  </body>
+</html>

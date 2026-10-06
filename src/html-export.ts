@@ -10,10 +10,12 @@
  * the same in any browser, offline, attached to an email or put
  * on a shared drive. It has no scripts: some mail and file viewers
  * refuse pages that do, and nothing here needs one. It follows
- * the reader's light or dark mode, and prints cleanly.
+ * the reader's light or dark mode, and prints cleanly. A longer
+ * chat opens with a table of contents of its questions.
  */
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
+import { stripMarkdown } from "./markdown-strip.ts";
 import { highlightCode, resolveLanguage } from "./code-highlight.ts";
 import {
   parseInline,
@@ -40,8 +42,10 @@ import {
   isSafeSourceUrl,
   sourceHost,
   sourceLabel,
+  stripNotes,
   type MessageSource,
 } from "./source-notes.ts";
+import { isoTime, messageTime } from "./message-details.ts";
 
 /* Links that may be followed from the page: no javascript: or data: */
 const SAFE_LINK_RE = /^(?:https?:|mailto:)/i;
@@ -73,6 +77,10 @@ const STYLES = `
   --tok-deleted: #82071e;
   --tok-deleted-bg: #ffebe9;
 }
+`;
+
+/* Left out of a picture of the page (see png-export.ts) */
+const DARK_STYLES = `
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0d1117;
@@ -100,6 +108,9 @@ const STYLES = `
     --tok-deleted-bg: #67060c;
   }
 }
+`;
+
+const PAGE_STYLES = `
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -114,12 +125,19 @@ main { max-width: 820px; margin: 0 auto; padding: 40px 20px 64px; }
 .doc-title { margin: 0 0 8px; font-size: 28px; line-height: 1.25; }
 .doc-meta { margin: 0; color: var(--muted); font-size: 14px; }
 .doc-meta a { color: var(--link); }
-.message { margin: 0 0 28px; }
+.toc { margin: 0 0 28px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--soft); }
+.toc summary { cursor: pointer; font-weight: 600; }
+.toc ol { margin: 10px 0 2px; padding-inline-start: 26px; }
+.toc li { margin: 4px 0; }
+.toc a { text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.message { margin: 0 0 28px; scroll-margin-top: 16px; }
 .message--user { padding: 14px 18px; border: 1px solid var(--user-border); border-radius: 12px; background: var(--user-bg); }
 .message > :last-child { margin-bottom: 0; }
 .role { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .message--user .role { color: var(--user-label); }
 .message--assistant .role { color: var(--assistant-label); }
+.role-details { color: var(--muted); font-weight: 400; letter-spacing: 0; text-transform: none; }
 .message-rule { margin: 0 0 28px; border: 0; border-top: 1px solid var(--border); }
 p, ul, ol, blockquote, table, pre, figure { margin: 0 0 14px; }
 h3, h4, h5, h6 { margin: 22px 0 10px; line-height: 1.3; }
@@ -165,6 +183,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; text-align: cen
 @media print {
   :root { color-scheme: light; }
   body { font-size: 11pt; }
+  .toc { display: none; }
   main { max-width: none; padding: 0; }
   .message--user { break-inside: avoid; }
   .code, figure, tr { break-inside: avoid; }
@@ -178,14 +197,25 @@ export interface HtmlSource {
   tabUrl: string | undefined;
 }
 
+export interface HtmlOptions {
+  /*
+   * The page as png-export.ts takes a picture of it: always in
+   * light colors, without the table of contents (nothing to click
+   * in a picture), and with its images loaded right away.
+   */
+  picture?: boolean;
+}
+
 export async function buildHtmlDocument(
   messages: Message[],
   images: ExportImageFile[],
   settings: Settings,
   source: HtmlSource,
+  options: HtmlOptions = {},
 ): Promise<string> {
+  const exported = applyContentSettings(messages, settings);
   const conversation = prepareConversation(
-    applyContentSettings(messages, settings),
+    exported,
     images,
     source.tabTitle,
     source.tabUrl,
@@ -224,6 +254,7 @@ export async function buildHtmlDocument(
         rule +
         renderMessage(
           message,
+          messageAnchor(index),
           settings.headingStyle !== "none",
           conversation.formulas,
           rendered,
@@ -231,6 +262,10 @@ export async function buildHtmlDocument(
       );
     })
     .join("\n");
+  const contents = options.picture ? "" : renderContents(exported);
+  const styles = options.picture
+    ? `${STYLES.replace("color-scheme: light dark", "color-scheme: light")}${PAGE_STYLES}`
+    : `${STYLES}${DARK_STYLES}${PAGE_STYLES}`;
 
   return `<!DOCTYPE html>
 <html lang="und">
@@ -239,7 +274,7 @@ export async function buildHtmlDocument(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="AI Exporter">
 <title>${escapeXml(title)}</title>
-<style>${STYLES}</style>
+<style>${styles}</style>
 </head>
 <body>
 <main>
@@ -247,7 +282,7 @@ export async function buildHtmlDocument(
 <h1 class="doc-title" dir="auto">${escapeXml(title)}</h1>
 <p class="doc-meta">${meta.join(" · ")}</p>
 </header>
-${body}
+${contents}${options.picture ? body.replaceAll(' loading="lazy"', "") : body}
 <footer>Saved with AI Exporter</footer>
 </main>
 </body>
@@ -255,8 +290,194 @@ ${body}
 `;
 }
 
+/*
+ * ---------------------------------------------------------
+ * CLIPBOARD
+ * ---------------------------------------------------------
+ *
+ * "Copy the whole chat" puts the chat on the clipboard twice (see
+ * clipboard-export.ts): as Markdown for what takes plain text, and
+ * as this - the same messages in HTML - for Word, Google Docs,
+ * Notion and mail, which then paste real headings, lists, tables
+ * and code instead of "##" and "**". It's laid out like the copied
+ * Markdown, names and all. A paste keeps no stylesheet, so the few
+ * styles it needs are written onto the elements themselves.
+ * Formulas stay in their LaTeX source and pictures stay out, as in
+ * the Markdown; nothing here needs a DOM, so the copy shortcut
+ * builds it in Chrome's background service worker too.
+ */
+const CLIPBOARD_STYLES: Record<string, string> = {
+  code: "margin:0 0 12px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa",
+  "code-lang":
+    "padding:4px 10px;border-bottom:1px solid #d0d7de;color:#656d76;font:600 12px Consolas,Menlo,monospace",
+  "math-source": "font-family:Consolas,Menlo,monospace",
+  note: "font-size:0.75em",
+  sources: "font-size:0.9em",
+  "sources-title": "margin:0;color:#656d76;font-weight:700",
+  "source-host": "color:#656d76",
+  "tok-keyword": "color:#cf222e",
+  "tok-literal": "color:#0550ae",
+  "tok-number": "color:#0550ae",
+  "tok-property": "color:#0550ae",
+  "tok-attribute": "color:#0550ae",
+  "tok-string": "color:#0a3069",
+  "tok-comment": "color:#6e7781;font-style:italic",
+  "tok-meta": "color:#6e7781;font-style:italic",
+  "tok-function": "color:#8250df",
+  "tok-type": "color:#953800",
+  "tok-variable": "color:#953800",
+  "tok-tag": "color:#116329",
+  "tok-inserted": "color:#116329;background:#dafbe1",
+  "tok-deleted": "color:#82071e;background:#ffebe9",
+};
+
+const MONOSPACE = "font-family:Consolas,Menlo,'Courier New',monospace";
+
+function withInlineStyles(html: string): string {
+  return html
+    .replace(/ class="([^"]*)"/g, (_match, classes: string) => {
+      const style = classes
+        .split(" ")
+        .map((name) => CLIPBOARD_STYLES[name])
+        .filter(Boolean)
+        .join(";");
+
+      return style ? ` style="${style}"` : "";
+    })
+    .replace(
+      /<pre><code>/g,
+      `<pre style="margin:0;padding:8px 10px;white-space:pre-wrap"><code style="${MONOSPACE};font-size:13px">`,
+    )
+    .replace(/<code>/g, `<code style="${MONOSPACE};background:#f6f8fa">`)
+    .replace(/<table>/g, '<table style="border-collapse:collapse">')
+    .replace(/<(th|td) dir="auto">/g, '<$1 dir="auto" style="border:1px solid #d0d7de;padding:4px 8px">');
+}
+
+export function buildClipboardHtml(
+  messages: Message[],
+  settings: Settings,
+  tabUrl: string | undefined,
+): string {
+  const conversation = prepareConversation(
+    applyContentSettings(messages, settings),
+    [],
+    undefined,
+    tabUrl,
+  );
+  const rendered = conversation.formulas.map(() => null);
+  const parts: string[] = [];
+
+  if (settings.includeTimestamp) {
+    parts.push(`<p><em>Exported ${escapeXml(new Date().toLocaleString())}</em></p>`);
+  }
+
+  for (const [index, message] of conversation.messages.entries()) {
+    const inline = (text: string, style?: InlineStyle) =>
+      renderSegments(text, conversation.formulas, rendered, style, message.sources);
+    const label = ROLE_LABELS[message.role];
+
+    if (index > 0 && settings.messageSeparator === "rule") {
+      parts.push("<hr>");
+    }
+
+    if (settings.headingStyle === "h2") {
+      parts.push(`<h2>${label}</h2>`);
+    } else if (settings.headingStyle === "bold") {
+      parts.push(`<p><strong>${label}:</strong></p>`);
+    }
+
+    if (message.details) {
+      parts.push(`<p style="color:#656d76"><em>${escapeXml(message.details)}</em></p>`);
+    }
+
+    if (message.thinking.length > 0) {
+      parts.push(
+        '<blockquote style="margin:0 0 12px;padding:0 12px;border-left:3px solid #d0d7de;color:#57606a">' +
+          "<p><strong>Thinking</strong></p>" +
+          message.thinking.map((block) => renderBlock(block, inline)).join("") +
+          "</blockquote>",
+      );
+    }
+
+    for (const block of message.blocks) {
+      parts.push(renderBlock(block, inline));
+    }
+
+    if (message.sources.length > 0) {
+      parts.push(renderSources(message.sources));
+    }
+  }
+
+  return withInlineStyles(parts.join("\n"));
+}
+
+/*
+ * ---------------------------------------------------------
+ * TABLE OF CONTENTS
+ * ---------------------------------------------------------
+ *
+ * A chat with a few questions or more opens with a list of them,
+ * each a link to where it's asked - folded away until clicked, so
+ * a short look at the page still starts with the chat itself. It
+ * needs no script: <details> opens on its own, and the links jump
+ * to the messages' ids. Left out of print, where links can't be
+ * followed.
+ */
+const MIN_CONTENTS_QUESTIONS = 3;
+const QUESTION_SNIPPET_LENGTH = 90;
+
+function messageAnchor(index: number): string {
+  return `message-${index + 1}`;
+}
+
+/*
+ * A question's first words, as plain text - its Markdown's
+ * backslash escapes dropped too, as the message itself shows them.
+ */
+function questionSnippet(content: string): string {
+  const text = stripMarkdown(
+    stripNotes(content).replace(/!\[[^\]]*\]\((?:<[^>]+>|[^)]+)\)/g, ""),
+  )
+    .replace(/\\([\\`*_{}[\]()#+.!&>~|-])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  const chars = Array.from(text);
+
+  return chars.length > QUESTION_SNIPPET_LENGTH
+    ? `${chars.slice(0, QUESTION_SNIPPET_LENGTH - 1).join("").trimEnd()}…`
+    : text;
+}
+
+function renderContents(messages: Message[]): string {
+  const questions = messages.flatMap((message, index) =>
+    message.role === "user"
+      ? [{ anchor: messageAnchor(index), snippet: questionSnippet(message.content) }]
+      : [],
+  );
+
+  if (questions.length < MIN_CONTENTS_QUESTIONS) {
+    return "";
+  }
+
+  const items = questions
+    .map(
+      (question, index) =>
+        `<li dir="auto"><a href="#${question.anchor}">${escapeXml(
+          question.snippet || `Question ${index + 1}`,
+        )}</a></li>`,
+    )
+    .join("\n");
+
+  return (
+    '<nav class="toc" aria-label="Contents">\n<details>\n' +
+    `<summary>Contents · ${questions.length} questions</summary>\n<ol>\n${items}\n</ol>\n` +
+    "</details>\n</nav>\n"
+  );
+}
+
 function renderMessage(
   message: PreparedMessage,
+  anchor: string,
   showRole: boolean,
   formulas: MathSpan[],
   rendered: (RenderedMath | null)[],
@@ -265,8 +486,8 @@ function renderMessage(
     renderSegments(text, formulas, rendered, style, message.sources);
   const parts: string[] = [];
 
-  if (showRole) {
-    parts.push(`<p class="role">${ROLE_LABELS[message.role]}</p>`);
+  if (showRole || message.details) {
+    parts.push(renderRoleLine(message, showRole));
   }
 
   // Open: thinking is only in the file when the person asked for it.
@@ -292,7 +513,31 @@ function renderMessage(
     parts.push(renderSources(message.sources));
   }
 
-  return `<section class="message message--${message.role}">\n${parts.join("\n")}\n</section>`;
+  return `<section class="message message--${message.role}" id="${anchor}">\n${parts.join("\n")}\n</section>`;
+}
+
+/*
+ * The message's name ("USER") and, when they're exported, the time
+ * it was sent and the model that wrote it - in gray after the name,
+ * or on their own when names are off.
+ */
+function renderRoleLine(message: PreparedMessage, showRole: boolean): string {
+  const details = [
+    message.time !== undefined
+      ? `<time datetime="${isoTime(message.time)}">${messageTime(message.time)}</time>`
+      : "",
+    message.model ? escapeXml(message.model) : "",
+  ].filter(Boolean);
+  const label = showRole ? ROLE_LABELS[message.role] : "";
+  const separator = label && details.length > 0 ? " · " : "";
+
+  return (
+    `<p class="role">${label}` +
+    (details.length > 0
+      ? `<span class="role-details">${separator}${details.join(" · ")}</span>`
+      : "") +
+    "</p>"
+  );
 }
 
 /* The reply's sources, numbered as its notes cite them */

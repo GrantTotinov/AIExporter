@@ -27,6 +27,14 @@ import {
   stripNotes,
   type MessageSource,
 } from "./source-notes.ts";
+import {
+  conversationModels,
+  conversationSpan,
+  isoTime,
+  messageDetails,
+  propertyTime,
+  spreadsheetTime,
+} from "./message-details.ts";
 
 export type { MessageSource } from "./source-notes.ts";
 
@@ -41,19 +49,32 @@ export interface Message {
   thinking?: string;
   /* The web pages a reply drew on, numbered as its notes cite them. */
   sources?: MessageSource[];
+  /*
+   * When it was sent, in milliseconds since the epoch, and the AI
+   * model that wrote a reply - each when the site says.
+   */
+  time?: number;
+  model?: string;
 }
+
+/* The settings that decide what of each message goes into the file */
+export type ContentSettings = Pick<
+  Settings,
+  "includeSources" | "includeThinking" | "includeMessageDetails"
+>;
 
 /*
  * The messages the way the settings want them in the file: notes
  * and sources only while "Sources" is on, thinking only while
- * "Thinking" is.
+ * "Thinking" is, and times and models only while "Message dates
+ * and AI model" is.
  */
 export function applyContentSettings(
   messages: Message[],
-  settings: Pick<Settings, "includeSources" | "includeThinking">,
+  settings: ContentSettings,
 ): Message[] {
   return messages.map((message) => {
-    const { thinking, sources, ...rest } = message;
+    const { thinking, sources, time, model, ...rest } = message;
     const exported: Message = {
       ...rest,
       content:
@@ -68,6 +89,16 @@ export function applyContentSettings(
 
     if (settings.includeSources !== false && sources && sources.length > 0) {
       exported.sources = sources;
+    }
+
+    if (settings.includeMessageDetails === true) {
+      if (time !== undefined) {
+        exported.time = time;
+      }
+
+      if (model) {
+        exported.model = model;
+      }
     }
 
     return exported;
@@ -88,17 +119,21 @@ export type ExportFormat =
   | "csv"
   | "pdf"
   | "docx"
-  | "html";
+  | "html"
+  | "png"
+  | "xlsx";
 export type FilenameExtension = ExportFormat | "zip";
 
 export const EXPORT_FORMATS: readonly ExportFormat[] = [
   "pdf",
   "docx",
   "html",
+  "png",
   "md",
   "txt",
   "json",
   "csv",
+  "xlsx",
 ];
 
 /* Before a new chat gets its title, the tab shows only the site */
@@ -138,12 +173,15 @@ export function buildFilename(
  */
 /*
  * A reply's notes become "[1]" in its content, and its sources and
- * thinking get fields of their own when it has any.
+ * thinking get fields of their own when it has any - as do its time
+ * (ISO 8601, in UTC) and model.
  */
 export function buildJson(messages: Message[]): string {
   return JSON.stringify(
     messages.map((message) => ({
       role: message.role,
+      ...(message.time !== undefined ? { time: isoTime(message.time) } : {}),
+      ...(message.model ? { model: message.model } : {}),
       content: bracketNotes(message.content, message.sources ?? []),
       ...(message.thinking ? { thinking: message.thinking } : {}),
       ...(message.sources?.length
@@ -166,15 +204,20 @@ function escapeCsvField(value: string): string {
 }
 
 /*
- * "thinking" and "sources" columns are only added when a message
- * has any, so a chat without them keeps the two columns it always
- * had.
+ * "time", "model", "thinking" and "sources" columns are only added
+ * when a message has any, so a chat without them keeps the two
+ * columns it always had. Times are local, in the form spreadsheets
+ * read as a date and time.
  */
 export function buildCsv(messages: Message[]): string {
+  const withTime = messages.some((message) => message.time !== undefined);
+  const withModel = messages.some((message) => message.model);
   const withThinking = messages.some((message) => message.thinking);
   const withSources = messages.some((message) => message.sources?.length);
   const header = [
     "role",
+    ...(withTime ? ["time"] : []),
+    ...(withModel ? ["model"] : []),
     "content",
     ...(withThinking ? ["thinking"] : []),
     ...(withSources ? ["sources"] : []),
@@ -184,6 +227,10 @@ export function buildCsv(messages: Message[]): string {
     const sources = message.sources ?? [];
     const cells = [
       message.role,
+      ...(withTime
+        ? [message.time !== undefined ? spreadsheetTime(message.time) : ""]
+        : []),
+      ...(withModel ? [message.model ?? ""] : []),
       bracketNotes(message.content, sources),
       ...(withThinking ? [message.thinking ?? ""] : []),
       ...(withSources
@@ -260,16 +307,11 @@ function yamlString(value: string): string {
   return JSON.stringify(value);
 }
 
-/* "2026-10-03T14:05" - the form Obsidian reads as a date and time. */
-function localDateTime(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
+/*
+ * `messages` come with the settings applied: when the chat began
+ * and was last added to ("created", "updated") and the models that
+ * answered are only there with "Message dates and AI model" on.
+ */
 function buildFrontMatter(
   messages: Message[],
   source: MarkdownSource,
@@ -293,8 +335,23 @@ function buildFrontMatter(
 
   lines.push(`messages: ${messages.length}`);
 
+  const span = conversationSpan(messages);
+
+  if (span) {
+    lines.push(
+      `created: ${propertyTime(span.start)}`,
+      `updated: ${propertyTime(span.end)}`,
+    );
+  }
+
+  const models = conversationModels(messages);
+
+  if (models.length > 0) {
+    lines.push("models:", ...models.map((model) => `  - ${yamlString(model)}`));
+  }
+
   if (exportedAt) {
-    lines.push(`exported: ${localDateTime(exportedAt)}`);
+    lines.push(`exported: ${propertyTime(exportedAt.getTime())}`);
   }
 
   lines.push("tags:", "  - ai-chat");
@@ -316,11 +373,12 @@ export async function buildMarkdownFromMessages(
   const now = new Date();
   const properties = source.properties && settings.markdownProperties;
   const noteStyle = source.notes ?? "footnotes";
+  const exported = applyContentSettings(messages, settings);
   let noteOffset = 0;
 
   const header = properties
     ? buildFrontMatter(
-        messages,
+        exported,
         source,
         settings.includeTimestamp ? now : null,
       )
@@ -330,7 +388,7 @@ export async function buildMarkdownFromMessages(
 
   return (
     header +
-    applyContentSettings(messages, settings)
+    exported
       .map((message) => {
         const isReply = message.role === "assistant";
         const sources = message.sources ?? [];
@@ -357,7 +415,14 @@ export async function buildMarkdownFromMessages(
             )
           : "";
 
-        content = [thinking, content, sourceList].filter(Boolean).join("\n\n");
+        // When it was sent and by which model, in italics under the
+        // name: "*2026-10-03 14:05 · gpt-4o*" (a text file drops the
+        // asterisks).
+        const details = messageDetails(message);
+
+        content = [details && `*${details}*`, thinking, content, sourceList]
+          .filter(Boolean)
+          .join("\n\n");
 
         const roleLabel = message.role === "user" ? "User" : "Assistant";
 
@@ -391,7 +456,7 @@ export function buildContentForFormat(
   format: ExportFormat,
   markdown: string,
   allMessages: Message[],
-  settings: Pick<Settings, "includeSources" | "includeThinking">,
+  settings: ContentSettings,
 ): { content: string; mimeType: string } {
   const messages = applyContentSettings(allMessages, settings);
 

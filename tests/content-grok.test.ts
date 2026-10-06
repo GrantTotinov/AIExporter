@@ -139,8 +139,22 @@ describe("content.ts on grok.com", () => {
       success: true,
       data: {
         messages: [
-          { id: "r1", role: "user", content: "Draw me a cat", imagePaths: [], order: 0 },
-          { id: "r2", role: "assistant", content: "Here's a cat.", imagePaths: [], order: 1 },
+          {
+            id: "r1",
+            role: "user",
+            content: "Draw me a cat",
+            imagePaths: [],
+            order: 0,
+            time: Date.parse("2026-10-01T10:00:00.000Z"),
+          },
+          {
+            id: "r2",
+            role: "assistant",
+            content: "Here's a cat.",
+            imagePaths: [],
+            order: 1,
+            time: Date.parse("2026-10-01T10:00:05.000Z"),
+          },
         ],
         images: [],
       },

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Free AI Exporter - ChatGPT, Claude & Gemini to PDF, Images, MD, JSON & CSV",
   "version": "2.3.0",
-  "description": "Free export and backup for ChatGPT, Claude, Gemini, DeepSeek, Grok and Perplexity chats: PDF, Word, Markdown, JSON, CSV and more.",
+  "description": "Free export of ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Copilot, Kimi, Qwen, Doubao & more chats: PDF, Word, MD, CSV",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -33,7 +33,16 @@
         "https://gemini.google.com/*",
         "https://chat.deepseek.com/*",
         "https://grok.com/*",
-        "https://www.perplexity.ai/*"
+        "https://www.perplexity.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.mistral.ai/*",
+        "https://www.meta.ai/*",
+        "https://www.kimi.com/*",
+        "https://www.doubao.com/*",
+        "https://chat.qwen.ai/*",
+        "https://www.qianwen.com/*",
+        "https://yuanbao.tencent.com/*",
+        "https://chat.z.ai/*"
       ],
       "js": [
         "content.js"
@@ -58,5 +67,22 @@
       "48": "icons/icon48.png"
     }
   },
-  "options_page": "options.html"
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Open AI Exporter"
+    },
+    "copy-chat": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Copy the open chat"
+    }
+  },
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }

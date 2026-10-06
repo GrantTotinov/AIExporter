@@ -3,7 +3,10 @@ import {
   conversationFileBase,
   filterConversations,
   filterRange,
+  needsSaving,
+  savedChats,
   uniqueName,
+  withSavedChats,
 } from "../src/bulk-export";
 import {
   parseChatGptConversationList,
@@ -70,6 +73,52 @@ describe("filterConversations", () => {
       start: null,
       end: null,
     });
+  });
+});
+
+describe("chats saved before", () => {
+  const all = { query: "", preset: "all" as const, from: "", to: "" };
+
+  it("shows the chats not saved yet or used again since", () => {
+    const saved = {
+      a: NOW - 1 * DAY, // saved as it is now
+      b: NOW - 20 * DAY, // used again after it was saved
+      e: 0, // undated, saved once
+    };
+
+    expect(
+      ids(filterConversations(CHATS, { ...all, preset: "unsaved", saved }, NOW)),
+    ).toEqual(["b", "c", "d"]);
+    expect(
+      ids(filterConversations(CHATS, { ...all, preset: "unsaved", saved, query: "python" }, NOW)),
+    ).toEqual(["b", "d"]);
+    expect(ids(filterConversations(CHATS, { ...all, preset: "unsaved" }, NOW))).toEqual(
+      ids(CHATS),
+    );
+  });
+
+  it("tells a saved chat from one to save", () => {
+    expect(needsSaving(chat("a", "x", 1), { a: NOW - DAY })).toBe(false);
+    expect(needsSaving(chat("a", "x", 1), { a: NOW - 2 * DAY })).toBe(true);
+    expect(needsSaving(chat("a", "x", 1), {})).toBe(true);
+    expect(needsSaving(chat("e", "x", null), { e: 0 })).toBe(false);
+  });
+
+  it("keeps each site's saved chats apart in what's stored", () => {
+    const stored = {
+      claude: { old: 5 },
+      chatgpt: { a: 1, broken: "yesterday" },
+    };
+    const updated = withSavedChats(stored, "chatgpt", [chat("b", "x", 10), chat("e", "x", null)]);
+
+    expect(updated).toEqual({
+      claude: { old: 5 },
+      chatgpt: { a: 1, b: NOW - 10 * DAY, e: 0 },
+    });
+    expect(savedChats(updated, "claude")).toEqual({ old: 5 });
+    expect(savedChats(updated, "gemini")).toEqual({});
+    expect(savedChats("nonsense", "chatgpt")).toEqual({});
+    expect(savedChats(updated, null)).toEqual({});
   });
 });
 

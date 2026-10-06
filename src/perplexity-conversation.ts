@@ -36,6 +36,7 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import { messageMetadata, timeFromIso } from "./message-metadata.ts";
 
 export interface PerplexityImage {
   url: string | null;
@@ -52,6 +53,8 @@ export interface PerplexityExportMessage {
   parts: PerplexityMessagePart[];
   thinking?: string;
   sources?: ReplySource[];
+  /* When it was asked or answered, in milliseconds since the epoch */
+  time?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -373,6 +376,30 @@ function questionParts(entry: Record<string, unknown>): PerplexityMessagePart[] 
 }
 
 /*
+ * When the question was asked, from whichever of the date fields
+ * the API has used the entry has - the time it was asked before
+ * the time its answer was last written.
+ */
+const ENTRY_TIME_FIELDS = [
+  "entry_created_datetime",
+  "created_datetime",
+  "entry_updated_datetime",
+  "updated_datetime",
+];
+
+function entryTime(entry: Record<string, unknown>): number | undefined {
+  for (const field of ENTRY_TIME_FIELDS) {
+    const time = timeFromIso(entry[field]);
+
+    if (time !== undefined) {
+      return time;
+    }
+  }
+
+  return undefined;
+}
+
+/*
  * Takes a thread's entries, oldest first, and returns its
  * questions and answers.
  */
@@ -382,10 +409,11 @@ export function convertPerplexityEntries(entries: unknown[]): PerplexityExportMe
   records(entries).forEach((entry, index) => {
     const id =
       stringValue(entry.backend_uuid) || stringValue(entry.uuid) || `entry-${index + 1}`;
+    const metadata = messageMetadata(entryTime(entry));
     const question = questionParts(entry);
 
     if (question.length > 0) {
-      messages.push({ id: `${id}-question`, role: "user", parts: question });
+      messages.push({ id: `${id}-question`, role: "user", parts: question, ...metadata });
     }
 
     const answer = entryAnswer(entry);
@@ -417,6 +445,7 @@ export function convertPerplexityEntries(entries: unknown[]): PerplexityExportMe
         role: "assistant",
         parts: [{ kind: "text", text }],
         ...replyExtras(thinking, sources),
+        ...metadata,
       });
     }
   });

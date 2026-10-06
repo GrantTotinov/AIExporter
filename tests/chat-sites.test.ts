@@ -14,6 +14,12 @@ import { getGeminiConversationId } from "../src/gemini-conversation";
 import { getDeepSeekConversationId } from "../src/deepseek-conversation";
 import { getGrokConversationId } from "../src/grok-conversation";
 import { getPerplexityThreadSlug } from "../src/perplexity-conversation";
+import { getKimiConversationId } from "../src/kimi-conversation";
+import { getDoubaoConversationId } from "../src/doubao-conversation";
+import { getQwenConversationId } from "../src/qwen-conversation";
+import { getQianwenConversationId } from "../src/qianwen-conversation";
+import { getYuanbaoConversationId } from "../src/yuanbao-conversation";
+import { getCopilotConversationId } from "../src/copilot-conversation";
 
 describe("getChatSite", () => {
   it("recognizes ChatGPT and Claude conversation URLs", () => {
@@ -87,7 +93,7 @@ describe("getChatSite", () => {
 });
 
 describe("isChatSite", () => {
-  it("knows the six sites by their ids only", () => {
+  it("knows the sites by their ids only", () => {
     for (const site of CHAT_SITES) {
       expect(isChatSite(site)).toBe(true);
     }
@@ -178,6 +184,23 @@ describe("stripChatSiteSuffix", () => {
     expect(stripChatSiteSuffix("Grok vs DeepSeek \u00B7 Grok")).toBe(
       "Grok vs DeepSeek",
     );
+  });
+
+  it("removes the suffixes of the sites added in 2.4", () => {
+    for (const title of [
+      "Trip ideas - Microsoft Copilot",
+      "Trip ideas | Le Chat",
+      "Trip ideas - Mistral AI",
+      "Trip ideas - Meta AI",
+      "Trip ideas - Kimi",
+      "Trip ideas - 豆包",
+      "Trip ideas - Qwen Chat",
+      "Trip ideas - 千问",
+      "Trip ideas - 腾讯元宝",
+      "Trip ideas - Z.ai Chat",
+    ]) {
+      expect(stripChatSiteSuffix(title), title).toBe("Trip ideas");
+    }
   });
 });
 
@@ -285,6 +308,32 @@ describe("isChatConversationUrl", () => {
     expect(isChatConversationUrl(`https://www.perplexity.ai${pathname}`)).toBe(
       getPerplexityThreadSlug(pathname) !== null,
     );
+  });
+
+  it.each([
+    ["https://www.kimi.com", getKimiConversationId, ["/chat/d1k2a3b4c5e6f7g8h9i0", "/chat/history", "/chat/", "/"]],
+    ["https://www.doubao.com", getDoubaoConversationId, ["/chat/7356014282391", "/chat/local_1", "/chat/", "/"]],
+    ["https://chat.qwen.ai", getQwenConversationId, [`/c/${UUID}`, "/c/", "/", "/p/abc"]],
+    ["https://chat.z.ai", getQwenConversationId, [`/c/${UUID}`, "/c/", "/"]],
+    ["https://www.qianwen.com", getQianwenConversationId, ["/chat/a1b2c3d4e5f6", "/chat/", "/group/a1b2c3d4e5f6"]],
+    [
+      "https://yuanbao.tencent.com",
+      getYuanbaoConversationId,
+      [`/chat/naQivTmsDa/${UUID}`, "/chat/naQivTmsDa", "/chat", "/"],
+    ],
+    ["https://copilot.microsoft.com", getCopilotConversationId, ["/chats/AbCdEf123456", "/chats/", "/"]],
+  ] as const)("agrees with the content script on %s", (origin, getId, paths) => {
+    for (const pathname of paths) {
+      expect(isChatConversationUrl(`${origin}${pathname}`), pathname).toBe(getId(pathname) !== null);
+    }
+  });
+
+  it("takes any page but the start one of the sites read from the page", () => {
+    expect(isChatConversationUrl(`https://chat.mistral.ai/chat/${UUID}`)).toBe(true);
+    expect(isChatConversationUrl("https://chat.mistral.ai/chat")).toBe(false);
+    expect(isChatConversationUrl("https://chat.mistral.ai/chat/projects/abc12345678")).toBe(false);
+    expect(isChatConversationUrl("https://www.meta.ai/prompt/abc")).toBe(true);
+    expect(isChatConversationUrl("https://www.meta.ai/")).toBe(false);
   });
 
   it("rejects other sites and missing URLs", () => {

@@ -19,6 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const CONVERSATION_ID = "e87b6c6ac16404a5";
 const RPC_CONVERSATION_ID = `c_${CONVERSATION_ID}`;
 const AT_TOKEN = "AKRzLkFp3w:1790000000000";
+/* When every turn below was sent, as Gemini writes it: [1790000000, 0] */
+const TURN_TIME = 1790000000 * 1000;
 const FRESH_AT_TOKEN = "AKRzFresh:1790000099999";
 const BUILD_LABEL = "boq_gemini-web-uiserver_20261001.12_p0";
 const SESSION_ID = "-351644736144307804";
@@ -314,6 +316,7 @@ describe("content.ts on gemini.google.com", () => {
             content: "Hello Gemini",
             imagePaths: [],
             order: 0,
+            time: TURN_TIME,
           },
           {
             id: "rc_1",
@@ -321,6 +324,8 @@ describe("content.ts on gemini.google.com", () => {
             content: "Hi! How can I help?",
             imagePaths: [],
             order: 1,
+            time: TURN_TIME,
+            model: "Gemini 3.8 Flash",
           },
           {
             id: "r_2",
@@ -328,6 +333,7 @@ describe("content.ts on gemini.google.com", () => {
             content: "What's in this photo?",
             imagePaths: [],
             order: 2,
+            time: TURN_TIME,
           },
           {
             id: "rc_2",
@@ -335,6 +341,8 @@ describe("content.ts on gemini.google.com", () => {
             content: "A tide pool.",
             imagePaths: [],
             order: 3,
+            time: TURN_TIME,
+            model: "Gemini 3.8 Flash",
           },
           {
             id: "r_3",
@@ -342,6 +350,7 @@ describe("content.ts on gemini.google.com", () => {
             content: "Draw a sea star",
             imagePaths: [],
             order: 4,
+            time: TURN_TIME,
           },
           {
             id: "rc_3",
@@ -349,6 +358,8 @@ describe("content.ts on gemini.google.com", () => {
             content: "Here it is.",
             imagePaths: [],
             order: 5,
+            time: TURN_TIME,
+            model: "Gemini 3.8 Flash",
           },
         ],
         images: [],

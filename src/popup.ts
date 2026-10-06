@@ -3,7 +3,12 @@ import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
 import { stripNotes } from "./source-notes.ts";
 import { encodeBlobBase64 } from "./zip.ts";
-import { buildDocumentBlob, isDocumentFormat } from "./file-export.ts";
+import {
+  buildDocumentBlob,
+  fileExtension,
+  isDocumentFormat,
+} from "./file-export.ts";
+import { buildClipboardContent } from "./clipboard-export.ts";
 import { buildNotionPage, notionPageTitle } from "./notion-blocks.ts";
 import type { NotionPageOption } from "./notion.ts";
 import {
@@ -17,8 +22,13 @@ import {
   type ExportImageFile,
   type Message,
 } from "./export-builders.ts";
+import { buildHandoffPrompt } from "./handoff.ts";
+import { buildCitations, type Citations } from "./citation.ts";
 import {
+  CHAT_SITES,
   CHAT_SITE_NAMES,
+  CHAT_SITE_START_URLS,
+  PAGE_READ_SITES,
   getChatSite,
   isChatConversationUrl,
   stripChatSiteSuffix,
@@ -102,6 +112,8 @@ const FORMAT_ICONS: Record<ExportFormat, string> = {
   txt: "i-text",
   json: "i-braces",
   csv: "i-table",
+  png: "i-image",
+  xlsx: "i-sheet",
 };
 
 /* The fields of a GitHub repo the popup uses (see github.ts) */
@@ -148,6 +160,20 @@ const copyButton = document.getElementById("copy") as HTMLButtonElement;
 const bulkExportButton = document.getElementById(
   "bulk-export",
 ) as HTMLButtonElement;
+const googleDocsButton = document.getElementById(
+  "to-google-docs",
+) as HTMLButtonElement;
+const continueButton = document.getElementById(
+  "continue-chat",
+) as HTMLButtonElement;
+const continuePanel = document.getElementById(
+  "continue-panel",
+) as HTMLDivElement;
+const continueTargets = document.getElementById(
+  "continue-targets",
+) as HTMLDivElement;
+const citeButton = document.getElementById("cite-chat") as HTMLButtonElement;
+const citePanel = document.getElementById("cite-panel") as HTMLDivElement;
 const githubStarButton = document.getElementById(
   "github-star",
 ) as HTMLButtonElement;
@@ -373,6 +399,8 @@ const toastText = document.getElementById("toast-text") as HTMLSpanElement;
 type ChatState = "loading" | "ready" | "open-chat" | "unsupported";
 
 let chatState: ChatState = "loading";
+/* The chat site the active tab is on */
+let chatSite: ChatSite | null = null;
 /* A conversation is loading, or a file is being made or saved */
 let busy = false;
 let starring = false;
@@ -535,9 +563,23 @@ function updateButtons(): void {
 
   exportButton.disabled = busy || !chatAvailable;
   copyButton.disabled = busy || !chatAvailable;
+  googleDocsButton.disabled = busy || !chatAvailable;
+  continueButton.disabled = busy || !chatAvailable;
+  citeButton.disabled = busy || !chatAvailable;
+
+  for (const target of continueTargets.querySelectorAll("button")) {
+    target.disabled = busy || !chatAvailable;
+  }
+
+  for (const copy of citePanel.querySelectorAll("button")) {
+    copy.disabled = busy;
+  }
   // Any page of a chat site lists the person's chats, not only a
-  // conversation.
-  bulkExportButton.disabled = busy || chatState === "unsupported";
+  // conversation - but a site read from the page has only its open one.
+  bulkExportButton.disabled =
+    busy ||
+    chatState === "unsupported" ||
+    (chatSite !== null && PAGE_READ_SITES.includes(chatSite));
   selectorExportButton.disabled = busy || selectedCount === 0;
   selectorGithubButton.disabled = busy || selectedCount === 0;
   selectorNotionButton.disabled = busy || selectedCount === 0;
@@ -655,6 +697,8 @@ function chatTitleFor(tabTitle: string | undefined): string {
 
 function renderChatCard(tab: chrome.tabs.Tab | undefined): void {
   const site = getChatSite(tab?.url);
+
+  chatSite = site;
 
   chatState =
     site === null
@@ -866,7 +910,10 @@ async function loadConversationMessages(
  * Copy always uses the full conversation - no message
  * selection step, matching the one-click "quick copy" role
  * this button has always had. Message selection is reserved
- * for saving a file.
+ * for saving a file. The chat goes on the clipboard as Markdown
+ * and as formatted text, so it pastes well into a Markdown editor
+ * and into Word, Google Docs or an email alike (see
+ * clipboard-export.ts).
  */
 copyButton.addEventListener("click", async () => {
   devLog("AI Exporter: copy clicked");
@@ -877,19 +924,15 @@ copyButton.addEventListener("click", async () => {
       false,
     );
 
-    // A pasted chat goes into a message or document, where note
-    // properties would just be clutter, and Markdown footnotes
-    // would show as "[^1]".
-    const markdown = await buildMarkdownFromMessages(messages, {
+    const { text, html } = await buildClipboardContent(messages, {
       tabTitle,
       tabUrl,
-      properties: false,
-      notes: "brackets",
     });
 
     const copyResponse = await chrome.runtime.sendMessage({
       type: "COPY_TO_CLIPBOARD",
-      data: markdown,
+      data: text,
+      html,
     });
 
     devLog("AI Exporter: clipboard response", copyResponse);
@@ -910,6 +953,195 @@ copyButton.addEventListener("click", async () => {
     showErrorToast(error, "popup.toast.copyFailed");
   }
 });
+
+/*
+ * The copy button names the keyboard shortcut that does the same
+ * without opening the popup (see background.ts) - the keys the
+ * browser gave it, if any.
+ */
+async function showCopyShortcut(): Promise<void> {
+  try {
+    const commands = (await chrome.commands?.getAll()) ?? [];
+    const shortcut = commands.find(
+      (command) => command.name === "copy-chat",
+    )?.shortcut;
+
+    if (shortcut) {
+      copyButton.title = t("popup.copyShortcut", { shortcut });
+    }
+  } catch (error) {
+    devWarn("AI Exporter: couldn't read the keyboard shortcuts", error);
+  }
+}
+
+/*
+ * ---------------------------------------------------------
+ * GOOGLE DOCS, CONTINUE IN ANOTHER AI, CITE
+ * ---------------------------------------------------------
+ *
+ * Google Docs: the chat is copied as formatted text (the same as
+ * "Copy the whole chat") and a new Google Doc opens to paste it
+ * into - no Google account access needed. Continue in: the chat is
+ * copied as one prompt (see handoff.ts) and the chosen assistant
+ * opens. A new tab closes the popup, so it opens a moment after
+ * the toast saying what to do.
+ */
+const OPEN_TAB_DELAY_MS = 1400;
+
+function pasteShortcut(): string {
+  return isMac() ? "⌘V" : t("popup.pasteShortcut");
+}
+
+async function copyToClipboard(text: string, html?: string): Promise<void> {
+  const response = await chrome.runtime.sendMessage({
+    type: "COPY_TO_CLIPBOARD",
+    data: text,
+    ...(html ? { html } : {}),
+  });
+
+  if (!response?.success) {
+    throw new Error(response?.error ?? t("popup.error.copyMarkdownFailed"));
+  }
+}
+
+function openTabSoon(url: string): void {
+  setTimeout(() => {
+    void chrome.tabs.create({ url });
+  }, OPEN_TAB_DELAY_MS);
+}
+
+/* The page that opens ChatGPT's and Claude's data exports (archive.ts) */
+document.getElementById("open-archive")?.addEventListener("click", () => {
+  void chrome.tabs.create({ url: chrome.runtime.getURL("archive.html") });
+  window.close();
+});
+
+googleDocsButton.addEventListener("click", async () => {
+  try {
+    const { messages, tabTitle, tabUrl } = await loadConversationMessages(
+      googleDocsButton,
+      false,
+    );
+    const { text, html } = await buildClipboardContent(messages, {
+      tabTitle,
+      tabUrl,
+    });
+
+    await copyToClipboard(text, html);
+    showToast(t("popup.toast.googleDocs", { shortcut: pasteShortcut() }));
+    openTabSoon("https://docs.new/");
+  } catch (error) {
+    devError("AI Exporter: Google Docs handoff failed", error);
+    showErrorToast(error, "popup.toast.copyFailed");
+  }
+});
+
+function togglePanel(button: HTMLButtonElement, panel: HTMLElement): boolean {
+  const open = panel.hidden === true;
+
+  for (const [otherButton, otherPanel] of [
+    [continueButton, continuePanel],
+    [citeButton, citePanel],
+  ] as const) {
+    otherPanel.hidden = true;
+    otherButton.setAttribute("aria-expanded", "false");
+  }
+
+  panel.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+
+  return open;
+}
+
+for (const site of CHAT_SITES) {
+  const target = document.createElement("button");
+
+  target.type = "button";
+  target.className = "site-link";
+  target.textContent = CHAT_SITE_NAMES[site];
+  target.addEventListener("click", async () => {
+    try {
+      const { messages, tabTitle, tabUrl } = await loadConversationMessages(
+        target,
+        false,
+      );
+      const from = getChatSite(tabUrl);
+      const title = chatTitleFor(tabTitle);
+      const prompt = buildHandoffPrompt(messages, {
+        intro: t("handoff.intro", {
+          site: from ? CHAT_SITE_NAMES[from] : "AI",
+          title,
+        }),
+        start: t("handoff.start"),
+        end: t("handoff.end"),
+        omitted: t("handoff.omitted"),
+        user: t("handoff.user"),
+        assistant: t("handoff.assistant"),
+      });
+
+      await copyToClipboard(prompt);
+      showToast(
+        t("popup.toast.continue", {
+          site: CHAT_SITE_NAMES[site],
+          shortcut: pasteShortcut(),
+        }),
+      );
+      openTabSoon(CHAT_SITE_START_URLS[site]);
+    } catch (error) {
+      devError("AI Exporter: continue in another AI failed", error);
+      showErrorToast(error, "popup.toast.copyFailed");
+    }
+  });
+  continueTargets.append(target);
+}
+
+continueButton.addEventListener("click", () => {
+  togglePanel(continueButton, continuePanel);
+  updateButtons();
+});
+
+let citations: Citations | null = null;
+
+citeButton.addEventListener("click", async () => {
+  if (!togglePanel(citeButton, citePanel)) {
+    return;
+  }
+
+  try {
+    const { messages, tabUrl } = await loadConversationMessages(citeButton, false);
+
+    citations = buildCitations(messages, tabUrl);
+
+    for (const style of ["apa", "mla", "chicago"] as const) {
+      const text = document.getElementById(`cite-${style}`);
+
+      if (text) {
+        text.textContent = citations[style];
+      }
+    }
+  } catch (error) {
+    togglePanel(citeButton, citePanel);
+    devError("AI Exporter: citation failed", error);
+    showErrorToast(error, "popup.toast.copyFailed");
+  }
+});
+
+for (const copy of citePanel.querySelectorAll<HTMLButtonElement>(".citation-copy")) {
+  copy.addEventListener("click", async () => {
+    const style = copy.dataset.style as keyof Citations | undefined;
+
+    if (!citations || !style) {
+      return;
+    }
+
+    try {
+      await copyToClipboard(citations[style]);
+      showToast(t("popup.toast.citeCopied"));
+    } catch (error) {
+      showErrorToast(error, "popup.toast.copyFailed");
+    }
+  });
+}
 
 /*
  * ---------------------------------------------------------
@@ -1282,6 +1514,17 @@ selectorExportButton.addEventListener("click", async () => {
         currentTabTitle,
         currentTabUrl,
       );
+
+      // A chat too long for one picture comes as a ZIP of them.
+      if (fileExtension(format, blob) === "zip") {
+        downloadFilename = buildFilename(
+          currentTabTitle,
+          currentTabUrl,
+          "zip",
+          settings.fileNameTemplate,
+          now,
+        );
+      }
     } else {
       const markdown = await buildMarkdownFromMessages(chosen, {
         tabTitle: currentTabTitle,
@@ -2415,6 +2658,7 @@ void initI18n().then(async () => {
   applyTranslations();
   labelSiteLinks();
   void restoreExportFormat();
+  void showCopyShortcut();
   void initUpdateStatus();
   renderChatCard(await activeTab);
 });

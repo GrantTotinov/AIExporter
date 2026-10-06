@@ -27,6 +27,7 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import { messageMetadata, timeFromIso } from "./message-metadata.ts";
 
 /*
  * ---------------------------------------------------------
@@ -116,6 +117,8 @@ export interface ClaudeExportMessage {
   thinking?: string;
   /* The web pages the reply cites, numbered as its notes are */
   sources?: ReplySource[];
+  /* When it was sent, in milliseconds since the epoch */
+  time?: number;
 }
 
 const UUID_PATTERN =
@@ -811,7 +814,15 @@ export function convertClaudeMessages(
       role === "assistant" ? replyExtras(thinkingText(blocks), sources) : {};
 
     return parts.length > 0
-      ? [{ id: message.uuid, role, parts, ...extras }]
+      ? [
+          {
+            id: message.uuid,
+            role,
+            parts,
+            ...extras,
+            ...messageMetadata(timeFromIso(message.created_at)),
+          },
+        ]
       : [];
   });
 }

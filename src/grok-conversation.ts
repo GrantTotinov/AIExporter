@@ -44,6 +44,7 @@ import {
   replyExtras,
   type ReplySource,
 } from "./reply-sources.ts";
+import { messageMetadata, timeFromIso } from "./message-metadata.ts";
 
 export interface GrokImage {
   url: string | null;
@@ -60,6 +61,8 @@ export interface GrokExportMessage {
   parts: GrokMessagePart[];
   thinking?: string;
   sources?: ReplySource[];
+  /* When it was sent, in milliseconds since the epoch */
+  time?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -404,6 +407,7 @@ export function convertGrokResponses(
   for (const response of activeBranch(records(responses), activeResponseId)) {
     const id = stringValue(response.responseId);
     const isUser = stringValue(response.sender).toLowerCase() === "human";
+    const metadata = messageMetadata(timeFromIso(response.createTime));
 
     if (isUser) {
       const text = stringValue(response.message).replace(/^(?:[ \t]*\n)+/, "").trimEnd();
@@ -413,7 +417,7 @@ export function convertGrokResponses(
       ];
 
       if (parts.length > 0) {
-        messages.push({ id, role: "user", parts });
+        messages.push({ id, role: "user", parts, ...metadata });
       }
 
       continue;
@@ -441,6 +445,7 @@ export function convertGrokResponses(
         role: "assistant",
         parts,
         ...replyExtras(replyThinking(response), sources),
+        ...metadata,
       });
     }
   }

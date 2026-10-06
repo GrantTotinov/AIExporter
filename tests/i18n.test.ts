@@ -6,6 +6,13 @@ import fr from "../src/locales/fr.json";
 import de from "../src/locales/de.json";
 import ru from "../src/locales/ru.json";
 import zh from "../src/locales/zh.json";
+import ja from "../src/locales/ja.json";
+import ko from "../src/locales/ko.json";
+import hi from "../src/locales/hi.json";
+import pt from "../src/locales/pt.json";
+import id from "../src/locales/id.json";
+import tr from "../src/locales/tr.json";
+import italian from "../src/locales/it.json";
 
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   es,
@@ -13,6 +20,13 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
   de,
   ru,
   zh,
+  ja,
+  ko,
+  hi,
+  pt,
+  id,
+  tr,
+  it: italian,
 };
 
 function placeholders(text: string): string[] {
@@ -62,7 +76,21 @@ describe("i18n", () => {
 
   it("lists all supported locales", () => {
     const codes = i18n.SUPPORTED_LOCALES.map((locale) => locale.code);
-    expect(codes).toEqual(["en", "es", "fr", "de", "ru", "zh"]);
+    expect(codes).toEqual([
+      "en",
+      "es",
+      "fr",
+      "de",
+      "ru",
+      "zh",
+      "ja",
+      "ko",
+      "hi",
+      "pt",
+      "id",
+      "tr",
+      "it",
+    ]);
   });
 
   it("translates a known key", () => {
