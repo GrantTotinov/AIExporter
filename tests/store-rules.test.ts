@@ -43,6 +43,7 @@ describe("trimJsPdf", () => {
     expect(after).not.toContain("cdnjs.cloudflare.com");
     expect(after).not.toContain("<script> element");
     expect(trimmed).not.toContain("pdfobject.min.js");
+    expect(trimmed).not.toContain("pdfobjectnewwindow");
     expect(trimmed).not.toMatch(/import\(\s*["'](?:html2canvas|dompurify|canvg)["']/);
     expect(trimmed).toContain('case"pdfjsnewwindow"');
   });
@@ -51,6 +52,7 @@ describe("trimJsPdf", () => {
     const trimmed = trimJsPdf(readText("../node_modules/jspdf/dist/jspdf.es.js"));
 
     expect(trimmed).not.toContain("cdnjs.cloudflare.com");
+    expect(trimmed).not.toMatch(/case\s*"pdfobjectnewwindow"/);
     expect(trimmed).not.toMatch(/import\(\s*["'](?:html2canvas|dompurify|canvg)["']/);
     expect(trimmed).toContain('case "pdfjsnewwindow"');
   });

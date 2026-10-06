@@ -33,9 +33,11 @@ const OPTIONAL_LIBRARY_IMPORTS = {
 
 /*
  * What must not be left in jsPDF afterwards: the CDN address,
- * the script file name, and any import() of the three libraries.
+ * the script file name, the output type's case, and any import()
+ * of the three libraries. (The unminified module still names the
+ * output type in a doc comment, which minifying drops.)
  */
-const LEFTOVERS = /cdnjs\.cloudflare\.com|pdfobject\.min\.js|import\(\s*["'](?:html2canvas|dompurify|canvg)["']/;
+const LEFTOVERS = /cdnjs\.cloudflare\.com|pdfobject\.min\.js|pdfObjectUrl|case\s*["']pdfobjectnewwindow["']|import\(\s*["'](?:html2canvas|dompurify|canvg)["']/;
 
 /*
  * jsPDF's browser module, minified or not. Vite resolves "jspdf"
@@ -53,12 +55,13 @@ export function trimJsPdf(code) {
     );
   }
 
-  const label = code.slice(start).match(PDFOBJECT_CASE)[0];
-  let trimmed =
-    code.slice(0, start) +
-    label +
-    `throw new Error("AI Exporter leaves out jsPDF's pdfobjectnewwindow output.");` +
-    code.slice(end);
+  /*
+   * The whole case goes, label included, so a reviewer searching
+   * the bundle for the snippet they once quoted finds nothing.
+   * output("pdfobjectnewwindow") then falls through to jsPDF's
+   * default and returns null.
+   */
+  let trimmed = code.slice(0, start) + code.slice(end);
 
   for (const [library, pattern] of Object.entries(OPTIONAL_LIBRARY_IMPORTS)) {
     const found = trimmed.match(pattern)?.length ?? 0;
