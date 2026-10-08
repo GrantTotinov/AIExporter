@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Gratis AI Exporter: lagre ChatGPT-, Claude- og Gemini-chatter som PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini til PDF"
+  },
+  "extDescription": {
+    "message": "Lagre chatter fra ChatGPT, Claude, Gemini, DeepSeek + 11 KI-er som PDF, Word, Markdown, Excel. Gratis, ubegrenset, uten konto."
+  },
+  "commandOpen": {
+    "message": "Åpne AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopier den åpne chatten"
+  }
+}

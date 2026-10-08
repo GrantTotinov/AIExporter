@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Besplatni AI Exporter: izvoz chatova iz ChatGPT, Claude, Gemini u PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini u PDF"
+  },
+  "extDescription": {
+    "message": "Izvezite i spremite chatove: ChatGPT, Claude, Gemini, DeepSeek + 11 AI u PDF, Word, Markdown, Excel. Besplatno, bez ograničenja."
+  },
+  "commandOpen": {
+    "message": "Otvori AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopiraj otvoreni chat"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter bure: hamisha gumzo za ChatGPT, Claude, Gemini kwenda PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini kwa PDF"
+  },
+  "extDescription": {
+    "message": "Hamisha na uhifadhi gumzo za ChatGPT, Claude, Gemini, DeepSeek na AI 11 zaidi kwenda PDF, Word, Markdown, Excel. Bure, bila kikomo."
+  },
+  "commandOpen": {
+    "message": "Fungua AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Nakili gumzo lililo wazi"
+  }
+}

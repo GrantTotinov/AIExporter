@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "無料 AI Exporter：ChatGPT・Claude・Gemini の会話ログを PDF・Word に保存・エクスポート"
+  },
+  "extNameShort": {
+    "message": "AI Exporter：ChatGPT・Claude の会話を PDF 保存"
+  },
+  "extDescription": {
+    "message": "ChatGPT・Claude・Gemini・DeepSeekなど15のAIチャットの会話ログをPDF化。Word・Markdown・Excel・画像にも保存・エクスポート。無料・無制限・登録不要。"
+  },
+  "commandOpen": {
+    "message": "AI Exporter を開く"
+  },
+  "commandCopy": {
+    "message": "開いている会話をコピー"
+  }
+}

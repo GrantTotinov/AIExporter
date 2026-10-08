@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter בחינם: ייצוא צ'אטים מ-ChatGPT, Claude, Gemini ל-PDF ו-Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: צ'אטים מ-ChatGPT ו-Claude ל-PDF"
+  },
+  "extDescription": {
+    "message": "ייצוא ושמירה של צ'אטים מ-ChatGPT, Claude, Gemini, DeepSeek ועוד 11 מערכות AI ל-PDF, Word, Markdown, Excel. בחינם, ללא הגבלה."
+  },
+  "commandOpen": {
+    "message": "פתיחת AI Exporter"
+  },
+  "commandCopy": {
+    "message": "העתקת הצ'אט הפתוח"
+  }
+}

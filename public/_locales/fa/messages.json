@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter رایگان: ذخیره چت ChatGPT، Claude، Gemini به PDF و Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ذخیره چت ChatGPT، Claude به PDF"
+  },
+  "extDescription": {
+    "message": "ذخیره چت جی پی تی (ChatGPT)، Claude، Gemini، DeepSeek و ۱۱ هوش مصنوعی به PDF، Word، Markdown، Excel. رایگان، نامحدود، بدون حساب."
+  },
+  "commandOpen": {
+    "message": "باز کردن AI Exporter"
+  },
+  "commandCopy": {
+    "message": "کپی گفتگوی باز"
+  }
+}

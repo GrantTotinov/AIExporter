@@ -182,10 +182,80 @@ export function findHtmlProblems(html) {
  * Add-ons refuses an upload whose name is over 45 characters
  * (addons-linter's manifest schema), so a manifest for Firefox
  * gets that limit.
+ *
+ * A name or description can be "__MSG_key__", translated in
+ * _locales/<locale>/messages.json - the stores show each language
+ * its own text, so every translation is held to the limit.
  */
 const MAX_NAME_LENGTH = 75;
 const MAX_FIREFOX_NAME_LENGTH = 45;
 const MAX_DESCRIPTION_LENGTH = 132;
+const MESSAGE_REFERENCE = /^__MSG_(\w+)__$/;
+
+/*
+ * The messages of every language in a _locales directory, as
+ * { locale: { key: { message } } } - or null for a messages.json
+ * that isn't valid JSON. Empty when there's no _locales.
+ */
+export function readLocales(directory) {
+  if (!existsSync(directory)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const file = join(directory, entry.name, "messages.json");
+
+        try {
+          return [entry.name, JSON.parse(readFileSync(file, "utf8"))];
+        } catch {
+          return [entry.name, null];
+        }
+      }),
+  );
+}
+
+// Chrome and Firefox look message keys up regardless of case.
+function findMessage(messages, key) {
+  const name = Object.keys(messages ?? {}).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  );
+
+  return name === undefined ? undefined : messages[name]?.message;
+}
+
+/*
+ * The text of a manifest field in each language, as
+ * [{ where, text }], with "where" naming the field (and the
+ * language, for a translated one). A problem instead when the
+ * field names a message the default language doesn't have.
+ */
+function fieldTexts(field, value, locales, defaultLocale) {
+  const reference = typeof value === "string" ? MESSAGE_REFERENCE.exec(value) : null;
+
+  if (!reference) {
+    return { texts: [{ where: field, text: value }] };
+  }
+
+  const key = reference[1];
+
+  if (defaultLocale === undefined || findMessage(locales[defaultLocale], key) === undefined) {
+    return {
+      problem: `${field} is ${value}, but _locales/${defaultLocale ?? "<default_locale>"}/messages.json has no "${key}"`,
+    };
+  }
+
+  return {
+    texts: Object.entries(locales)
+      .map(([locale, messages]) => ({
+        where: `${field} in _locales/${locale}`,
+        text: findMessage(messages, key),
+      }))
+      .filter(({ text }) => text !== undefined),
+  };
+}
 
 function referencedFiles(manifest) {
   const files = [];
@@ -235,7 +305,7 @@ function isValidVersion(version) {
     .every((part) => Number(part) <= 65535 && !/^0\d/.test(part));
 }
 
-export function findManifestProblems(manifest, hasFile) {
+export function findManifestProblems(manifest, hasFile, locales = {}) {
   const problems = [];
 
   if (manifest.manifest_version !== 3) {
@@ -244,25 +314,57 @@ export function findManifestProblems(manifest, hasFile) {
     );
   }
 
-  const maxNameLength = manifest.browser_specific_settings?.gecko
-    ? MAX_FIREFOX_NAME_LENGTH
-    : MAX_NAME_LENGTH;
+  // Chrome won't load an extension with _locales but no
+  // default_locale, or a default_locale it can't find.
+  const defaultLocale = manifest.default_locale;
 
-  if (typeof manifest.name !== "string" || manifest.name.length === 0) {
-    problems.push("name is missing");
-  } else if (manifest.name.length > maxNameLength) {
+  if (Object.keys(locales).length > 0 && defaultLocale === undefined) {
+    problems.push("_locales is in the build, but default_locale is missing");
+  } else if (defaultLocale !== undefined && !locales[defaultLocale]) {
     problems.push(
-      `name is ${manifest.name.length} characters, the limit is ${maxNameLength}`,
+      `default_locale is "${defaultLocale}", but _locales/${defaultLocale}/messages.json isn't in the build`,
     );
   }
 
-  if (
-    typeof manifest.description === "string" &&
-    manifest.description.length > MAX_DESCRIPTION_LENGTH
-  ) {
-    problems.push(
-      `description is ${manifest.description.length} characters, the limit is ${MAX_DESCRIPTION_LENGTH}`,
-    );
+  for (const [locale, messages] of Object.entries(locales)) {
+    if (messages === null) {
+      problems.push(`_locales/${locale}/messages.json isn't valid JSON`);
+    }
+  }
+
+  const maxNameLength = manifest.browser_specific_settings?.gecko
+    ? MAX_FIREFOX_NAME_LENGTH
+    : MAX_NAME_LENGTH;
+  const textFields = [
+    { field: "name", value: manifest.name, limit: maxNameLength, required: true },
+    { field: "description", value: manifest.description, limit: MAX_DESCRIPTION_LENGTH },
+    { field: "action.default_title", value: manifest.action?.default_title },
+    ...Object.entries(manifest.commands ?? {}).map(([command, { description }]) => ({
+      field: `commands.${command}.description`,
+      value: description,
+    })),
+  ];
+
+  for (const { field, value, limit, required } of textFields) {
+    if (typeof value !== "string" || value.length === 0) {
+      if (required) {
+        problems.push(`${field} is missing`);
+      }
+      continue;
+    }
+
+    const { texts, problem } = fieldTexts(field, value, locales, defaultLocale);
+
+    if (problem) {
+      problems.push(problem);
+      continue;
+    }
+
+    for (const { where, text } of texts) {
+      if (limit !== undefined && text.length > limit) {
+        problems.push(`${where} is ${text.length} characters, the limit is ${limit}`);
+      }
+    }
   }
 
   if (!isValidVersion(manifest.version)) {
@@ -347,10 +449,14 @@ export function checkDist(distDirectory, manifests) {
     }
   }
 
+  const locales = readLocales(join(distDirectory, "_locales"));
+
   for (const { label, manifest } of manifests) {
     problems.push(
-      ...findManifestProblems(manifest, (path) =>
-        existsSync(join(distDirectory, path)),
+      ...findManifestProblems(
+        manifest,
+        (path) => existsSync(join(distDirectory, path)),
+        locales,
       ).map((problem) => `${label}: ${problem}`),
     );
   }

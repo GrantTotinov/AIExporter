@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter percuma: eksport chat ChatGPT, Claude, Gemini, DeepSeek ke PDF"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude & Gemini ke PDF"
+  },
+  "extDescription": {
+    "message": "Eksport dan simpan chat ChatGPT, Claude, Gemini, DeepSeek & 11 AI lain ke PDF, Word, Markdown, Excel. Percuma, tanpa had & akaun."
+  },
+  "commandOpen": {
+    "message": "Buka AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Salin chat yang dibuka"
+  }
+}

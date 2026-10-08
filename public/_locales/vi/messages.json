@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter miễn phí: xuất chat ChatGPT, Claude, Gemini sang PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini sang PDF"
+  },
+  "extDescription": {
+    "message": "Xuất và lưu cuộc trò chuyện ChatGPT, Claude, Gemini, DeepSeek + 11 AI sang PDF, Word, Markdown, Excel. Miễn phí, không giới hạn."
+  },
+  "commandOpen": {
+    "message": "Mở AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Sao chép cuộc trò chuyện đang mở"
+  }
+}

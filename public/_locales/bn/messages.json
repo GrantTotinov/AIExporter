@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "ফ্রি AI Exporter: ChatGPT, Claude, Gemini চ্যাট PDF ও Word-এ সেভ করুন"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude চ্যাট PDF-এ"
+  },
+  "extDescription": {
+    "message": "ChatGPT, Claude, Gemini, DeepSeek + ১১টি AI-এর চ্যাট PDF, Word, Markdown, Excel-এ এক্সপোর্ট করুন। ফ্রি, সীমাহীন, অ্যাকাউন্ট ছাড়াই।"
+  },
+  "commandOpen": {
+    "message": "AI Exporter খুলুন"
+  },
+  "commandCopy": {
+    "message": "খোলা চ্যাট কপি করুন"
+  }
+}

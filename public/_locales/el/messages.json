@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Δωρεάν AI Exporter: εξαγωγή συνομιλιών ChatGPT, Claude, Gemini σε PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini σε PDF"
+  },
+  "extDescription": {
+    "message": "Εξαγωγή και αποθήκευση συνομιλιών ChatGPT, Claude, Gemini, DeepSeek + 11 AI σε PDF, Word, Markdown, Excel. Δωρεάν, χωρίς όρια."
+  },
+  "commandOpen": {
+    "message": "Άνοιγμα AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Αντιγραφή της ανοιχτής συνομιλίας"
+  }
+}

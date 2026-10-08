@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Tasuta AI Exporter: ChatGPT, Claude, Gemini vestluste eksport PDF-i"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini PDF-i"
+  },
+  "extDescription": {
+    "message": "Ekspordi vestlused: ChatGPT, Claude, Gemini, DeepSeek + 11 TI-d PDF-, Word-, Markdown-, Excel-failina. Tasuta, piiranguteta."
+  },
+  "commandOpen": {
+    "message": "Ava AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopeeri avatud vestlus"
+  }
+}

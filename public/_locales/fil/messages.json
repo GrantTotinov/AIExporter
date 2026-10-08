@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Libreng AI Exporter: i-export ang ChatGPT, Claude, Gemini chat sa PDF, Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini sa PDF"
+  },
+  "extDescription": {
+    "message": "I-export at i-save ang mga chat sa ChatGPT, Claude, Gemini, DeepSeek + 11 AI sa PDF, Word, Markdown, Excel. Libre at walang limit."
+  },
+  "commandOpen": {
+    "message": "Buksan ang AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopyahin ang bukas na chat"
+  }
+}

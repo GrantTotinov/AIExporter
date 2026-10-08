@@ -1,12 +1,14 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   checkDist,
   findCodeProblems,
   findHtmlProblems,
   findManifestProblems,
+  readLocales,
 } from "../scripts/check-store-rules.mjs";
 import { trimJsPdf } from "../scripts/trim-jspdf.mjs";
 
@@ -132,11 +134,59 @@ describe("findHtmlProblems", () => {
 
 describe("findManifestProblems", () => {
   const everyFileExists = () => true;
+  const locales = readLocales(fileURLToPath(new URL("../public/_locales", import.meta.url)));
 
-  it("accepts the Chrome and Firefox manifests", () => {
+  it("accepts the Chrome and Firefox manifests in every language", () => {
+    expect(Object.keys(locales).length).toBeGreaterThan(40);
+
     for (const file of ["../manifest.chrome.json", "../manifest.firefox.json"]) {
-      expect(findManifestProblems(JSON.parse(readText(file)), everyFileExists)).toEqual([]);
+      expect(findManifestProblems(JSON.parse(readText(file)), everyFileExists, locales)).toEqual([]);
     }
+  });
+
+  it("holds every translation of the name and description to the limits", () => {
+    const firefox = JSON.parse(readText("../manifest.firefox.json"));
+    const chrome = JSON.parse(readText("../manifest.chrome.json"));
+    const withLongGerman = {
+      ...locales,
+      de: {
+        ...locales.de,
+        extName: { message: "x".repeat(76) },
+        extNameShort: { message: "x".repeat(46) },
+        extDescription: { message: "y".repeat(133) },
+      },
+    };
+
+    expect(findManifestProblems(chrome, everyFileExists, withLongGerman)).toEqual([
+      "name in _locales/de is 76 characters, the limit is 75",
+      "description in _locales/de is 133 characters, the limit is 132",
+    ]);
+    expect(findManifestProblems(firefox, everyFileExists, withLongGerman)).toEqual([
+      "name in _locales/de is 46 characters, the limit is 45",
+      "description in _locales/de is 133 characters, the limit is 132",
+    ]);
+  });
+
+  it("flags translations Chrome couldn't load", () => {
+    const chrome = JSON.parse(readText("../manifest.chrome.json"));
+    const { default_locale: _defaultLocale, ...withoutDefault } = chrome;
+
+    expect(findManifestProblems(withoutDefault, everyFileExists, locales)).toContain(
+      "_locales is in the build, but default_locale is missing",
+    );
+    expect(findManifestProblems(chrome, everyFileExists, {})).toContain(
+      'default_locale is "en", but _locales/en/messages.json isn\'t in the build',
+    );
+    expect(
+      findManifestProblems(
+        { ...chrome, name: "__MSG_noSuchName__" },
+        everyFileExists,
+        { ...locales, fr: null },
+      ),
+    ).toEqual([
+      "_locales/fr/messages.json isn't valid JSON",
+      'name is __MSG_noSuchName__, but _locales/en/messages.json has no "noSuchName"',
+    ]);
   });
 
   it("flags files the build doesn't contain", () => {
@@ -144,6 +194,7 @@ describe("findManifestProblems", () => {
     const problems = findManifestProblems(
       manifest,
       (path: string) => path !== "pageBridge.js" && path !== "icons/icon128.png",
+      locales,
     );
 
     expect(problems).toEqual([
@@ -157,10 +208,10 @@ describe("findManifestProblems", () => {
     const chrome = JSON.parse(readText("../manifest.chrome.json"));
     const longName = "x".repeat(46);
 
-    expect(findManifestProblems({ ...firefox, name: longName }, everyFileExists)).toEqual([
+    expect(findManifestProblems({ ...firefox, name: longName }, everyFileExists, locales)).toEqual([
       "name is 46 characters, the limit is 45",
     ]);
-    expect(findManifestProblems({ ...chrome, name: longName }, everyFileExists)).toEqual([]);
+    expect(findManifestProblems({ ...chrome, name: longName }, everyFileExists, locales)).toEqual([]);
   });
 
   it("flags what the stores refuse", () => {
@@ -183,7 +234,7 @@ describe("findManifestProblems", () => {
     const chrome = JSON.parse(readText("../manifest.chrome.json"));
 
     expect(chrome.content_security_policy.extension_pages).toContain("'wasm-unsafe-eval'");
-    expect(findManifestProblems(chrome, everyFileExists)).toEqual([]);
+    expect(findManifestProblems(chrome, everyFileExists, locales)).toEqual([]);
     expect(
       findManifestProblems(
         {
@@ -193,6 +244,7 @@ describe("findManifestProblems", () => {
           },
         },
         everyFileExists,
+        locales,
       ),
     ).toHaveLength(1);
   });

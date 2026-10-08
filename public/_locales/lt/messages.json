@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Nemokamas AI Exporter: ChatGPT, Claude, Gemini pokalbių eksportas į PDF"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini į PDF"
+  },
+  "extDescription": {
+    "message": "Eksportuokite ir išsaugokite ChatGPT, Claude, Gemini, DeepSeek + 11 DI pokalbius į PDF, Word, Markdown, Excel. Nemokamai, be ribų."
+  },
+  "commandOpen": {
+    "message": "Atidaryti AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopijuoti atidarytą pokalbį"
+  }
+}

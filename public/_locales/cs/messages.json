@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter zdarma: export chatů z ChatGPT, Claude, Gemini do PDF a Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini do PDF"
+  },
+  "extDescription": {
+    "message": "Exportujte a ukládejte chaty z ChatGPT, Claude, Gemini, DeepSeek + 11 AI do PDF, Word, Markdown, Excel. Zdarma, bez limitů a účtu."
+  },
+  "commandOpen": {
+    "message": "Otevřít AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopírovat otevřený chat"
+  }
+}

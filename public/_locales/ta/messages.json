@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "இலவச AI Exporter: ChatGPT, Claude, Gemini சாட்டை PDF, Word ஆக சேமிக்க"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude சாட் PDF ஆக"
+  },
+  "extDescription": {
+    "message": "ChatGPT, Claude, Gemini, DeepSeek மற்றும் 11 AI சாட்களை PDF, Word, Markdown, Excel ஆக ஏற்றுமதி செய்யுங்கள். இலவசம், வரம்பில்லை."
+  },
+  "commandOpen": {
+    "message": "AI Exporter-ஐத் திற"
+  },
+  "commandCopy": {
+    "message": "திறந்த சாட்டை நகலெடு"
+  }
+}

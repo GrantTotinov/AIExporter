@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "ነፃ AI Exporter: ChatGPT, Claude, Gemini ውይይቶችን ወደ PDF እና Word ያስቀምጡ"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude ውይይት ወደ PDF"
+  },
+  "extDescription": {
+    "message": "ChatGPT, Claude, Gemini, DeepSeek እና ሌሎች 11 AI ውይይቶችን ወደ PDF, Word, Markdown, Excel ያስቀምጡ። ነፃ፣ ያለገደብ፣ ያለ መለያ።"
+  },
+  "commandOpen": {
+    "message": "AI Exporterን ክፈት"
+  },
+  "commandCopy": {
+    "message": "የተከፈተውን ውይይት ቅዳ"
+  }
+}

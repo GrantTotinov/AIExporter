@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "免费 AI Exporter 对话导出器：ChatGPT、DeepSeek、豆包、Kimi、Gemini 聊天记录导出 PDF、Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter：ChatGPT、DeepSeek、豆包 导出 PDF"
+  },
+  "extDescription": {
+    "message": "一键导出、批量导出 ChatGPT、Claude、Gemini、DeepSeek、豆包、Kimi、千问、腾讯元宝等 15 个 AI 的聊天记录为 PDF、Word、Markdown、Excel 或长图。免费不限次数，无需账号，本地处理。"
+  },
+  "commandOpen": {
+    "message": "打开 AI Exporter"
+  },
+  "commandCopy": {
+    "message": "复制当前对话"
+  }
+}

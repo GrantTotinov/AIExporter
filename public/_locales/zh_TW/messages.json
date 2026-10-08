@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "免費 AI Exporter 對話匯出工具：ChatGPT、Claude、Gemini、DeepSeek 匯出 PDF、Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter：ChatGPT、Claude 對話匯出 PDF"
+  },
+  "extDescription": {
+    "message": "一鍵匯出、批次匯出 ChatGPT、Claude、Gemini、DeepSeek、Perplexity 等 15 個 AI 的對話紀錄為 PDF、Word、Markdown、Excel 或長圖。免費、不限次數、無需帳號、本機處理。"
+  },
+  "commandOpen": {
+    "message": "開啟 AI Exporter"
+  },
+  "commandCopy": {
+    "message": "複製目前的對話"
+  }
+}

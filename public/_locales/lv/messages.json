@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Bezmaksas AI Exporter: ChatGPT, Claude, Gemini tērzēšanu eksports uz PDF"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini uz PDF"
+  },
+  "extDescription": {
+    "message": "Eksportējiet ChatGPT, Claude, Gemini, DeepSeek + 11 MI tērzēšanas PDF, Word, Markdown, Excel formātā. Bez maksas, bez limita."
+  },
+  "commandOpen": {
+    "message": "Atvērt AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopēt atvērto tērzēšanu"
+  }
+}

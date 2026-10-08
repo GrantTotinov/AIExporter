@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Ingyenes AI Exporter: ChatGPT, Claude, Gemini chatek exportja PDF-be"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini PDF-be"
+  },
+  "extDescription": {
+    "message": "ChatGPT, Claude, Gemini, DeepSeek + 11 AI chatjeinek exportja és mentése PDF, Word, Markdown, Excel formátumba. Ingyenes, korlátlan."
+  },
+  "commandOpen": {
+    "message": "AI Exporter megnyitása"
+  },
+  "commandCopy": {
+    "message": "A megnyitott chat másolása"
+  }
+}

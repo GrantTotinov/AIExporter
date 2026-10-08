@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Бесплатный AI Exporter: сохранить чаты ChatGPT, Perplexity, Claude в PDF"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: чаты ChatGPT и Claude в PDF"
+  },
+  "extDescription": {
+    "message": "Сохраняйте чаты ChatGPT, Claude, Gemini, DeepSeek, Perplexity и ещё 10 ИИ в PDF, Word, Markdown. Бесплатно, без лимитов и аккаунта."
+  },
+  "commandOpen": {
+    "message": "Открыть AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Скопировать открытый чат"
+  }
+}

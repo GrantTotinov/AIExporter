@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "AI Exporter ฟรี: บันทึกแชท ChatGPT, Claude, Gemini เป็น PDF และ Word"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: แชท ChatGPT, Claude เป็น PDF"
+  },
+  "extDescription": {
+    "message": "ส่งออกและบันทึกแชท ChatGPT, Claude, Gemini, DeepSeek และ AI อื่นอีก 11 ตัวเป็น PDF, Word, Markdown, Excel ฟรี ไม่จำกัด ไม่ต้องสมัคร"
+  },
+  "commandOpen": {
+    "message": "เปิด AI Exporter"
+  },
+  "commandCopy": {
+    "message": "คัดลอกแชทที่เปิดอยู่"
+  }
+}

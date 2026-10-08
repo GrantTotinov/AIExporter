@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "무료 AI Exporter: ChatGPT(챗GPT)·Claude·Gemini 대화 내보내기, PDF·Word 저장"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: 챗GPT·Claude 대화 PDF 저장"
+  },
+  "extDescription": {
+    "message": "ChatGPT(챗GPT), Claude, Gemini, DeepSeek 등 15개 AI 대화를 PDF, Word, Markdown, Excel, 이미지로 저장·내보내기. 무료, 무제한, 계정 불필요."
+  },
+  "commandOpen": {
+    "message": "AI Exporter 열기"
+  },
+  "commandCopy": {
+    "message": "열린 대화 복사"
+  }
+}

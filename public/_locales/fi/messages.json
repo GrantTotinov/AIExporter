@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Ilmainen AI Exporter: ChatGPT-, Claude- ja Gemini-keskustelut PDF:ksi"
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude, Gemini PDF:ksi"
+  },
+  "extDescription": {
+    "message": "Vie ChatGPT-, Claude-, Gemini-, DeepSeek- ja 11 muun tekoälyn keskustelut PDF-, Word-, Markdown-, Excel-muotoon. Ilmainen, rajaton."
+  },
+  "commandOpen": {
+    "message": "Avaa AI Exporter"
+  },
+  "commandCopy": {
+    "message": "Kopioi avoin keskustelu"
+  }
+}

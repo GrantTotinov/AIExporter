@@ -1,0 +1,22 @@
+{
+  "extName": {
+    "message": "Free AI Exporter: Export ChatGPT, Claude, Gemini & DeepSeek to PDF & Word",
+    "description": "Chrome Web Store name, 75 characters at most. Keep \"AI Exporter\" and the AI and file names in English."
+  },
+  "extNameShort": {
+    "message": "AI Exporter: ChatGPT, Claude & Gemini to PDF",
+    "description": "Name for Firefox Add-ons and Edge Add-ons, 45 characters at most."
+  },
+  "extDescription": {
+    "message": "Export & save ChatGPT, Claude, Gemini, DeepSeek + 11 more AI chats to PDF, Word, Markdown, Excel. Free, unlimited, no sign-up.",
+    "description": "Short description in the store and the browser's extension list, 132 characters at most."
+  },
+  "commandOpen": {
+    "message": "Open AI Exporter",
+    "description": "Keyboard shortcut that opens the popup (chrome://extensions/shortcuts)."
+  },
+  "commandCopy": {
+    "message": "Copy the open chat",
+    "description": "Keyboard shortcut that copies the open chat."
+  }
+}
