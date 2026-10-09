@@ -25,7 +25,21 @@ const storageSet = vi.fn(async (items: Record<string, unknown>) => {
   Object.assign(stored, structuredClone(items));
 });
 
+/* chrome.storage.local: the automatic backup's settings and status */
+let localStored: Record<string, unknown> = {};
+
+const localGet = vi.fn(async (keys: string[]) =>
+  Object.fromEntries(
+    keys.filter((key) => key in localStored).map((key) => [key, localStored[key]]),
+  ),
+);
+
+const localSet = vi.fn(async (items: Record<string, unknown>) => {
+  Object.assign(localStored, structuredClone(items));
+});
+
 let githubStatus: { connected: boolean; login?: string } = { connected: false };
+let githubRepos: { full_name: string; private: boolean }[] = [];
 /* What the person answers when the browser asks to allow GitHub */
 let allowGithub = true;
 
@@ -35,6 +49,10 @@ let commandShortcuts: { name: string; shortcut: string }[] = [];
 const sendMessage = vi.fn(async (message: { type: string }) => {
   if (message.type === "GITHUB_GET_STATUS") {
     return { success: true, data: githubStatus };
+  }
+
+  if (message.type === "GITHUB_LIST_REPOS") {
+    return { success: true, data: githubRepos };
   }
 
   if (message.type === "GITHUB_START_AUTH") {
@@ -71,7 +89,11 @@ async function loadOptionsPage(initial: Partial<Settings> = {}): Promise<void> {
   stored = structuredClone(initial) as Record<string, unknown>;
 
   vi.stubGlobal("chrome", {
-    storage: { sync: { get: storageGet, set: storageSet } },
+    storage: {
+      sync: { get: storageGet, set: storageSet },
+      local: { get: localGet, set: localSet },
+      onChanged: { addListener: vi.fn() },
+    },
     runtime: {
       getManifest: () => ({ version: "2.3.0" }),
       sendMessage,
@@ -109,7 +131,9 @@ function commit(input: HTMLInputElement, value: string): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStored = {};
   githubStatus = { connected: false };
+  githubRepos = [];
   allowGithub = true;
   commandShortcuts = [];
   vi.useFakeTimers();
@@ -743,6 +767,94 @@ describe("options page", () => {
       expect(sentTypes()).toEqual(["GITHUB_GET_STATUS"]);
       expect(tabsCreate).not.toHaveBeenCalled();
       expect(byId("github-disconnect").hidden).toBe(false);
+    });
+  });
+
+  describe("automatic backup", () => {
+    it("is turned on for this computer, apart from the synced settings", async () => {
+      await loadOptionsPage();
+
+      expect(byId("backup-details").hidden).toBe(true);
+
+      const toggle = byId<HTMLInputElement>("backupEnabled");
+
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event("change", { bubbles: true }));
+
+      await vi.waitFor(() =>
+        expect(localStored.autoBackup).toEqual({
+          enabled: true,
+          every: "day",
+          target: "downloads",
+          repo: "",
+          format: "html",
+        }),
+      );
+      expect(byId("backup-details").hidden).toBe(false);
+      expect(storageSet).not.toHaveBeenCalled();
+    });
+
+    it("offers only private GitHub repositories", async () => {
+      githubStatus = { connected: true, login: "octocat" };
+      githubRepos = [
+        { full_name: "octocat/chats", private: true },
+        { full_name: "octocat/site", private: false },
+      ];
+      localStored = {
+        autoBackup: { enabled: true, target: "github", repo: "octocat/chats" },
+      };
+
+      await loadOptionsPage();
+
+      const select = byId<HTMLSelectElement>("backupRepo");
+
+      await vi.waitFor(() =>
+        expect([...select.options].map((option) => option.value)).toEqual([
+          "",
+          "octocat/chats",
+        ]),
+      );
+      expect(select.value).toBe("octocat/chats");
+      expect(byId("backupRepoRow").hidden).toBe(false);
+    });
+
+    it("says why it was turned off, and stays quiet before it ever ran", async () => {
+      await loadOptionsPage();
+
+      expect(byId("backupStatusRow").hidden).toBe(true);
+
+      localStored = {
+        autoBackup: { enabled: false },
+        autoBackupStatus: { error: en["backup.error.saveAs"], sites: {} },
+      };
+
+      await loadOptionsPage();
+
+      expect(byId("backup-details").hidden).toBe(true);
+      expect(byId("backupStatusRow").hidden).toBe(false);
+      expect(byId("backupProblems").textContent).toBe(en["backup.error.saveAs"]);
+    });
+
+    it("shows what the last backup saved and what went wrong", async () => {
+      localStored = {
+        autoBackup: { enabled: true },
+        autoBackupStatus: {
+          at: new Date(2026, 9, 8, 14, 3).getTime(),
+          saved: 3,
+          failed: 1,
+          sites: { claude: { at: 1, error: "Sign in to Claude first." } },
+        },
+      };
+
+      await loadOptionsPage();
+
+      expect(byId("backupStatus").textContent).toMatch(/Chats saved: 3$/);
+      expect(
+        [...byId("backupProblems").children].map((item) => item.textContent),
+      ).toEqual([
+        "Chats not saved: 1. They'll be tried again next time.",
+        "Claude: Sign in to Claude first.",
+      ]);
     });
   });
 

@@ -8,6 +8,7 @@ import {
   listRepos,
   saveFileToRepo,
   starProject,
+  commitFiles,
 } from "./github.ts";
 import {
   connectNotionWithToken,
@@ -18,11 +19,43 @@ import {
 } from "./notion.ts";
 import type { NotionBlock } from "./notion-blocks.ts";
 import { initI18n, t } from "./i18n.ts";
-import { decodeBase64, copyToArrayBuffer } from "./zip.ts";
+import { decodeBase64, copyToArrayBuffer, encodeBlobBase64 } from "./zip.ts";
 import { asciiFileName, isSafeFileName } from "./file-names.ts";
-import { getChatSite, isChatConversationUrl } from "./chat-sites.ts";
+import {
+  CHAT_SITE_NAMES,
+  PAGE_READ_SITES,
+  getChatSite,
+  isChatConversationUrl,
+  type ChatSite,
+} from "./chat-sites.ts";
 import { buildClipboardContent } from "./clipboard-export.ts";
-import type { Message } from "./export-builders.ts";
+import type { ExportImageFile, Message } from "./export-builders.ts";
+import { loadSettings, type Settings } from "./settings.ts";
+import {
+  PAUSE_BETWEEN_CHATS_MS,
+  RETRY_DELAYS_MS,
+  needsSaving,
+  savedChats,
+  withSavedChats,
+} from "./bulk-export.ts";
+import type {
+  ConversationListPage,
+  ConversationSummary,
+} from "./conversation-list.ts";
+import {
+  BACKUP_CONFIG_KEY,
+  BACKUP_SAVED_KEY,
+  BACKUP_STATUS_KEY,
+  backupStatus,
+  backupTarget,
+  buildBackupFiles,
+  isBackupDue,
+  loadBackupConfig,
+  type BackupConfig,
+  type BackupFile,
+  type BackupFormat,
+  type BackupStatus,
+} from "./auto-backup.ts";
 import {
   UPDATE_CHECK_INTERVAL_MS,
   UPDATE_NOTICE_KEY,
@@ -1428,4 +1461,585 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   });
 
   return true;
+});
+
+/*
+ * ---------------------------------------------------------
+ * AUTOMATIC BACKUP
+ * ---------------------------------------------------------
+ *
+ * See auto-backup.ts. An alarm looks every half hour for chat sites
+ * that are due and open in a tab, and so does content.ts, half a
+ * minute after a chat site's page opens - a site that's only open
+ * now and then would otherwise rarely be open when the alarm goes
+ * off. Each due site's tab lists its chats, and those that are new
+ * or have changed since the last backup are loaded one at a time,
+ * built into files and saved: into Downloads, over their old copy,
+ * or into GitHub, a commit at a time. A chat counts as backed up
+ * only once its files are saved, so a backup cut short (the tab
+ * closed, the browser quit) goes on where it stopped next time.
+ */
+const BACKUP_ALARM = "auto-backup";
+const BACKUP_CHECK_MINUTES = 30;
+/* After a chat site's page opens: the page gets ready first */
+const BACKUP_AFTER_PAGE_OPENS_MINUTES = 0.5;
+/* GitHub gets the chats in commits of up to this many chats or bytes */
+const BACKUP_COMMIT_CHATS = 25;
+const BACKUP_COMMIT_BYTES = 5_000_000;
+/* A site that fails this many chats in a row has stopped answering */
+const BACKUP_FAILURES_IN_A_ROW = 5;
+/* A file that isn't on disk by then is waiting for a Save As dialog */
+const BACKUP_DOWNLOAD_WAIT_MS = 2 * 60 * 1000;
+/*
+ * Chrome stops a service worker that has gone 30 seconds without
+ * calling the browser; one chat with many images can take longer to
+ * load than that.
+ */
+const BACKUP_KEEPALIVE_MS = 20_000;
+
+async function scheduleBackup(soon = false): Promise<void> {
+  const { enabled } = await loadBackupConfig();
+  const alarm = await chrome.alarms.get(BACKUP_ALARM);
+
+  if (!enabled) {
+    if (alarm) {
+      await chrome.alarms.clear(BACKUP_ALARM);
+    }
+
+    return;
+  }
+
+  if (soon || !alarm) {
+    await chrome.alarms.create(BACKUP_ALARM, {
+      delayInMinutes: soon ? BACKUP_AFTER_PAGE_OPENS_MINUTES : BACKUP_CHECK_MINUTES,
+      periodInMinutes: BACKUP_CHECK_MINUTES,
+    });
+  }
+}
+
+/* The chat tab is gone: closed, or showing another site now */
+class TabUnavailableError extends Error {}
+
+/* The browser asked where to save a backup file, and nobody chose */
+class SaveAsError extends Error {}
+
+/*
+ * Without the "tabs" permission a tab's address doesn't show, so every
+ * tab is asked: only one with AI Exporter's content script answers,
+ * and it says which site it shows. Tabs of private windows are left
+ * alone, and so are the sites read from the page, which can't list
+ * their chats.
+ */
+async function findChatTabs(): Promise<Map<ChatSite, number>> {
+  const found = new Map<ChatSite, number>();
+  const tabs = await chrome.tabs.query({});
+
+  await Promise.all(
+    tabs.map(async (tab) => {
+      if (tab.id === undefined || tab.incognito || tab.discarded) {
+        return;
+      }
+
+      try {
+        const answer = await chrome.tabs.sendMessage(tab.id, {
+          type: "AIEXPORTER_PING",
+        });
+        const site =
+          answer?.ok === true && typeof answer.host === "string"
+            ? getChatSite(`https://${answer.host}/`)
+            : null;
+
+        if (site && !PAGE_READ_SITES.includes(site) && !found.has(site)) {
+          found.set(site, tab.id);
+        }
+      } catch {
+        /* No content script of AI Exporter's there. */
+      }
+    }),
+  );
+
+  return found;
+}
+
+/*
+ * Asks the chat tab, after checking it still shows `site` - the
+ * person may have gone on to another chat site in it meanwhile.
+ */
+async function sendToChatTab<T>(
+  tabId: number,
+  site: ChatSite,
+  message: Record<string, unknown>,
+): Promise<T> {
+  let response: { success?: boolean; data?: T; error?: string } | undefined;
+
+  try {
+    const answer = await chrome.tabs.sendMessage(tabId, { type: "AIEXPORTER_PING" });
+
+    if (getChatSite(`https://${answer?.host}/`) !== site) {
+      throw new Error("The tab shows another site now.");
+    }
+
+    response = await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    throw new TabUnavailableError(errorText(error));
+  }
+
+  if (!response?.success) {
+    throw new Error(response?.error ?? t("popup.error.loadConversationFailed"));
+  }
+
+  return response.data as T;
+}
+
+/*
+ * The whole list, a page at a time, as the "Save many chats" page
+ * loads it. A page that fails after the first leaves the chats found
+ * so far; the rest are found next time.
+ */
+async function listAllConversations(
+  tabId: number,
+  site: ChatSite,
+): Promise<ConversationSummary[]> {
+  const found = new Map<string, ConversationSummary>();
+  let cursor: string | null = null;
+
+  try {
+    do {
+      const page: ConversationListPage = await sendToChatTab(tabId, site, {
+        type: "LIST_CONVERSATIONS_PAGE",
+        cursor,
+      });
+      let added = 0;
+
+      for (const conversation of page.conversations) {
+        if (!found.has(conversation.id)) {
+          found.set(conversation.id, conversation);
+          added++;
+        }
+      }
+
+      // A page with nothing new means an API that ignores paging.
+      cursor = added > 0 ? page.nextCursor : null;
+    } while (cursor !== null);
+  } catch (error) {
+    if (found.size === 0) {
+      throw error;
+    }
+  }
+
+  return [...found.values()];
+}
+
+async function loadBackupFiles(
+  tabId: number,
+  site: ChatSite,
+  conversation: ConversationSummary,
+  format: BackupFormat,
+  settings: Settings,
+): Promise<BackupFile[]> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const data = await sendToChatTab<{
+        messages?: Message[];
+        images?: ExportImageFile[];
+      }>(tabId, site, {
+        type: "LOAD_CONVERSATION",
+        conversationId: conversation.id,
+        downloadImagesLocally: settings.downloadImagesLocally,
+      });
+
+      if (!data.messages?.length) {
+        throw new Error(t("popup.error.noMessagesFound"));
+      }
+
+      return await buildBackupFiles(
+        site,
+        conversation,
+        [...data.messages].sort((a, b) => a.order - b.order),
+        data.images ?? [],
+        format,
+        settings,
+      );
+    } catch (error) {
+      if (error instanceof TabUnavailableError || attempt >= RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
+/* Settles a backup download's wait, by its id */
+const downloadWaiters = new Map<number, (error: string | null) => void>();
+
+chrome.downloads.onChanged.addListener((delta) => {
+  const state = delta.state?.current;
+
+  if (state === "complete") {
+    downloadWaiters.get(delta.id)?.(null);
+  } else if (state === "interrupted") {
+    downloadWaiters.get(delta.id)?.(delta.error?.current ?? "INTERRUPTED");
+  }
+});
+
+/*
+ * Resolves once the file is on disk. A browser set to ask where to
+ * save every file asks for a backup file too, whatever saveAs says:
+ * that dialog cancelled, or left unanswered, is a SaveAsError.
+ */
+function downloadFinished(id: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const settle = (error: string | null): void => {
+      downloadWaiters.delete(id);
+      clearTimeout(timer);
+
+      if (error === null) {
+        resolve();
+      } else if (error === "USER_CANCELED") {
+        reject(new SaveAsError(t("backup.error.saveAs")));
+      } else {
+        reject(new Error(t("backup.error.download", { error })));
+      }
+    };
+    const timer = setTimeout(() => {
+      void chrome.downloads.cancel(id).catch(() => undefined);
+      settle("USER_CANCELED");
+    }, BACKUP_DOWNLOAD_WAIT_MS);
+
+    downloadWaiters.set(id, settle);
+
+    // It may have finished before anyone waited for it.
+    void chrome.downloads.search({ id }).then(([item]) => {
+      if (item?.state === "complete") {
+        downloadWaiters.get(id)?.(null);
+      } else if (item?.state === "interrupted") {
+        downloadWaiters.get(id)?.(item.error ?? "INTERRUPTED");
+      }
+    });
+  });
+}
+
+/*
+ * One backup file into the Downloads folder, over its old copy and
+ * without asking where; then it's taken off the browser's list of
+ * downloads, which a backup of hundreds of chats would fill.
+ */
+async function saveBackupDownload(file: BackupFile): Promise<void> {
+  const url = canCreateObjectUrls()
+    ? URL.createObjectURL(file.blob)
+    : await createDownloadUrl(
+        await encodeBlobBase64(file.blob),
+        file.blob.type || "application/octet-stream",
+      );
+
+  try {
+    const id = await chrome.downloads.download({
+      url,
+      filename: file.path,
+      conflictAction: "overwrite",
+      saveAs: false,
+    });
+
+    try {
+      await downloadFinished(id);
+    } finally {
+      void chrome.downloads.erase({ id }).catch(() => undefined);
+    }
+  } finally {
+    revokeDownloadUrl(url);
+  }
+}
+
+/* The chats saved so far where the backup goes now, by site */
+async function loadBackedUp(target: string): Promise<Record<string, unknown>> {
+  const stored = (await chrome.storage.local.get(BACKUP_SAVED_KEY))[
+    BACKUP_SAVED_KEY
+  ] as { target?: unknown; chats?: Record<string, unknown> } | undefined;
+
+  return stored?.target === target && stored.chats ? stored.chats : {};
+}
+
+async function rememberBackedUp(
+  target: string,
+  site: ChatSite,
+  conversations: ConversationSummary[],
+): Promise<void> {
+  const chats = withSavedChats(await loadBackedUp(target), site, conversations);
+
+  await chrome.storage.local.set({ [BACKUP_SAVED_KEY]: { target, chats } });
+}
+
+interface SiteBackup {
+  saved: number;
+  failed: number;
+  /* Why the site stopped early: it's tried again within the hour */
+  error?: string;
+  /* The place the chats go refused them: no use going on with any site */
+  stopped?: unknown;
+}
+
+async function backupSite(
+  site: ChatSite,
+  tabId: number,
+  config: BackupConfig,
+  settings: Settings,
+): Promise<SiteBackup> {
+  const target = backupTarget(config);
+  const result: SiteBackup = { saved: 0, failed: 0 };
+  let conversations: ConversationSummary[];
+
+  try {
+    conversations = await listAllConversations(tabId, site);
+  } catch (error) {
+    return { ...result, error: errorText(error) };
+  }
+
+  const saved = savedChats(await loadBackedUp(target), site);
+  const batch: { conversation: ConversationSummary; files: BackupFile[] }[] = [];
+  let failuresInARow = 0;
+
+  /*
+   * The first chat goes to GitHub on its own, which shows straight
+   * away whether the repository takes them; then a commit at a time.
+   */
+  const commit = async (): Promise<void> => {
+    if (batch.length === 0) {
+      return;
+    }
+
+    await commitFiles(
+      config.repo,
+      batch.flatMap((item) => item.files),
+      `Back up ${batch.length} ${CHAT_SITE_NAMES[site]} chats with AI Exporter`,
+    );
+    await rememberBackedUp(target, site, batch.map((item) => item.conversation));
+    result.saved += batch.length;
+    batch.length = 0;
+  };
+
+  try {
+    for (const conversation of conversations) {
+      if (!needsSaving(conversation, saved)) {
+        continue;
+      }
+
+      let files: BackupFile[];
+
+      try {
+        files = await loadBackupFiles(tabId, site, conversation, config.format, settings);
+        failuresInARow = 0;
+      } catch (error) {
+        if (error instanceof TabUnavailableError) {
+          result.error = t("backup.error.tabClosed", { site: CHAT_SITE_NAMES[site] });
+          break;
+        }
+
+        devError("AI Exporter: couldn't back up a chat", conversation.id, error);
+        result.failed++;
+
+        if (++failuresInARow >= BACKUP_FAILURES_IN_A_ROW) {
+          result.error = t("backup.error.siteFailed", { site: CHAT_SITE_NAMES[site] });
+          break;
+        }
+
+        continue;
+      }
+
+      if (config.target === "downloads") {
+        for (const file of files) {
+          await saveBackupDownload(file);
+        }
+
+        await rememberBackedUp(target, site, [conversation]);
+        result.saved++;
+      } else {
+        batch.push({ conversation, files });
+
+        const bytes = batch.reduce(
+          (sum, item) => sum + item.files.reduce((size, file) => size + file.blob.size, 0),
+          0,
+        );
+
+        if (
+          result.saved === 0 ||
+          batch.length >= BACKUP_COMMIT_CHATS ||
+          bytes >= BACKUP_COMMIT_BYTES
+        ) {
+          await commit();
+        }
+      }
+
+      await sleep(PAUSE_BETWEEN_CHATS_MS);
+    }
+
+    await commit();
+  } catch (error) {
+    return { ...result, stopped: error };
+  }
+
+  return result;
+}
+
+async function runBackup(force: boolean): Promise<BackupStatus> {
+  const config = await loadBackupConfig();
+  let status = backupStatus(
+    (await chrome.storage.local.get(BACKUP_STATUS_KEY))[BACKUP_STATUS_KEY],
+  );
+  const saveStatus = (): Promise<void> =>
+    chrome.storage.local.set({ [BACKUP_STATUS_KEY]: status });
+
+  if (!config.enabled && !force) {
+    return status;
+  }
+
+  if (config.target === "github") {
+    const problem = !isValidRepoFullName(config.repo)
+      ? t("backup.error.noRepo")
+      : !(await getStoredToken()) || !(await hasGitHubAccess())
+        ? t("github.error.notConnected")
+        : null;
+
+    if (problem) {
+      status = { ...status, error: problem };
+      await saveStatus();
+      return status;
+    }
+  }
+
+  // A new place or file type has none of the chats yet: every site is due.
+  const target = backupTarget(config);
+
+  if (status.target !== target) {
+    status = { ...status, target, sites: {} };
+  }
+
+  const tabs = await findChatTabs();
+  const startedAt = Date.now();
+  const sites = [...tabs.keys()].filter(
+    (site) => force || isBackupDue(status.sites[site], config.every, startedAt),
+  );
+
+  if (sites.length === 0) {
+    if (force) {
+      throw new Error(t("backup.error.noTabs"));
+    }
+
+    return status;
+  }
+
+  const settings = await loadSettings();
+  const keepAlive = setInterval(() => {
+    void chrome.runtime.getPlatformInfo();
+  }, BACKUP_KEEPALIVE_MS);
+  let saved = 0;
+  let failed = 0;
+  let error: string | undefined;
+
+  try {
+    for (const site of sites) {
+      const result = await backupSite(site, tabs.get(site)!, config, settings);
+
+      saved += result.saved;
+      failed += result.failed;
+
+      /*
+       * The site wasn't backed up, so it keeps what it had and stays
+       * due. Asked where to save every file, a backup would ask again
+       * every half hour: it's turned off, and the settings say why.
+       */
+      if (result.stopped !== undefined) {
+        error = errorText(result.stopped);
+
+        if (result.stopped instanceof SaveAsError) {
+          await chrome.storage.local.set({
+            [BACKUP_CONFIG_KEY]: { ...config, enabled: false },
+          });
+        }
+
+        break;
+      }
+
+      status = {
+        ...status,
+        sites: {
+          ...status.sites,
+          [site]: { at: startedAt, ...(result.error ? { error: result.error } : {}) },
+        },
+      };
+      await saveStatus();
+    }
+  } finally {
+    clearInterval(keepAlive);
+  }
+
+  status = { ...status, at: Date.now(), saved, failed, error };
+  await saveStatus();
+
+  return status;
+}
+
+/* One backup at a time; asking during one gets that one's outcome */
+let backupRun: Promise<BackupStatus> | null = null;
+
+function startBackup(force: boolean): Promise<BackupStatus> {
+  backupRun ??= new Promise<BackupStatus>((resolve, reject) => {
+    void trackTask(() => runBackup(force).then(resolve, reject));
+  }).finally(() => {
+    backupRun = null;
+  });
+
+  return backupRun;
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === BACKUP_ALARM) {
+    startBackup(false).catch((error) => {
+      devError("AI Exporter: the automatic backup failed", error);
+    });
+  }
+});
+
+/* content.ts, as a chat site's page opens */
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.type !== "AIEXPORTER_PAGE_OPENED" || !isOwnExtensionSender(sender)) {
+    return false;
+  }
+
+  scheduleBackup(true).catch((error) => {
+    devError("AI Exporter: couldn't schedule the backup", error);
+  });
+
+  return false;
+});
+
+/* The settings page's "Back up now" */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "BACKUP_RUN" || !isOwnExtensionSender(sender)) {
+    return false;
+  }
+
+  startBackup(true).then(
+    (status) => sendResponse({ success: true, data: status }),
+    (error) => sendResponse({ success: false, error: errorText(error) }),
+  );
+
+  return true;
+});
+
+/* Turned on or off, or changed, in the settings */
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes[BACKUP_CONFIG_KEY]) {
+    scheduleBackup(true).catch((error) => {
+      devError("AI Exporter: couldn't schedule the backup", error);
+    });
+  }
+});
+
+/*
+ * The browser may drop alarms when it restarts, and does when the
+ * extension updates: every start of the background puts it back.
+ */
+scheduleBackup().catch((error) => {
+  devError("AI Exporter: couldn't schedule the backup", error);
 });

@@ -981,6 +981,30 @@
         background: var(--github-hover);
       }
 
+      /* Automatic backup: the repository's note, and what went wrong */
+      .backup-note {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .backup-note a {
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      .backup-note.is-error,
+      .backup-problems {
+        color: var(--danger);
+      }
+
+      .backup-problems {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
       .button--danger {
         border-color: var(--danger);
         color: var(--danger);
@@ -1762,6 +1786,10 @@
           d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"
         />
       </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="4.5" rx="1.5" />
+        <path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5M10 12.5h4" />
+      </symbol>
       <symbol id="i-external" viewBox="0 0 24 24">
         <path d="M14 4h6v6M20 4l-8.5 8.5" />
         <path
@@ -1936,6 +1964,10 @@
               <use href="#i-download" />
             </svg>
             <span data-i18n="options.saving.title">Saving files</span>
+          </a>
+          <a class="nav-link" href="#backup">
+            <svg class="icon" aria-hidden="true"><use href="#i-archive" /></svg>
+            <span data-i18n="options.backup.title">Automatic backup</span>
           </a>
           <a class="nav-link" href="#shortcuts">
             <svg class="icon" aria-hidden="true">
@@ -2345,6 +2377,284 @@
                 <svg class="icon" aria-hidden="true">
                   <use href="#i-external" />
                 </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============== AUTOMATIC BACKUP =============== -->
+        <section class="card" id="backup" aria-labelledby="backup-title">
+          <header class="card-header">
+            <span class="card-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-archive" /></svg>
+            </span>
+            <div>
+              <h2
+                class="card-title"
+                id="backup-title"
+                data-i18n="options.backup.title"
+              >
+                Automatic backup
+              </h2>
+              <p class="card-subtitle" data-i18n="options.backup.subtitle">
+                Keeps a copy of your chats without you lifting a finger.
+              </p>
+            </div>
+          </header>
+
+          <div
+            class="setting setting--switch"
+            data-help="options.backup.enable.help"
+            data-tip="options.backup.enable.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-archive" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <label
+                    class="setting-title"
+                    for="backupEnabled"
+                    data-i18n="options.backup.enable.title"
+                    >Back up chats automatically</label
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p
+                  class="setting-desc"
+                  id="backupEnabled-desc"
+                  data-i18n="options.backup.enable.desc"
+                >
+                  New and changed chats are saved on their own.
+                </p>
+              </div>
+            </div>
+            <div class="setting-control">
+              <span class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  id="backupEnabled"
+                  aria-describedby="backupEnabled-desc"
+                />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </div>
+          </div>
+
+          <div id="backup-details" hidden>
+            <div
+              class="setting"
+              data-help="options.backup.every.help"
+              data-tip="options.backup.every.tip"
+            >
+              <div class="setting-head">
+                <span class="setting-icon" aria-hidden="true">
+                  <svg class="icon"><use href="#i-clock" /></svg>
+                </span>
+                <div class="setting-text">
+                  <div class="setting-title-row">
+                    <label
+                      class="setting-title"
+                      for="backupEvery"
+                      data-i18n="options.backup.every.title"
+                      >How often</label
+                    >
+                    <button
+                      type="button"
+                      class="help-button"
+                      aria-label="What does this do?"
+                      data-i18n-aria-label="options.moreInfo"
+                    >
+                      ?
+                    </button>
+                  </div>
+                  <p
+                    class="setting-desc"
+                    id="backupEvery-desc"
+                    data-i18n="options.backup.every.desc"
+                  >
+                    How often to look for new chats.
+                  </p>
+                </div>
+              </div>
+              <div class="setting-control">
+                <span class="select">
+                  <select id="backupEvery" aria-describedby="backupEvery-desc">
+                    <option value="hour" data-i18n="options.backup.every.hour">
+                      Every hour
+                    </option>
+                    <option value="day" data-i18n="options.backup.every.day">
+                      Every day
+                    </option>
+                    <option value="week" data-i18n="options.backup.every.week">
+                      Every week
+                    </option>
+                  </select>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#i-chevron" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+
+            <div
+              class="setting"
+              data-help="options.backup.target.help"
+              data-tip="options.backup.target.tip"
+            >
+              <div class="setting-head">
+                <span class="setting-icon" aria-hidden="true">
+                  <svg class="icon"><use href="#i-folder" /></svg>
+                </span>
+                <div class="setting-text">
+                  <div class="setting-title-row">
+                    <label
+                      class="setting-title"
+                      for="backupTarget"
+                      data-i18n="options.backup.target.title"
+                      >Where to save</label
+                    >
+                    <button
+                      type="button"
+                      class="help-button"
+                      aria-label="What does this do?"
+                      data-i18n-aria-label="options.moreInfo"
+                    >
+                      ?
+                    </button>
+                  </div>
+                  <p
+                    class="setting-desc"
+                    id="backupTarget-desc"
+                    data-i18n="options.backup.target.desc"
+                  >
+                    Your computer, or your GitHub account.
+                  </p>
+                </div>
+              </div>
+              <div class="setting-control">
+                <span class="select">
+                  <select id="backupTarget" aria-describedby="backupTarget-desc">
+                    <option
+                      value="downloads"
+                      data-i18n="options.backup.target.downloads"
+                    >
+                      Downloads folder
+                    </option>
+                    <option value="github" data-i18n="options.backup.target.github">
+                      GitHub repository
+                    </option>
+                  </select>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#i-chevron" />
+                  </svg>
+                </span>
+              </div>
+              <div class="setting-extra" id="backupRepoRow" hidden>
+                <label
+                  class="field-label"
+                  for="backupRepo"
+                  data-i18n="options.backup.repo.label"
+                  >Repository</label
+                >
+                <span class="select">
+                  <select id="backupRepo" aria-describedby="backupRepoNote"></select>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#i-chevron" />
+                  </svg>
+                </span>
+                <p class="backup-note" id="backupRepoNote" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <div
+              class="setting"
+              data-help="options.backup.format.help"
+              data-tip="options.backup.format.tip"
+            >
+              <div class="setting-head">
+                <span class="setting-icon" aria-hidden="true">
+                  <svg class="icon"><use href="#i-file-text" /></svg>
+                </span>
+                <div class="setting-text">
+                  <div class="setting-title-row">
+                    <label
+                      class="setting-title"
+                      for="backupFormat"
+                      data-i18n="options.backup.format.title"
+                      >File type</label
+                    >
+                    <button
+                      type="button"
+                      class="help-button"
+                      aria-label="What does this do?"
+                      data-i18n-aria-label="options.moreInfo"
+                    >
+                      ?
+                    </button>
+                  </div>
+                  <p class="setting-desc" id="backupFormat-desc"></p>
+                </div>
+              </div>
+              <div class="setting-control">
+                <span class="select">
+                  <select
+                    id="backupFormat"
+                    aria-describedby="backupFormat-desc"
+                  ></select>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#i-chevron" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shown while the backup is off too, when there's something to say -->
+          <div
+            class="setting"
+            id="backupStatusRow"
+            data-help="options.backup.status.help"
+            data-tip="options.backup.status.tip"
+          >
+            <div class="setting-head">
+              <span class="setting-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-check" /></svg>
+              </span>
+              <div class="setting-text">
+                <div class="setting-title-row">
+                  <span
+                    class="setting-title"
+                    data-i18n="options.backup.status.title"
+                    >Last backup</span
+                  >
+                  <button
+                    type="button"
+                    class="help-button"
+                    aria-label="What does this do?"
+                    data-i18n-aria-label="options.moreInfo"
+                  >
+                    ?
+                  </button>
+                </div>
+                <p class="setting-desc" id="backupStatus" role="status"></p>
+                <ul class="backup-problems" id="backupProblems" hidden></ul>
+              </div>
+            </div>
+            <div class="setting-control">
+              <button type="button" class="button" id="backupRun">
+                <span id="backupRunLabel" data-i18n="options.backup.run"
+                  >Back up now</span
+                >
               </button>
             </div>
           </div>

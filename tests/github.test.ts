@@ -380,4 +380,163 @@ describe("github", () => {
       expect(body.content).toBe("QUJD");
     });
   });
+
+  /* The automatic backup's commits, through the Git Data API */
+  describe("commitFiles", () => {
+    type Answer = unknown | ((count: number) => unknown);
+
+    /*
+     * Answers GitHub's API by "METHOD /path"; a function gets how
+     * many times that one was asked before, and a number is an
+     * error status.
+     */
+    function githubApi(answers: Record<string, Answer>): void {
+      const counts: Record<string, number> = {};
+
+      fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+        const key = `${init?.method ?? "GET"} ${url.replace("https://api.github.com", "")}`;
+
+        if (!(key in answers)) {
+          throw new Error(`Unexpected request: ${key}`);
+        }
+
+        const count = (counts[key] = (counts[key] ?? 0) + 1) - 1;
+        const answer = answers[key];
+        const body = typeof answer === "function" ? answer(count) : answer;
+
+        return typeof body === "number"
+          ? jsonResponse(body, { message: `Status ${body}` })
+          : jsonResponse(200, body);
+      });
+    }
+
+    function sent(key: string): unknown {
+      const call = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          `${(init as RequestInit | undefined)?.method ?? "GET"} ${String(url).replace("https://api.github.com", "")}` ===
+          key,
+      );
+
+      return call ? JSON.parse((call[1] as RequestInit).body as string) : undefined;
+    }
+
+    const REPO = {
+      "GET /repos/me/chats": { private: true, default_branch: "main" },
+      "GET /repos/me/chats/git/ref/heads/main": { object: { sha: "head" } },
+      "GET /repos/me/chats/git/commits/head": { tree: { sha: "tree" } },
+    };
+
+    beforeEach(() => {
+      storageLocalGet.mockResolvedValue({ githubAccessToken: "tok" });
+    });
+
+    it("commits text as it is and anything else as a blob, in one commit", async () => {
+      githubApi({
+        ...REPO,
+        "POST /repos/me/chats/git/blobs": { sha: "blob" },
+        "POST /repos/me/chats/git/trees": { sha: "new-tree" },
+        "POST /repos/me/chats/git/commits": { sha: "commit" },
+        "PATCH /repos/me/chats/git/refs/heads/main": {},
+      });
+
+      await github.commitFiles(
+        "me/chats",
+        [
+          {
+            path: "AI Exporter backup/ChatGPT/trip.md",
+            blob: new Blob(["# Привет"], { type: "text/markdown" }),
+          },
+          {
+            path: "AI Exporter backup/ChatGPT/trip.xlsx",
+            blob: new Blob([new Uint8Array([1, 2, 3])], { type: "application/zip" }),
+          },
+        ],
+        "Back up 1 ChatGPT chats with AI Exporter",
+      );
+
+      expect(sent("POST /repos/me/chats/git/blobs")).toEqual({
+        content: "AQID",
+        encoding: "base64",
+      });
+      expect(sent("POST /repos/me/chats/git/trees")).toEqual({
+        base_tree: "tree",
+        tree: [
+          {
+            path: "AI Exporter backup/ChatGPT/trip.md",
+            mode: "100644",
+            type: "blob",
+            content: "# Привет",
+          },
+          { path: "AI Exporter backup/ChatGPT/trip.xlsx", mode: "100644", type: "blob", sha: "blob" },
+        ],
+      });
+      expect(sent("POST /repos/me/chats/git/commits")).toEqual({
+        message: "Back up 1 ChatGPT chats with AI Exporter",
+        tree: "new-tree",
+        parents: ["head"],
+      });
+      expect(sent("PATCH /repos/me/chats/git/refs/heads/main")).toEqual({ sha: "commit" });
+    });
+
+    it("starts an empty repository with a README first", async () => {
+      githubApi({
+        ...REPO,
+        "GET /repos/me/chats/git/ref/heads/main": (count: number) =>
+          count === 0 ? 409 : { object: { sha: "head" } },
+        "PUT /repos/me/chats/contents/README.md": { content: {} },
+        "POST /repos/me/chats/git/trees": { sha: "new-tree" },
+        "POST /repos/me/chats/git/commits": { sha: "commit" },
+        "PATCH /repos/me/chats/git/refs/heads/main": {},
+      });
+
+      await github.commitFiles(
+        "me/chats",
+        [{ path: "a.md", blob: new Blob(["a"], { type: "text/markdown" }) }],
+        "Back up",
+      );
+
+      expect(sent("PUT /repos/me/chats/contents/README.md")).toMatchObject({
+        message: "Start the AI Exporter backup",
+      });
+      expect(sent("PATCH /repos/me/chats/git/refs/heads/main")).toEqual({ sha: "commit" });
+    });
+
+    it("saves nothing into a public repository", async () => {
+      githubApi({ "GET /repos/me/site": { private: false, default_branch: "main" } });
+
+      await expect(
+        github.commitFiles("me/site", [{ path: "a.md", blob: new Blob(["a"]) }], "Back up"),
+      ).rejects.toThrow("me/site is public now");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes no commit when every file is as it was", async () => {
+      githubApi({ ...REPO, "POST /repos/me/chats/git/trees": { sha: "tree" } });
+
+      await github.commitFiles(
+        "me/chats",
+        [{ path: "a.md", blob: new Blob(["a"], { type: "text/markdown" }) }],
+        "Back up",
+      );
+
+      expect(sent("POST /repos/me/chats/git/commits")).toBeUndefined();
+    });
+
+    it("says what GitHub refused", async () => {
+      githubApi({
+        ...REPO,
+        "POST /repos/me/chats/git/trees": { sha: "new-tree" },
+        "POST /repos/me/chats/git/commits": { sha: "commit" },
+        "PATCH /repos/me/chats/git/refs/heads/main": 422,
+      });
+
+      await expect(
+        github.commitFiles(
+          "me/chats",
+          [{ path: "a.md", blob: new Blob(["a"], { type: "text/markdown" }) }],
+          "Back up",
+        ),
+      ).rejects.toThrow("Status 422");
+    });
+  });
 });

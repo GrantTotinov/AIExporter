@@ -67,6 +67,7 @@
  * with "Enable Device Flow" turned on in that app's settings.
  */
 import { t } from "./i18n.ts";
+import { encodeBlobBase64 } from "./zip.ts";
 
 const GITHUB_CLIENT_ID = "Ov23livM5zFifnOcvad6";
 
@@ -558,4 +559,137 @@ export async function saveFileToRepo(
   return {
     htmlUrl: data.content?.html_url ?? `https://github.com/${fullName}`,
   };
+}
+
+/*
+ * ---------------------------------------------------------
+ * SAVE MANY FILES IN ONE COMMIT (automatic backup)
+ * ---------------------------------------------------------
+ *
+ * The contents API above makes a commit for every file, and GitHub
+ * takes only so many of those a minute, so a backup of hundreds of
+ * chats goes through the Git Data API instead: a tree of the files
+ * on top of the branch's own, one commit of it, and the branch moved
+ * on to that commit. Text goes into the tree as it is; anything else
+ * (a workbook, an image) is uploaded as a blob first.
+ *
+ * Only into a private repository: chats are private, and one made
+ * public after it was picked for the backup gets nothing more.
+ */
+async function githubJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await githubApiRequest(path, init);
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+
+    throw new Error(
+      body?.message ?? `GitHub: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+/* The commit a branch is at, or null in a repository with no commits yet */
+async function branchHead(fullName: string, branch: string): Promise<string | null> {
+  const response = await githubApiRequest(`/repos/${fullName}/git/ref/heads/${branch}`);
+
+  // "Git Repository is empty."
+  if (response.status === 404 || response.status === 409) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub: ${response.status} ${response.statusText}`);
+  }
+
+  return ((await response.json()) as { object: { sha: string } }).object.sha;
+}
+
+function isTextBlob(blob: Blob): boolean {
+  return /^(?:text\/|application\/json)/.test(blob.type);
+}
+
+export async function commitFiles(
+  fullName: string,
+  files: { path: string; blob: Blob }[],
+  message: string,
+): Promise<void> {
+  const repo = await githubJson<{ private?: boolean; default_branch: string }>(
+    `/repos/${fullName}`,
+  );
+
+  if (repo.private !== true) {
+    throw new Error(t("backup.error.publicRepo", { repo: fullName }));
+  }
+
+  const branch = repo.default_branch.split("/").map(encodeURIComponent).join("/");
+  let head = await branchHead(fullName, branch);
+
+  /*
+   * A new, empty repository has no branch to put a tree on yet; a
+   * first file through the contents API makes one.
+   */
+  if (head === null) {
+    await githubJson(`/repos/${fullName}/contents/README.md`, {
+      method: "PUT",
+      body: JSON.stringify({
+        message: "Start the AI Exporter backup",
+        content: btoa("# AI chats\n\nSaved by AI Exporter's automatic backup.\n"),
+      }),
+    });
+    head = await branchHead(fullName, branch);
+
+    if (head === null) {
+      throw new Error(`GitHub: ${fullName} has no branch ${repo.default_branch}`);
+    }
+  }
+
+  const parent = await githubJson<{ tree: { sha: string } }>(
+    `/repos/${fullName}/git/commits/${head}`,
+  );
+  const tree: { path: string; mode: "100644"; type: "blob"; content?: string; sha?: string }[] = [];
+
+  for (const file of files) {
+    if (isTextBlob(file.blob)) {
+      tree.push({ path: file.path, mode: "100644", type: "blob", content: await file.blob.text() });
+      continue;
+    }
+
+    const blob = await githubJson<{ sha: string }>(`/repos/${fullName}/git/blobs`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: await encodeBlobBase64(file.blob),
+        encoding: "base64",
+      }),
+    });
+
+    tree.push({ path: file.path, mode: "100644", type: "blob", sha: blob.sha });
+  }
+
+  const newTree = await githubJson<{ sha: string }>(`/repos/${fullName}/git/trees`, {
+    method: "POST",
+    body: JSON.stringify({ base_tree: parent.tree.sha, tree }),
+  });
+
+  // Every file as it was already: nothing to commit
+  if (newTree.sha === parent.tree.sha) {
+    return;
+  }
+
+  const commit = await githubJson<{ sha: string }>(`/repos/${fullName}/git/commits`, {
+    method: "POST",
+    body: JSON.stringify({ message, tree: newTree.sha, parents: [head] }),
+  });
+
+  /*
+   * Not forced: if something else was pushed meanwhile, this fails,
+   * and the next backup saves these chats again on top of it.
+   */
+  await githubJson(`/repos/${fullName}/git/refs/heads/${branch}`, {
+    method: "PATCH",
+    body: JSON.stringify({ sha: commit.sha }),
+  });
 }

@@ -4862,3 +4862,12 @@ chrome.runtime.onMessage.addListener((message: { type: string }) => {
 
   return false;
 });
+
+/*
+ * A chat site's page has opened: an automatic backup that's due
+ * runs now rather than at its next check (see AUTOMATIC BACKUP in
+ * background.ts).
+ */
+void Promise.resolve(
+  chrome.runtime.sendMessage({ type: "AIEXPORTER_PAGE_OPENED" }),
+).catch(() => undefined);

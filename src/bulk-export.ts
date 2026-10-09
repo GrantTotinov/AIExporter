@@ -31,6 +31,15 @@ export interface ConversationFilter {
   saved?: SavedChats;
 }
 
+/*
+ * A pause between chats, and the waits before each retry of one
+ * that failed: the sites rate-limit their APIs, and saving many
+ * chats (here, or in an automatic backup) shouldn't look like a
+ * flood of requests.
+ */
+export const PAUSE_BETWEEN_CHATS_MS = 400;
+export const RETRY_DELAYS_MS = [2000, 6000];
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const PRESET_DAYS: Partial<Record<DatePreset, number>> = {

@@ -1,9 +1,9 @@
 AIExporter
 Privacy Policy for AIExporter
 
-Effective date: October 5, 2026
+Effective date: October 8, 2026
 
-AIExporter (formerly AI Exporter / GPTChatDownloader) is a browser extension that allows users to export their conversations on ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Microsoft Copilot, Mistral Le Chat, Meta AI, Kimi, Doubao, Qwen, Qianwen, Tencent Yuanbao and Z.ai as PDF, Word, HTML, an image (PNG), Markdown, plain text, JSON, CSV or Excel, copy conversations to the clipboard, open the data export that ChatGPT or Claude provides, and optionally save exports directly to a GitHub repository or a Notion workspace.
+AIExporter (formerly AI Exporter / GPTChatDownloader) is a browser extension that allows users to export their conversations on ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Microsoft Copilot, Mistral Le Chat, Meta AI, Kimi, Doubao, Qwen, Qianwen, Tencent Yuanbao and Z.ai as PDF, Word, HTML, an image (PNG), Markdown, plain text, JSON, CSV or Excel, copy conversations to the clipboard, open the data export that ChatGPT or Claude provides, optionally save exports directly to a GitHub repository or a Notion workspace, and, when the user turns it on, back up new and changed conversations automatically into the Downloads folder or a private GitHub repository.
 
 This Privacy Policy explains what information AIExporter processes, how it is used, and where it is stored.
 
@@ -76,6 +76,9 @@ GitHub export
 When you explicitly choose Save to GitHub, the selected conversation export is sent directly to GitHub's API and saved in the GitHub repository selected by you, under the exports/ directory.
 
 AIExporter does not send GitHub exports to a server operated by the developer.
+Automatic backup
+
+When you turn on Automatic backup in the settings, AIExporter regularly (every hour, day or week, as you choose) asks the supported chat sites that are open in your browser's tabs for the list of your conversations, using your existing session on each site, and loads the conversations that are new or have changed since the last backup - the same way Save many chats does. It saves them as files either to your Downloads folder, through the browser's download functionality, or to the private GitHub repository you selected, through GitHub's API. AIExporter never opens a chat site for a backup, leaves tabs in private (incognito) windows alone, and does not send backups to a server operated by the developer. Turning Automatic backup off stops it.
 Notion export
 
 When you explicitly choose Save to Notion, the selected messages are sent directly to Notion's API (api.notion.com) and saved as a new page inside the Notion page you selected. Images from the conversation are not sent to Notion.
@@ -126,6 +129,9 @@ Export preferences, such as heading style, timestamp preference, message spacing
 Chats saved with Save many chats
 
 Once a ZIP file made by Save many chats has been saved to your computer, the identifiers of the conversations it holds, and the time each one was last used, are kept in the extension's local storage, so that Save many chats can show which conversations are saved already and offer just the ones not saved yet or changed since. No conversation titles or content are kept. Removing the extension removes this list.
+Automatic backup
+
+The automatic backup's settings (whether it is on, how often it runs, where it saves, the file type and the name of the GitHub repository), the identifiers of the conversations it has saved with the time each one was last used, and the outcome of the last backup (when it ran, how many conversations it saved, and any error message) are kept in the extension's local storage. No conversation titles or content are kept. Removing the extension removes this information.
 Update status
 
 The version number of the newest AIExporter release and the time of the last update check are stored in the extension's local storage, so that the popup can show whether the installed version is up to date.
@@ -142,7 +148,7 @@ The extension communicates with the following external services when their funct
     DeepSeek (chat.deepseek.com) — to access the currently open conversation using the user's existing DeepSeek session, and, when image bundling is enabled, DeepSeek's file service (files.deepseeksvc.com) to download the images uploaded to the conversation.
     Grok (grok.com) — to access the currently open conversation using the user's existing authenticated Grok session, and, when image bundling is enabled, Grok's asset server (assets.grok.com) to download the conversation's images.
     Perplexity (perplexity.ai) — to access the currently open conversation using the user's existing authenticated Perplexity session, and, when image bundling is enabled, the servers that host the images attached to the conversation.
-    GitHub (github.com and api.github.com) — when the user connects GitHub or explicitly saves an export to GitHub.
+    GitHub (github.com and api.github.com) — when the user connects GitHub, explicitly saves an export to GitHub, or turns on automatic backup into a GitHub repository.
     Notion (api.notion.com) — when the user connects Notion, picks a page, or explicitly saves an export to Notion.
     Microsoft Copilot (copilot.microsoft.com), Kimi (www.kimi.com), Doubao (www.doubao.com), Qwen (chat.qwen.ai), Qianwen (www.qianwen.com and chat2-api.qianwen.com), Tencent Yuanbao (yuanbao.tencent.com) and Z.ai (chat.z.ai) — to access the currently open conversation, or the list of your conversations for Save many chats, using the user's existing session on that site.
     Mistral Le Chat (chat.mistral.ai) and Meta AI (www.meta.ai) — no requests are made; the conversation is read from the open page.
@@ -163,6 +169,7 @@ You can:
     Choose whether to save an export to GitHub.
     Choose which GitHub repository receives an export.
     Disconnect GitHub from the extension's Settings page.
+    Turn automatic backup on or off, and choose how often it runs, where it saves and which private GitHub repository receives it.
     Choose whether to save an export to Notion, and which Notion page receives it.
     Disconnect Notion from the extension's Settings page.
     Remove the extension from Chrome.
@@ -181,7 +188,7 @@ The extension:
     Stores the GitHub access token locally rather than in synchronized Chrome storage.
     Does not store GitHub passwords.
     Stores the Notion integration key locally rather than in synchronized Chrome storage.
-    Sends conversation content to GitHub or Notion only when the user explicitly chooses a GitHub or Notion export.
+    Sends conversation content to GitHub or Notion only when the user explicitly chooses a GitHub or Notion export, or turns on automatic backup into a GitHub repository.
     Uses HTTPS when communicating with the supported AI chat sites, GitHub, Notion and add-on store endpoints.
 
 No method of electronic storage or transmission can guarantee absolute security. Users should take appropriate care when exporting sensitive conversations to external destinations such as GitHub or Notion.

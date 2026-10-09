@@ -38,6 +38,7 @@ Microsoft Copilot, Kimi, Doubao, Qwen, Qianwen (Tongyi), Tencent Yuanbao and Z.a
 - **Copies** the whole conversation to your clipboard in one click, as Markdown and as formatted text at once: pasted into Word, Google Docs or an email it keeps its headings, lists, tables and code; pasted into a notes app or a text box it's Markdown.
 - **Keyboard shortcuts:** <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> opens AI Exporter, and <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> copies the open chat without opening anything. **Settings → Keyboard shortcuts** shows the keys you have and takes you to the browser's page for changing them.
 - **Saves many chats at once:** **Save many chats** lists all your chats on the site, with a search and date filters, and saves the ones you tick into one ZIP file. It remembers which chats it saved, so the next time **Not saved yet, or changed since** picks just the new and changed ones, to keep a backup up to date.
+- **Backs up your chats by itself:** turn on **Settings → Automatic backup**, and every hour, day or week the chats that are new or have changed are saved on their own, from each chat site open in a tab, into a folder in Downloads or a private GitHub repository. See [Automatic backup](#automatic-backup).
 - **Lets you pick the messages** before exporting: tick them one by one, select all, only your questions, only the answers, or swap what's selected. Shift+click selects a range, and you can show messages in full to read them.
 - **Saves straight to a GitHub repo or a Notion page** (see below) instead of downloading.
 - **Opens it in Google Docs:** **Google Docs** under the popup's main buttons copies the chat with its formatting and opens a new Google Doc to paste it into.
@@ -91,7 +92,7 @@ Files are named after the site, the conversation, and the date, for example `cla
 
 ### Settings
 
-Click **Settings** at the top of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Keyboard shortcuts**, **Chat contents**, **PDF documents**, **GitHub** and **Notion**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
+Click **Settings** at the top of the popup. The settings are grouped into **Language & appearance**, **Saving files**, **Automatic backup**, **Keyboard shortcuts**, **Chat contents**, **PDF documents**, **GitHub** and **Notion**, and the search box finds any of them by name. Point at the **?** next to a setting to see what it does, with a tip. Every change is saved as you make it, and **Restore default settings** at the bottom of the page puts everything back the way it was after installing.
 
 ### Images
 
@@ -105,6 +106,16 @@ Copy to clipboard always stays text-only.
 ### PDF settings
 
 Open **Settings → PDF documents** to pick the text size, paper size (A4, Letter, or Legal), page direction, and margins, and to turn on page numbers, a table of contents, or a line of your own text on every page (for example "Prepared by Jane Doe").
+
+## Automatic backup
+
+Turn on **Settings → Automatic backup**, then pick how often (every hour, day or week), where (your Downloads folder or a GitHub repository) and the file type (a web page, Markdown, plain text, JSON, CSV or Excel).
+
+- It works from the chat sites you have open. While ChatGPT, Claude, Gemini or another supported site is open in a tab, AI Exporter looks every half hour, and half a minute after the site opens, and saves the chats that are new or have changed since that site's last backup. It never opens a site itself: one that wasn't open is backed up as soon as it is, chats from your phone included. Tabs in private windows are left alone.
+- In Downloads, each chat is a file in `AI Exporter backup/<site>/`, named after the day it began; when the chat goes on, the file is saved again over its old copy. The files are taken off the browser's list of downloads, so a big first backup doesn't fill it. If the browser is set to ask where to save every file, the backup turns itself off and says why: turn that question off in the browser's download settings, or back up to GitHub.
+- On GitHub, [connect GitHub](#saving-to-github) and pick one of your **private** repositories; the chats go into the same folders, many to a commit. A repository made public later gets nothing more.
+- **Last backup** shows what was saved and what went wrong. Chats that couldn't be saved are tried again next time, and **Back up now** runs a backup right away. Changing the place or the file type starts the backup over there.
+- PDF, Word and pictures aren't offered: Chrome makes backups in its background service worker, which can't draw them. For the same reason, a formula in an HTML backup made by Chrome shows as its TeX source.
 
 ## Saving to GitHub
 

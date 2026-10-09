@@ -6,9 +6,21 @@ import {
   loadSettings,
   saveSettings,
 } from "./settings.ts";
-import { initI18n, applyTranslations, t } from "./i18n.ts";
+import { initI18n, applyTranslations, getLocale, t } from "./i18n.ts";
 import { NOTION_HOST_PERMISSION } from "./notion.ts";
-import { GITHUB_HOST_PERMISSIONS } from "./github.ts";
+import { GITHUB_HOST_PERMISSIONS, type GitHubRepo } from "./github.ts";
+import { formatLabel } from "./format-labels.ts";
+import { CHAT_SITE_NAMES, isChatSite } from "./chat-sites.ts";
+import {
+  BACKUP_CONFIG_KEY,
+  BACKUP_FORMATS,
+  BACKUP_STATUS_KEY,
+  DEFAULT_BACKUP_CONFIG,
+  backupConfig,
+  backupStatus,
+  type BackupConfig,
+  type BackupStatus,
+} from "./auto-backup.ts";
 import {
   FILE_NAME_PRESETS,
   STANDARD_FILE_NAME,
@@ -263,6 +275,34 @@ const notionKeyError = document.getElementById(
   "notion-key-error",
 ) as HTMLParagraphElement;
 
+const backupCard = document.getElementById("backup") as HTMLElement;
+const backupEnabledInput = document.getElementById(
+  "backupEnabled",
+) as HTMLInputElement;
+const backupDetails = document.getElementById("backup-details") as HTMLDivElement;
+const backupEveryInput = document.getElementById("backupEvery") as HTMLSelectElement;
+const backupTargetInput = document.getElementById(
+  "backupTarget",
+) as HTMLSelectElement;
+const backupRepoRow = document.getElementById("backupRepoRow") as HTMLDivElement;
+const backupRepoInput = document.getElementById("backupRepo") as HTMLSelectElement;
+const backupRepoNote = document.getElementById(
+  "backupRepoNote",
+) as HTMLParagraphElement;
+const backupFormatInput = document.getElementById(
+  "backupFormat",
+) as HTMLSelectElement;
+const backupFormatDesc = document.getElementById(
+  "backupFormat-desc",
+) as HTMLParagraphElement;
+const backupStatusRow = document.getElementById("backupStatusRow") as HTMLDivElement;
+const backupStatusText = document.getElementById(
+  "backupStatus",
+) as HTMLParagraphElement;
+const backupProblems = document.getElementById("backupProblems") as HTMLUListElement;
+const backupRunButton = document.getElementById("backupRun") as HTMLButtonElement;
+const backupRunLabel = document.getElementById("backupRunLabel") as HTMLSpanElement;
+
 function applyTheme(theme: Settings["theme"]): void {
   if (theme === "system") {
     delete document.documentElement.dataset.theme;
@@ -514,6 +554,11 @@ settingsRoot.addEventListener("input", (event) => {
 settingsRoot.addEventListener("change", (event) => {
   const target = event.target;
 
+  // Saved apart from the settings (see AUTOMATIC BACKUP below)
+  if (backupCard.contains(target as Node)) {
+    return;
+  }
+
   if (target === languageInput) {
     void changeLanguage();
     return;
@@ -579,6 +624,7 @@ function renderTranslations(): void {
   });
   renderGithub();
   renderNotion();
+  renderBackup();
   void renderShortcuts();
   applySearch();
 }
@@ -1061,10 +1107,11 @@ function applySearch(): void {
     let visibleRows = 0;
 
     for (const setting of section.querySelectorAll<HTMLElement>(".setting")) {
+      // A row hidden for now (its switch is off) isn't a match.
       const visible =
         words.length === 0 ||
-        sectionMatches ||
-        containsAll(searchableText(setting), words);
+        (!setting.closest("[hidden]") &&
+          (sectionMatches || containsAll(searchableText(setting), words)));
 
       setting.classList.toggle("is-filtered", !visible);
 
@@ -1370,6 +1417,7 @@ function renderGithub(): void {
     githubConnecting ? "options.github.connecting" : "options.github.connect",
   );
   githubDisconnectButton.hidden = !connected;
+  renderBackupRepos();
 }
 
 function setGithubState(state: GithubState, connecting = false): void {
@@ -1682,6 +1730,229 @@ notionDisconnectButton.addEventListener("click", async () => {
 
 /*
  * ---------------------------------------------------------
+ * AUTOMATIC BACKUP
+ * ---------------------------------------------------------
+ *
+ * See auto-backup.ts. Kept in chrome.storage.local, apart from the
+ * settings above: a backup belongs to this computer, and "Restore
+ * default settings" leaves it as it is. Only private GitHub
+ * repositories are offered - a public one would publish every chat.
+ */
+let backup: BackupConfig = DEFAULT_BACKUP_CONFIG;
+let backupState: BackupStatus = { sites: {} };
+/* null until loaded; reset when GitHub is disconnected */
+let backupRepos: GitHubRepo[] | null = null;
+let backupReposLoading = false;
+let backupReposFailed = false;
+let backupRunning = false;
+
+function readBackupForm(): BackupConfig {
+  return backupConfig({
+    enabled: backupEnabledInput.checked,
+    every: backupEveryInput.value,
+    target: backupTargetInput.value,
+    // Until the list is in, the select is empty: the chosen one stays.
+    repo: backupRepos ? backupRepoInput.value : backup.repo,
+    format: backupFormatInput.value,
+  });
+}
+
+function renderBackup(): void {
+  backupEnabledInput.checked = backup.enabled;
+  backupDetails.hidden = !backup.enabled;
+  backupEveryInput.value = backup.every;
+  backupTargetInput.value = backup.target;
+  backupFormatInput.replaceChildren(
+    ...BACKUP_FORMATS.map((format) => new Option(formatLabel(format), format)),
+  );
+  backupFormatInput.value = backup.format;
+  backupFormatDesc.textContent = t(`popup.formatHint.${backup.format}`);
+  renderBackupRepos();
+  renderBackupStatus();
+}
+
+function renderBackupRepos(): void {
+  const connected = githubState.kind === "connected";
+  const select = backupRepoInput.parentElement as HTMLElement;
+
+  backupRepoRow.hidden = backup.target !== "github";
+
+  if (!connected) {
+    backupRepos = null;
+    backupReposFailed = false;
+  } else if (backup.target === "github" && backupRepos === null && !backupReposLoading) {
+    void loadBackupRepos();
+  }
+
+  select.hidden = !connected || !backupRepos?.length;
+  backupRepoNote.classList.toggle("is-error", connected && backupReposFailed);
+
+  if (!connected) {
+    const link = document.createElement("a");
+
+    link.href = "#github";
+    link.textContent = t("options.backup.repo.connectLink");
+    backupRepoNote.replaceChildren(`${t("options.backup.repo.connect")} `, link);
+    return;
+  }
+
+  backupRepoNote.textContent = t(
+    backupReposFailed
+      ? "options.backup.repo.failed"
+      : backupRepos === null
+        ? "options.backup.repo.loading"
+        : backupRepos.length === 0
+          ? "options.backup.repo.none"
+          : "options.backup.repo.private",
+  );
+
+  if (backupRepoInput.options[0]?.value === "") {
+    backupRepoInput.options[0].text = t("options.backup.repo.choose");
+  }
+}
+
+async function loadBackupRepos(): Promise<void> {
+  backupReposLoading = true;
+  backupReposFailed = false;
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GITHUB_LIST_REPOS" });
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? "GITHUB_LIST_REPOS failed");
+    }
+
+    backupRepos = (response.data as GitHubRepo[]).filter(
+      (repo) => repo.private === true,
+    );
+    backupRepoInput.replaceChildren(
+      new Option(t("options.backup.repo.choose"), ""),
+      ...backupRepos.map((repo) => new Option(repo.full_name, repo.full_name)),
+    );
+    backupRepoInput.value = backupRepos.some((repo) => repo.full_name === backup.repo)
+      ? backup.repo
+      : "";
+  } catch (error) {
+    devError("AI Exporter: couldn't list the GitHub repositories", error);
+    backupReposFailed = true;
+  } finally {
+    backupReposLoading = false;
+    renderBackupRepos();
+  }
+}
+
+/*
+ * Shown while the backup is off too once there's something to say -
+ * such as why it was turned off (see SaveAsError in background.ts).
+ */
+function renderBackupStatus(): void {
+  const status = backupState;
+
+  backupStatusRow.hidden = !backup.enabled && status.at === undefined && !status.error;
+
+  const when =
+    status.at === undefined
+      ? ""
+      : new Intl.DateTimeFormat(getLocale(), {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(status.at);
+
+  // "Nothing new" only when nothing was left out either
+  backupStatusText.textContent =
+    status.at === undefined
+      ? t("options.backup.status.never")
+      : status.saved || status.failed || status.error
+        ? t("options.backup.status.saved", { when, count: status.saved ?? 0 })
+        : t("options.backup.status.nothingNew", { when });
+
+  const problems = [
+    ...(status.error ? [status.error] : []),
+    ...(status.failed ? [t("options.backup.status.failed", { count: status.failed })] : []),
+    ...Object.entries(status.sites).flatMap(([site, last]) =>
+      last?.error && isChatSite(site)
+        ? [t("options.backup.status.site", { site: CHAT_SITE_NAMES[site], error: last.error })]
+        : [],
+    ),
+  ];
+
+  backupProblems.replaceChildren(
+    ...problems.map((problem) => {
+      const item = document.createElement("li");
+
+      item.textContent = problem;
+      return item;
+    }),
+  );
+  backupProblems.hidden = problems.length === 0;
+  backupRunButton.disabled = backupRunning;
+  backupRunLabel.textContent = t(
+    backupRunning ? "options.backup.running" : "options.backup.run",
+  );
+}
+
+/*
+ * A change also clears what stopped the last backup: it may be what
+ * the person just put right (a repository chosen, the backup turned
+ * back on after a Save As dialog).
+ */
+backupCard.addEventListener("change", async () => {
+  const config = readBackupForm();
+
+  try {
+    await chrome.storage.local.set({ [BACKUP_CONFIG_KEY]: config });
+    backup = config;
+
+    if (backupState.error) {
+      backupState = { ...backupState, error: undefined };
+      await chrome.storage.local.set({ [BACKUP_STATUS_KEY]: backupState });
+    }
+
+    renderBackup();
+    showToast(t("options.saved"));
+  } catch (error) {
+    devError("AI Exporter: saving the backup settings failed", error);
+    showToast(t("options.saveFailed"), "error");
+  }
+});
+
+backupRunButton.addEventListener("click", async () => {
+  backupRunning = true;
+  renderBackupStatus();
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "BACKUP_RUN" });
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? t("options.saveFailed"));
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), "error", 8000);
+  } finally {
+    backupRunning = false;
+    renderBackupStatus();
+  }
+});
+
+/* The backup's progress, and the background turning it off */
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") {
+    return;
+  }
+
+  if (changes[BACKUP_STATUS_KEY]) {
+    backupState = backupStatus(changes[BACKUP_STATUS_KEY].newValue);
+    renderBackupStatus();
+  }
+
+  if (changes[BACKUP_CONFIG_KEY]) {
+    backup = backupConfig(changes[BACKUP_CONFIG_KEY].newValue);
+    renderBackup();
+  }
+});
+
+/*
+ * ---------------------------------------------------------
  * START
  * ---------------------------------------------------------
  */
@@ -1693,6 +1964,12 @@ async function init(): Promise<void> {
   savedSettings = withDefaults(await loadSettings());
   applySettingsToForm(savedSettings);
   savedJson = JSON.stringify(readSettingsFromForm());
+
+  const stored = await chrome.storage.local.get([BACKUP_CONFIG_KEY, BACKUP_STATUS_KEY]);
+
+  backup = backupConfig(stored[BACKUP_CONFIG_KEY]);
+  backupState = backupStatus(stored[BACKUP_STATUS_KEY]);
+  renderBackup();
 
   updateNav();
 }

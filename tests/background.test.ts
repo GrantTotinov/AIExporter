@@ -39,6 +39,8 @@ const runtimeReload = vi.fn();
 const runtimeRequestUpdateCheck = vi.fn();
 const alarmsCreate = vi.fn();
 const alarmsClear = vi.fn();
+const alarmsGet = vi.fn(async (_name: string) => undefined as unknown);
+const downloadsErase = vi.fn(async () => []);
 const offscreenCreateDocument = vi.fn();
 const tabsQuery = vi.fn();
 const tabsReload = vi.fn();
@@ -65,6 +67,9 @@ const onInstalledListeners: Array<
   (details: chrome.runtime.InstalledDetails) => void
 > = [];
 const onAlarmListeners: Array<(alarm: chrome.alarms.Alarm) => void> = [];
+const onStorageChangedListeners: Array<
+  (changes: Record<string, chrome.storage.StorageChange>, area: string) => void
+> = [];
 
 let runningVersion = "2.3.0";
 
@@ -152,6 +157,7 @@ vi.stubGlobal("chrome", {
     },
     sendMessage: runtimeSendMessage,
     getContexts: runtimeGetContexts,
+    getPlatformInfo: vi.fn(async () => ({ os: "win" })),
     getManifest: () => ({ version: runningVersion }),
     reload: runtimeReload,
     requestUpdateCheck: runtimeRequestUpdateCheck,
@@ -159,6 +165,7 @@ vi.stubGlobal("chrome", {
   alarms: {
     create: alarmsCreate,
     clear: alarmsClear,
+    get: alarmsGet,
     onAlarm: {
       addListener: (listener: (typeof onAlarmListeners)[number]) => {
         onAlarmListeners.push(listener);
@@ -171,6 +178,8 @@ vi.stubGlobal("chrome", {
   downloads: {
     download: downloadsDownload,
     search: downloadsSearch,
+    erase: downloadsErase,
+    cancel: vi.fn(async () => undefined),
     onChanged: {
       addListener: (listener: (typeof onChangedListeners)[number]) => {
         onChangedListeners.push(listener);
@@ -200,6 +209,11 @@ vi.stubGlobal("chrome", {
       set: vi.fn(),
     },
     local: storageLocal,
+    onChanged: {
+      addListener: (listener: (typeof onStorageChangedListeners)[number]) => {
+        onStorageChangedListeners.push(listener);
+      },
+    },
   },
   i18n: {
     getUILanguage: vi.fn(() => "en-US"),
@@ -275,6 +289,7 @@ async function startBackground(): Promise<void> {
   onInstalledListeners.length = 0;
   onAlarmListeners.length = 0;
   onCommandListeners.length = 0;
+  onStorageChangedListeners.length = 0;
 
   await import("../src/background");
 }
@@ -1617,6 +1632,180 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(tabsSendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  /*
+   * The automatic backup (see auto-backup.ts): every tab is asked
+   * which site it shows, the chat site's tab lists and loads the
+   * chats, and the new ones go into Downloads - remembered, so the
+   * next backup leaves them alone until they change.
+   */
+  describe("automatic backup", () => {
+    const CHAT = {
+      id: "0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+      title: "Trip ideas",
+      url: "https://chatgpt.com/c/0b2f7a52-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+      createdAt: new Date(2026, 9, 1, 12).getTime(),
+      updatedAt: new Date(2026, 9, 8, 12).getTime(),
+    };
+    const MESSAGES = [
+      { id: "2", role: "assistant", content: "Lisbon.", order: 1 },
+      { id: "1", role: "user", content: "Where should I go?", order: 0 },
+    ];
+
+    beforeEach(() => {
+      localStorageItems.autoBackup = {
+        enabled: true,
+        every: "day",
+        target: "downloads",
+        repo: "",
+        format: "md",
+      };
+      // Tab 5 has no content script; tab 7 shows ChatGPT
+      tabsQuery.mockResolvedValue([{ id: 5 }, { id: 7 }]);
+      tabsSendMessage.mockImplementation(
+        async (tabId: number, message: { type: string }) => {
+          if (tabId !== 7) {
+            throw new Error("Could not establish connection. Receiving end does not exist.");
+          }
+
+          switch (message.type) {
+            case "AIEXPORTER_PING":
+              return { ok: true, host: "chatgpt.com" };
+            case "LIST_CONVERSATIONS_PAGE":
+              return { success: true, data: { conversations: [CHAT], nextCursor: null } };
+            case "LOAD_CONVERSATION":
+              return { success: true, data: { messages: MESSAGES, images: [] } };
+          }
+        },
+      );
+      // Every file is on disk as soon as it's downloaded.
+      downloadsSearch.mockResolvedValue([{ state: "complete" }]);
+    });
+
+    const backUpNow = (): Promise<any> => dispatchMessage({ type: "BACKUP_RUN" });
+
+    it("saves the new chats of an open chat site into Downloads, once", async () => {
+      const first = await backUpNow();
+
+      expect(first).toMatchObject({ success: true, data: { saved: 1, failed: 0 } });
+      expect(downloadsDownload).toHaveBeenCalledWith({
+        url: "blob:mock-url-1",
+        filename: "AI Exporter backup/ChatGPT/2026-10-01-trip-ideas-2e3f4a5b.md",
+        conflictAction: "overwrite",
+        saveAs: false,
+      });
+      expect(await (createObjectURL.mock.calls[0][0] as Blob).text()).toContain(
+        "## User\n\nWhere should I go?",
+      );
+      // Off the browser's list of downloads again
+      expect(downloadsErase).toHaveBeenCalledWith({ id: 1 });
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url-1");
+      expect(localStorageItems.autoBackupSaved).toEqual({
+        target: "downloads:md",
+        chats: { chatgpt: { [CHAT.id]: CHAT.updatedAt } },
+      });
+
+      downloadsDownload.mockClear();
+
+      const second = await backUpNow();
+
+      expect(second).toMatchObject({ success: true, data: { saved: 0, failed: 0 } });
+      expect(downloadsDownload).not.toHaveBeenCalled();
+    });
+
+    it("turns itself off when the browser asks where to save each file", async () => {
+      downloadsSearch.mockResolvedValue([{ state: "interrupted", error: "USER_CANCELED" }]);
+
+      const response = await backUpNow();
+
+      expect(response.data.error).toMatch(/asks where to save each file/);
+      expect(localStorageItems.autoBackup).toMatchObject({ enabled: false });
+      expect(localStorageItems.autoBackupSaved).toBeUndefined();
+      // Not backed up, so still due once the backup is back on
+      expect(response.data.sites).toEqual({});
+    });
+
+    it("starts over at once when the file type changes", async () => {
+      await backUpNow();
+      downloadsDownload.mockClear();
+      localStorageItems.autoBackup = {
+        ...(localStorageItems.autoBackup as object),
+        format: "html",
+      };
+
+      for (const listener of onAlarmListeners) {
+        listener({ name: "auto-backup", scheduledTime: Date.now() } as chrome.alarms.Alarm);
+      }
+
+      // Joins the alarm's backup, which doesn't wait for the next day.
+      const response = await backUpNow();
+
+      expect(response).toMatchObject({ success: true, data: { saved: 1 } });
+      expect(downloadsDownload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filename: "AI Exporter backup/ChatGPT/2026-10-01-trip-ideas-2e3f4a5b.html",
+        }),
+      );
+    });
+
+    it("asks for a chat site to be opened when none is", async () => {
+      tabsQuery.mockResolvedValue([{ id: 5 }]);
+
+      expect(await backUpNow()).toEqual({
+        success: false,
+        error: "Open ChatGPT, Claude or another chat site in a tab, then try again.",
+      });
+    });
+
+    it("leaves a site alone until it's due again", async () => {
+      localStorageItems.autoBackupStatus = {
+        target: "downloads:md",
+        sites: { chatgpt: { at: Date.now() - 60_000 } },
+      };
+
+      for (const listener of onAlarmListeners) {
+        listener({ name: "auto-backup", scheduledTime: Date.now() } as chrome.alarms.Alarm);
+      }
+
+      // Asked during the alarm's backup, this gets that one's outcome.
+      await backUpNow();
+
+      expect(tabsSendMessage).toHaveBeenCalledWith(7, { type: "AIEXPORTER_PING" });
+      expect(tabsSendMessage).not.toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ type: "LIST_CONVERSATIONS_PAGE" }),
+      );
+    });
+
+    it("looks soon after a chat site's page opens", async () => {
+      for (const listener of onMessageListeners) {
+        listener(
+          { type: "AIEXPORTER_PAGE_OPENED" },
+          { id: runtimeId, tab: { id: 7 } } as chrome.runtime.MessageSender,
+          vi.fn(),
+        );
+      }
+
+      await vi.waitFor(() =>
+        expect(alarmsCreate).toHaveBeenCalledWith("auto-backup", {
+          delayInMinutes: 0.5,
+          periodInMinutes: 30,
+        }),
+      );
+    });
+
+    it("says to choose a repository before saving into GitHub", async () => {
+      localStorageItems.autoBackup = {
+        ...(localStorageItems.autoBackup as object),
+        target: "github",
+      };
+
+      const response = await backUpNow();
+
+      expect(response.data.error).toBe("Choose a GitHub repository for the backup.");
+      expect(tabsQuery).not.toHaveBeenCalled();
     });
   });
 });

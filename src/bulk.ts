@@ -41,6 +41,8 @@ import {
   type Message,
 } from "./export-builders.ts";
 import {
+  PAUSE_BETWEEN_CHATS_MS,
+  RETRY_DELAYS_MS,
   SAVED_CHATS_KEY,
   conversationFileBase,
   filterConversations,
@@ -66,14 +68,6 @@ const devWarn = (...args: unknown[]): void => {
 
 /* The popup's key, so both remember the same file type. */
 const EXPORT_FORMAT_KEY = "popupExportFormat";
-
-/*
- * A pause between chats, and the waits before each retry of one
- * that failed: the sites rate-limit their APIs, and a bulk export
- * shouldn't look like a flood of requests.
- */
-const PAUSE_BETWEEN_CHATS_MS = 400;
-const RETRY_DELAYS_MS = [2000, 6000];
 
 /*
  * ---------------------------------------------------------
