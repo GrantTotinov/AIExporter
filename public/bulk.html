@@ -595,8 +595,17 @@
       .format label .icon {
         width: 24px;
         height: 24px;
-        color: var(--text-muted);
+        color: var(--format-color, var(--text-muted));
       }
+
+      /* Each file type in the colour people know it by */
+      .format:has([value="pdf"]) { --format-color: #e0453a; }
+      .format:has([value="docx"]) { --format-color: #3b78d8; }
+      .format:has([value="html"]) { --format-color: #e8692e; }
+      .format:has([value="png"]) { --format-color: #9b59d0; }
+      .format:has([value="json"]) { --format-color: #d69e2e; }
+      .format:has([value="csv"]) { --format-color: #2a9d8f; }
+      .format:has([value="xlsx"]) { --format-color: #2e9b5f; }
 
       .format label:hover {
         background: var(--hover);
@@ -610,7 +619,7 @@
       }
 
       .format input:checked + label .icon {
-        color: var(--accent-text);
+        color: var(--format-color, var(--accent-text));
       }
 
       .format input:focus-visible + label {

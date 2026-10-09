@@ -477,10 +477,12 @@
           color 0.15s;
       }
 
-      .site-link .icon {
-        width: 14px;
-        height: 14px;
-        color: var(--text-muted);
+      .site-logo {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        background: #fff;
       }
 
       .site-link:hover {
@@ -1009,7 +1011,7 @@
         display: flex;
         flex: 1;
         flex-direction: column;
-        min-height: 150px;
+        min-height: 130px;
         overflow: hidden;
         border: 1px solid var(--card-border);
         border-radius: 12px;
@@ -1260,7 +1262,8 @@
         align-items: center;
         justify-content: center;
         width: 100%;
-        height: 34px;
+        gap: 5px;
+        height: 30px;
         padding: 0 10px;
         border: 1.5px solid var(--card-border);
         border-radius: 9px;
@@ -1272,6 +1275,21 @@
           border-color 0.15s,
           color 0.15s;
       }
+
+      .format-face .icon {
+        width: 15px;
+        height: 15px;
+        color: var(--format-color, currentColor);
+      }
+
+      /* Each file type in the colour people know it by */
+      .format:has([value="pdf"]) { --format-color: #e0453a; }
+      .format:has([value="docx"]) { --format-color: #3b78d8; }
+      .format:has([value="html"]) { --format-color: #e8692e; }
+      .format:has([value="png"]) { --format-color: #9b59d0; }
+      .format:has([value="json"]) { --format-color: #d69e2e; }
+      .format:has([value="csv"]) { --format-color: #2a9d8f; }
+      .format:has([value="xlsx"]) { --format-color: #2e9b5f; }
 
       .format:hover .format-face {
         border-color: var(--text-muted);
@@ -1839,9 +1857,6 @@
             data-site-name="ChatGPT"
           >
             ChatGPT
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1850,9 +1865,6 @@
             data-site-name="Claude"
           >
             Claude
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1861,9 +1873,6 @@
             data-site-name="Gemini"
           >
             Gemini
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1872,9 +1881,6 @@
             data-site-name="DeepSeek"
           >
             DeepSeek
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1883,9 +1889,6 @@
             data-site-name="Grok"
           >
             Grok
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1894,9 +1897,6 @@
             data-site-name="Perplexity"
           >
             Perplexity
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1905,9 +1905,6 @@
             data-site-name="Copilot"
           >
             Copilot
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1916,9 +1913,6 @@
             data-site-name="Le Chat"
           >
             Le Chat
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1927,9 +1921,6 @@
             data-site-name="Meta AI"
           >
             Meta AI
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1938,9 +1929,6 @@
             data-site-name="Kimi"
           >
             Kimi
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1949,9 +1937,6 @@
             data-site-name="Doubao"
           >
             Doubao
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1960,9 +1945,6 @@
             data-site-name="Qwen"
           >
             Qwen
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1971,9 +1953,6 @@
             data-site-name="Qianwen"
           >
             Qianwen
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1982,9 +1961,6 @@
             data-site-name="Yuanbao"
           >
             Yuanbao
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
           <button
             type="button"
@@ -1993,9 +1969,6 @@
             data-site-name="Z.ai"
           >
             Z.ai
-            <svg class="icon" aria-hidden="true">
-              <use href="#i-external" />
-            </svg>
           </button>
         </div>
       </section>
@@ -2274,39 +2247,57 @@
           <div class="formats" role="radiogroup" aria-labelledby="format-title">
             <label class="format">
               <input type="radio" name="format" value="pdf" checked />
-              <span class="format-face">PDF</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-file-text" /></svg>
+                PDF</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="docx" />
-              <span class="format-face">Word</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-file-word" /></svg>
+                Word</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="html" />
-              <span class="format-face">HTML</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-code" /></svg>
+                HTML</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="png" />
-              <span class="format-face" data-i18n="popup.format.png">Image</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-image" /></svg>
+                <span data-i18n="popup.format.png">Image</span></span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="md" />
-              <span class="format-face">Markdown</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-hash" /></svg>
+                Markdown</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="txt" />
-              <span class="format-face" data-i18n="popup.format.txt">Text</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-text" /></svg>
+                <span data-i18n="popup.format.txt">Text</span></span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="json" />
-              <span class="format-face">JSON</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-braces" /></svg>
+                JSON</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="csv" />
-              <span class="format-face">CSV</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-table" /></svg>
+                CSV</span>
             </label>
             <label class="format">
               <input type="radio" name="format" value="xlsx" />
-              <span class="format-face">Excel</span>
+              <span class="format-face">
+                <svg class="icon" aria-hidden="true"><use href="#i-sheet" /></svg>
+                Excel</span>
             </label>
           </div>
           <p class="format-hint" id="format-hint" aria-live="polite">

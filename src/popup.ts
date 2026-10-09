@@ -728,7 +728,24 @@ function renderChatCard(tab: chrome.tabs.Tab | undefined): void {
   updateButtons();
 }
 
+/* The site's own icon, bundled in icons/sites/ (no request to the site) */
+function siteLogo(site: ChatSite): HTMLImageElement {
+  const logo = document.createElement("img");
+
+  logo.className = "site-logo";
+  logo.src = `icons/sites/${site}.png`;
+  logo.alt = "";
+
+  return logo;
+}
+
 for (const link of siteLinks) {
+  const site = getChatSite(link.dataset.siteUrl);
+
+  if (site) {
+    link.prepend(siteLogo(site));
+  }
+
   link.addEventListener("click", () => {
     void chrome.tabs.create({ url: link.dataset.siteUrl });
   });
@@ -1058,7 +1075,7 @@ for (const site of CHAT_SITES) {
 
   target.type = "button";
   target.className = "site-link";
-  target.textContent = CHAT_SITE_NAMES[site];
+  target.append(siteLogo(site), CHAT_SITE_NAMES[site]);
   target.addEventListener("click", async () => {
     try {
       const { messages, tabTitle, tabUrl } = await loadConversationMessages(
