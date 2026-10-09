@@ -18,6 +18,9 @@ AIExporter-*.zip
 # Graphify generated knowledge graph
 graphify-out/
 
+# Local Claude Code settings and worktrees
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
