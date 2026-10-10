@@ -321,7 +321,7 @@
   "options.properties.tip": "Lascialo attivo se conservi le chat in Obsidian: così puoi cercarle, ordinarle e filtrarle per sito o data.",
   "options.headings.title": "Nomi sopra i messaggi",
   "options.headings.desc": "Mostra chi ha scritto ogni messaggio: tu o l'IA.",
-  "options.headings.help": "Scrive “User” sopra i tuoi messaggi e “Assistant” sopra le risposte dell'IA, così è chiaro chi ha detto cosa. Nei file Markdown diventano un titolo (## User) o un nome in grassetto (**User:**).",
+  "options.headings.help": "Scrive “User” sopra i tuoi messaggi e il nome dell'IA (ad es. “ChatGPT”) sopra le sue risposte, così è chiaro chi ha detto cosa. Nei file Markdown diventano un titolo (## User) o un nome in grassetto (**User:**).",
   "options.headings.tip": "Nei file PDF “Titoli” e “Nomi in grassetto” hanno lo stesso aspetto. Lì fa differenza solo “Nessun nome”.",
   "options.headings.h2": "Titoli",
   "options.headings.bold": "Nomi in grassetto",

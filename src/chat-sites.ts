@@ -141,6 +141,16 @@ export function getChatSite(url: string | undefined): ChatSite | null {
   }
 }
 
+/* The name over a message: "User", or the AI's ("ChatGPT", "Claude") */
+export function roleLabel(
+  role: "user" | "assistant",
+  tabUrl: string | undefined,
+): string {
+  const site = getChatSite(tabUrl);
+
+  return role === "user" ? "User" : site ? CHAT_SITE_NAMES[site] : "Assistant";
+}
+
 /*
  * Whether the URL is a conversation the content script can
  * export, rather than another page of the site (a new chat,

@@ -321,7 +321,7 @@
   "options.properties.tip": "Sohbetlerinizi Obsidian'da tutuyorsanız açık bırakın: böylece onları siteye veya tarihe göre arayabilir, sıralayabilir ve filtreleyebilirsiniz.",
   "options.headings.title": "Mesajların üstündeki adlar",
   "options.headings.desc": "Her mesajı kimin yazdığını gösterin: siz mi, yapay zekâ mı.",
-  "options.headings.help": "Kimin ne dediği açık olsun diye mesajlarınızın üstüne “User”, yapay zekânın yanıtlarının üstüne “Assistant” yazar. Markdown dosyalarında bunlar bir başlık (## User) veya kalın bir ad (**User:**) olur.",
+  "options.headings.help": "Kimin ne dediği açık olsun diye mesajlarınızın üstüne “User”, yapay zekânın yanıtlarının üstüne onun adını (ör. “ChatGPT”) yazar. Markdown dosyalarında bunlar bir başlık (## User) veya kalın bir ad (**User:**) olur.",
   "options.headings.tip": "PDF dosyalarında “Başlıklar” ve “Kalın adlar” aynı görünür. Orada yalnızca “Ad yok” fark yaratır.",
   "options.headings.h2": "Başlıklar",
   "options.headings.bold": "Kalın adlar",

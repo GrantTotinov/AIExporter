@@ -321,7 +321,7 @@
   "options.properties.tip": "如果您在 Obsidian 中保存聊天，建议保持开启：这样就能按网站或日期搜索、排序和筛选。",
   "options.headings.title": "消息上方的名称",
   "options.headings.desc": "显示每条消息是谁写的：您还是 AI。",
-  "options.headings.help": "在您的消息上方写上“User”，在 AI 的回答上方写上“Assistant”，方便看清谁说了什么。在 Markdown 文件中，它们会显示为标题（## User）或粗体名称（**User:**）。",
+  "options.headings.help": "在您的消息上方写上“User”，在 AI 的回答上方写上它的名字（如“ChatGPT”），方便看清谁说了什么。在 Markdown 文件中，它们会显示为标题（## User）或粗体名称（**User:**）。",
   "options.headings.tip": "在 PDF 文件中，“标题”和“粗体名称”看起来一样，只有“不显示名称”会有区别。",
   "options.headings.h2": "标题",
   "options.headings.bold": "粗体名称",

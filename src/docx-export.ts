@@ -32,7 +32,6 @@ import { OMML_NAMESPACE, mathMlToOmml } from "./omml.ts";
 import { hasRtl, isRtlParagraph } from "./bidi.ts";
 import { createZipBlob, decodeBase64, type ZipEntry } from "./zip.ts";
 import {
-  ROLE_LABELS,
   escapeXml,
   formulaMetrics,
   prepareConversation,
@@ -938,7 +937,7 @@ export async function buildDocxBlob(
     if (settings.headingStyle !== "none") {
       body.push(
         paragraph(
-          textRun(ROLE_LABELS[message.role], {
+          textRun(message.label, {
             color: ROLE_COLORS[message.role],
           }),
           { style: "Heading1" },

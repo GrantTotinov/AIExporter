@@ -33,7 +33,7 @@
 import jsPDF from "jspdf";
 import type { Settings, PdfSettings } from "./settings.ts";
 import { encodeBlobBase64 } from "./zip.ts";
-import { getChatSite, stripChatSiteSuffix } from "./chat-sites.ts";
+import { getChatSite, roleLabel as siteRoleLabel, stripChatSiteSuffix } from "./chat-sites.ts";
 import { extractMath, type MathSpan } from "./math.ts";
 import {
   fenceUserContent,
@@ -2538,7 +2538,7 @@ export async function buildPdfBlob(
   }
 
   for (const [index, message] of messages.entries()) {
-    const roleLabel = message.role === "user" ? "User" : "Assistant";
+    const roleLabel = siteRoleLabel(message.role, tabUrl);
     const isUser = message.role === "user";
     const sources = message.sources ?? [];
     const preprocessed = preprocessRawContent(

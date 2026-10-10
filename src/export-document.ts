@@ -9,7 +9,7 @@
  * typesetting, and its downloaded images looked up - so all four
  * rich formats read a conversation identically.
  */
-import { getChatSite, stripChatSiteSuffix } from "./chat-sites.ts";
+import { getChatSite, roleLabel, stripChatSiteSuffix } from "./chat-sites.ts";
 import { extractMath, type MathSpan } from "./math.ts";
 import type { RenderedMath, SvgNode } from "./math-render.ts";
 import {
@@ -28,6 +28,8 @@ import { messageDetails } from "./message-details.ts";
 
 export interface PreparedMessage {
   role: Message["role"];
+  /* The name over it: "User", or the AI's ("ChatGPT") */
+  label: string;
   blocks: Block[];
   /* The message's downloaded images, shown after its text. */
   images: ExportImageFile[];
@@ -55,11 +57,6 @@ export interface PreparedConversation {
    */
   formulas: MathSpan[];
 }
-
-export const ROLE_LABELS: Record<Message["role"], string> = {
-  user: "User",
-  assistant: "Assistant",
-};
 
 export function documentTitle(tabTitle: string | undefined): string {
   const title = stripChatSiteSuffix(tabTitle ?? "").trim();
@@ -111,6 +108,7 @@ export function prepareConversation(
 
       return {
         role: message.role,
+        label: roleLabel(message.role, tabUrl),
         blocks: parseBlocks(isUser ? fenceUserContent(content) : content, isUser),
         images: (message.imagePaths ?? [])
           .map((path) => imagesByPath.get(path))

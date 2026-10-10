@@ -67,6 +67,6 @@ export async function buildDocumentBlob(
     case "png":
       return buildPngBlob(messages, images, settings, { tabTitle, tabUrl });
     case "xlsx":
-      return buildXlsxBlob(messages, settings);
+      return buildXlsxBlob(messages, settings, tabUrl);
   }
 }

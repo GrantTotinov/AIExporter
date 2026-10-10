@@ -76,7 +76,7 @@ describe("the copied chat", () => {
 
     expect([...page.querySelectorAll("h2")].map((heading) => heading.textContent)).toEqual([
       "User",
-      "Assistant",
+      "ChatGPT",
     ]);
     expect(page.querySelector("h4")?.textContent).toBe("Answer");
     expect(page.querySelector("strong")?.textContent).toBe("bold");

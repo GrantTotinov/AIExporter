@@ -321,7 +321,7 @@
   "options.properties.tip": "Biarkan aktif jika Anda menyimpan obrolan di Obsidian: Anda jadi bisa mencari, mengurutkan, dan memfilternya berdasarkan situs atau tanggal.",
   "options.headings.title": "Nama di atas pesan",
   "options.headings.desc": "Tampilkan siapa yang menulis setiap pesan: Anda atau AI.",
-  "options.headings.help": "Menulis “User” di atas pesan Anda dan “Assistant” di atas jawaban AI, agar jelas siapa mengatakan apa. Di file Markdown, ini menjadi judul (## User) atau nama tebal (**User:**).",
+  "options.headings.help": "Menulis “User” di atas pesan Anda dan nama AI (misalnya “ChatGPT”) di atas jawabannya, agar jelas siapa mengatakan apa. Di file Markdown, ini menjadi judul (## User) atau nama tebal (**User:**).",
   "options.headings.tip": "Di file PDF, “Judul” dan “Nama tebal” terlihat sama. Di sana hanya “Tanpa nama” yang membuat perbedaan.",
   "options.headings.h2": "Judul",
   "options.headings.bold": "Nama tebal",

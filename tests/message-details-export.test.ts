@@ -117,9 +117,9 @@ describe("Markdown", () => {
       "## User\n\n*2026-10-03 14:05*\n\nWhen was Rome founded?",
     );
     expect(markdown).toContain(
-      "## Assistant\n\n*2026-10-03 14:06 · gpt-4o*\n\nIn 753 BC, by legend.",
+      "## ChatGPT\n\n*2026-10-03 14:06 · gpt-4o*\n\nIn 753 BC, by legend.",
     );
-    expect(markdown).toContain("## Assistant\n\nAround 250 BC.");
+    expect(markdown).toContain("## ChatGPT\n\nAround 250 BC.");
   });
 
   it("writes them on their own when names are off", async () => {
@@ -167,7 +167,7 @@ describe("text, JSON and CSV", () => {
     });
     const { content } = buildContentForFormat("txt", markdown, MESSAGES, WITH_DETAILS);
 
-    expect(content).toContain("Assistant\n\n2026-10-03 14:06 · gpt-4o\n\nIn 753 BC");
+    expect(content).toContain("ChatGPT\n\n2026-10-03 14:06 · gpt-4o\n\nIn 753 BC");
   });
 
   it("give JSON a time in UTC and the model as fields of their own", () => {
@@ -207,7 +207,7 @@ describe("web page", () => {
     const page = new DOMParser().parseFromString(html, "text/html");
     const [, reply] = page.querySelectorAll(".role");
 
-    expect(reply.textContent).toBe("Assistant · 2026-10-03 14:06 · gpt-4o");
+    expect(reply.textContent).toBe("ChatGPT · 2026-10-03 14:06 · gpt-4o");
     expect(reply.querySelector(".role-details time")?.getAttribute("datetime")).toBe(
       new Date(ANSWERED).toISOString(),
     );
@@ -306,7 +306,7 @@ describe("PDF", () => {
 
     expect(drawn).toContain("2026-10-03 14:05");
     expect(reply).toBeGreaterThan(0);
-    expect(drawn[reply - 1]).toBe("Assistant");
+    expect(drawn[reply - 1]).toBe("ChatGPT");
   });
 
   it("draws none while the setting is off", async () => {

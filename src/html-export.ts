@@ -26,7 +26,6 @@ import {
 import type { RenderedMath } from "./math-render.ts";
 import type { MathSpan } from "./math.ts";
 import {
-  ROLE_LABELS,
   escapeXml,
   prepareConversation,
   renderFormulas,
@@ -374,7 +373,7 @@ export function buildClipboardHtml(
   for (const [index, message] of conversation.messages.entries()) {
     const inline = (text: string, style?: InlineStyle) =>
       renderSegments(text, conversation.formulas, rendered, style, message.sources);
-    const label = ROLE_LABELS[message.role];
+    const label = message.label;
 
     if (index > 0 && settings.messageSeparator === "rule") {
       parts.push("<hr>");
@@ -528,7 +527,7 @@ function renderRoleLine(message: PreparedMessage, showRole: boolean): string {
       : "",
     message.model ? escapeXml(message.model) : "",
   ].filter(Boolean);
-  const label = showRole ? ROLE_LABELS[message.role] : "";
+  const label = showRole ? message.label : "";
   const separator = label && details.length > 0 ? " · " : "";
 
   return (

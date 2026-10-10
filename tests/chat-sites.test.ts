@@ -5,6 +5,7 @@ import {
   getChatSite,
   isChatConversationUrl,
   isChatSite,
+  roleLabel,
   stripChatSiteSuffix,
 } from "../src/chat-sites";
 import chromeManifest from "../manifest.chrome.json";
@@ -340,5 +341,15 @@ describe("isChatConversationUrl", () => {
     expect(isChatConversationUrl(`https://example.com/c/${UUID}`)).toBe(false);
     expect(isChatConversationUrl(undefined)).toBe(false);
     expect(isChatConversationUrl("not a url")).toBe(false);
+  });
+});
+
+describe("roleLabel", () => {
+  it("names the reply after the AI that wrote it", () => {
+    expect(roleLabel("user", "https://claude.ai/chat/1")).toBe("User");
+    expect(roleLabel("assistant", "https://claude.ai/chat/1")).toBe("Claude");
+    expect(roleLabel("assistant", "https://gemini.google.com/app/1")).toBe("Gemini");
+    expect(roleLabel("assistant", "https://example.com/")).toBe("Assistant");
+    expect(roleLabel("assistant", undefined)).toBe("Assistant");
   });
 });

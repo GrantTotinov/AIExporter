@@ -321,7 +321,7 @@
   "options.properties.tip": "Lass es eingeschaltet, wenn du deine Chats in Obsidian aufbewahrst: Dann kannst du sie nach Website oder Datum suchen, sortieren und filtern.",
   "options.headings.title": "Namen über den Nachrichten",
   "options.headings.desc": "Zeigt, wer jede Nachricht geschrieben hat: du oder die KI.",
-  "options.headings.help": "Schreibt „User“ über deine Nachrichten und „Assistant“ über die Antworten der KI, damit man leicht sieht, wer was gesagt hat. In Markdown-Dateien wird daraus eine Überschrift (## User) oder ein fetter Name (**User:**).",
+  "options.headings.help": "Schreibt „User“ über deine Nachrichten und den Namen der KI (z. B. „ChatGPT“) über ihre Antworten, damit man leicht sieht, wer was gesagt hat. In Markdown-Dateien wird daraus eine Überschrift (## User) oder ein fetter Name (**User:**).",
   "options.headings.tip": "In PDF-Dateien sehen „Überschrift“ und „Fetter Name“ gleich aus. Dort macht nur „Keine Namen“ einen Unterschied.",
   "options.headings.h2": "Überschrift",
   "options.headings.bold": "Fetter Name",

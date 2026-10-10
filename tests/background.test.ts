@@ -1511,7 +1511,7 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
         .map(([message]) => message)
         .find((message) => message.type === "OFFSCREEN_COPY");
 
-      expect(copy.data).toBe("## User\n\nWhere should I go?\n\n## Assistant\n\nLisbon.");
+      expect(copy.data).toBe("## User\n\nWhere should I go?\n\n## ChatGPT\n\nLisbon.");
       expect(copy.html).toContain("<h2>User</h2>");
       expect(tabsSendMessage).toHaveBeenCalledWith(7, {
         type: "LOAD_CONVERSATION",

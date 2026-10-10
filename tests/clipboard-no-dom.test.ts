@@ -25,7 +25,7 @@ describe("the copied chat without a DOM", () => {
     );
 
     expect(html).toBe(
-      "<h2>Assistant</h2>\n<p dir=\"auto\">Tom &amp; Jerry — AB &amp;unknown; � 1 &lt; 2</p>",
+      "<h2>ChatGPT</h2>\n<p dir=\"auto\">Tom &amp; Jerry — AB &amp;unknown; � 1 &lt; 2</p>",
     );
   });
 });

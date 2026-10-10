@@ -321,7 +321,7 @@
   "options.properties.tip": "Laissez-le activé si vous gardez vos conversations dans Obsidian : vous pouvez alors les rechercher, les trier et les filtrer par site ou par date.",
   "options.headings.title": "Noms au-dessus des messages",
   "options.headings.desc": "Montre qui a écrit chaque message : vous ou l'IA.",
-  "options.headings.help": "Écrit « User » au-dessus de vos messages et « Assistant » au-dessus des réponses de l'IA, pour voir facilement qui a dit quoi. Dans les fichiers Markdown, ils deviennent un titre (## User) ou un nom en gras (**User:**).",
+  "options.headings.help": "Écrit « User » au-dessus de vos messages et le nom de l'IA (comme « ChatGPT ») au-dessus de ses réponses, pour voir facilement qui a dit quoi. Dans les fichiers Markdown, ils deviennent un titre (## User) ou un nom en gras (**User:**).",
   "options.headings.tip": "Dans les PDF, « Titre » et « Nom en gras » ont le même aspect. Seul « Sans noms » y change quelque chose.",
   "options.headings.h2": "Titre",
   "options.headings.bold": "Nom en gras",

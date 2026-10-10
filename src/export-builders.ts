@@ -16,6 +16,7 @@ import { renderFileName } from "./file-names.ts";
 import {
   CHAT_SITE_NAMES,
   getChatSite,
+  roleLabel,
   stripChatSiteSuffix,
 } from "./chat-sites.ts";
 import {
@@ -424,20 +425,20 @@ export async function buildMarkdownFromMessages(
           .filter(Boolean)
           .join("\n\n");
 
-        const roleLabel = message.role === "user" ? "User" : "Assistant";
+        const label = roleLabel(message.role, source.tabUrl);
 
         let heading: string;
 
         switch (settings.headingStyle) {
           case "bold":
-            heading = `**${roleLabel}:**`;
+            heading = `**${label}:**`;
             break;
           case "none":
             heading = "";
             break;
           case "h2":
           default:
-            heading = `## ${roleLabel}`;
+            heading = `## ${label}`;
             break;
         }
 

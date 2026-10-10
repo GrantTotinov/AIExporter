@@ -321,7 +321,7 @@
   "options.properties.tip": "Mantenha ativado se você guarda suas conversas no Obsidian: assim pode pesquisar, ordenar e filtrar por site ou data.",
   "options.headings.title": "Nomes acima das mensagens",
   "options.headings.desc": "Mostre quem escreveu cada mensagem: você ou a IA.",
-  "options.headings.help": "Escreve “User” acima das suas mensagens e “Assistant” acima das respostas da IA, para ficar claro quem disse o quê. Nos arquivos Markdown, viram um título (## User) ou um nome em negrito (**User:**).",
+  "options.headings.help": "Escreve “User” acima das suas mensagens e o nome da IA (como “ChatGPT”) acima das respostas dela, para ficar claro quem disse o quê. Nos arquivos Markdown, viram um título (## User) ou um nome em negrito (**User:**).",
   "options.headings.tip": "Nos arquivos PDF, “Títulos” e “Nomes em negrito” ficam iguais. Ali, só “Sem nomes” faz diferença.",
   "options.headings.h2": "Títulos",
   "options.headings.bold": "Nomes em negrito",

@@ -6,6 +6,7 @@
   "default_locale": "en",
   "icons": {
     "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
@@ -45,19 +46,13 @@
         "https://yuanbao.tencent.com/*",
         "https://chat.z.ai/*"
       ],
-      "js": [
-        "content.js"
-      ]
+      "js": ["content.js"]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "pageBridge.js"
-      ],
-      "matches": [
-        "https://chatgpt.com/*"
-      ]
+      "resources": ["pageBridge.js"],
+      "matches": ["https://chatgpt.com/*"]
     }
   ],
   "action": {

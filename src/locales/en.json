@@ -321,7 +321,7 @@
   "options.properties.tip": "Leave it on if you keep your chats in Obsidian: you can then search, sort and filter them by site or date.",
   "options.headings.title": "Names above messages",
   "options.headings.desc": "Show who wrote each message: you or the AI.",
-  "options.headings.help": "Writes “User” above your messages and “Assistant” above the AI's answers, so it's easy to see who said what. In Markdown files they become a heading (## User) or a bold name (**User:**).",
+  "options.headings.help": "Writes “User” above your messages and the AI's name (like “ChatGPT”) above its answers, so it's easy to see who said what. In Markdown files they become a heading (## User) or a bold name (**User:**).",
   "options.headings.tip": "In PDF files, “Heading” and “Bold name” look the same. Only “No names” makes a difference there.",
   "options.headings.h2": "Heading",
   "options.headings.bold": "Bold name",

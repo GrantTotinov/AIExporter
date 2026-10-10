@@ -321,7 +321,7 @@
   "options.properties.tip": "Obsidian にチャットを保存しているならオンのままにしてください。サイトや日付で検索・並べ替え・絞り込みができます。",
   "options.headings.title": "メッセージの上の名前",
   "options.headings.desc": "各メッセージを書いたのが誰か（あなたか AI か）を表示します。",
-  "options.headings.help": "あなたのメッセージの上に「User」、AI の回答の上に「Assistant」と書き、誰が何を言ったか分かりやすくします。Markdown では見出し（## User）または太字の名前（**User:**）になります。",
+  "options.headings.help": "あなたのメッセージの上に「User」、AI の回答の上にその名前（例:「ChatGPT」）と書き、誰が何を言ったか分かりやすくします。Markdown では見出し（## User）または太字の名前（**User:**）になります。",
   "options.headings.tip": "PDF では「見出し」と「太字の名前」は同じ見た目です。違いがあるのは「名前なし」だけです。",
   "options.headings.h2": "見出し",
   "options.headings.bold": "太字の名前",

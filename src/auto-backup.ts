@@ -224,7 +224,7 @@ export async function buildBackupFiles(
   }
 
   if (format === "xlsx") {
-    return [{ path: `${folder}/${name}.xlsx`, blob: buildXlsxBlob(messages, settings) }];
+    return [{ path: `${folder}/${name}.xlsx`, blob: buildXlsxBlob(messages, settings, conversation.url) }];
   }
 
   const markdown = await buildMarkdownFromMessages(messages, {

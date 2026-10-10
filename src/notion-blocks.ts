@@ -24,7 +24,6 @@ import { resolveLanguage } from "./code-highlight.ts";
 import { parseInline, type Block, type InlineRun } from "./markdown-parse.ts";
 import type { MathSpan } from "./math.ts";
 import {
-  ROLE_LABELS,
   documentTitle,
   prepareConversation,
 } from "./export-document.ts";
@@ -476,7 +475,7 @@ export function buildNotionPage(
     if (settings.headingStyle !== "none") {
       blocks.push(
         block("heading_2", {
-          rich_text: textPieces(ROLE_LABELS[message.role], {
+          rich_text: textPieces(message.label, {
             color: message.role === "user" ? "blue" : "purple",
           }),
         }),

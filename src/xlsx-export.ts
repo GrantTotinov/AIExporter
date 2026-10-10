@@ -18,6 +18,7 @@
  * No DOM: it can be built anywhere.
  */
 import type { Settings } from "./settings.ts";
+import { roleLabel } from "./chat-sites.ts";
 import {
   applyContentSettings,
   type Message,
@@ -172,7 +173,10 @@ function sheetName(wanted: string, taken: Set<string>): string {
   return name;
 }
 
-export function buildWorkbookSheets(messages: Message[]): Sheet[] {
+export function buildWorkbookSheets(
+  messages: Message[],
+  tabUrl?: string,
+): Sheet[] {
   const withTime = messages.some((message) => message.time !== undefined);
   const withModel = messages.some((message) => message.model);
   const withThinking = messages.some((message) => message.thinking);
@@ -200,7 +204,7 @@ export function buildWorkbookSheets(messages: Message[]): Sheet[] {
         const sources = message.sources ?? [];
 
         return [
-          message.role === "user" ? "User" : "Assistant",
+          roleLabel(message.role, tabUrl),
           ...(withTime ? [message.time !== undefined ? { date: excelDate(message.time) } : null] : []),
           ...(withModel ? [message.model ?? ""] : []),
           bracketNotes(message.content, sources),
@@ -258,10 +262,14 @@ export function buildWorkbookSheets(messages: Message[]): Sheet[] {
   return [chat, ...tables];
 }
 
-export function buildXlsxBlob(allMessages: Message[], settings: Settings): Blob {
+export function buildXlsxBlob(
+  allMessages: Message[],
+  settings: Settings,
+  tabUrl?: string,
+): Blob {
   const messages = applyContentSettings(allMessages, settings);
   const taken = new Set<string>();
-  const sheets = buildWorkbookSheets(messages).map((sheet) => ({
+  const sheets = buildWorkbookSheets(messages, tabUrl).map((sheet) => ({
     ...sheet,
     name: sheetName(sheet.name, taken),
   }));
