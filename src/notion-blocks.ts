@@ -21,7 +21,12 @@
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
 import { resolveLanguage } from "./code-highlight.ts";
-import { parseInline, type Block, type InlineRun } from "./markdown-parse.ts";
+import {
+  parseInline,
+  tableHasHeader,
+  type Block,
+  type InlineRun,
+} from "./markdown-parse.ts";
 import type { MathSpan } from "./math.ts";
 import {
   documentTitle,
@@ -339,23 +344,25 @@ export function buildNotionPage(
       });
     const out: NotionBlock[] = [];
     const bodyRows = table.rows.length > 0 ? table.rows : [];
+    const header = tableHasHeader(table.header);
+    const perTable = header ? MAX_TABLE_ROWS - 1 : MAX_TABLE_ROWS;
 
     // A table longer than Notion allows continues in another one,
     // under the same header.
     for (
       let start = 0;
       start < Math.max(1, bodyRows.length);
-      start += MAX_TABLE_ROWS - 1
+      start += perTable
     ) {
       out.push(
         block("table", {
           table_width: width,
-          has_column_header: true,
+          has_column_header: header,
           has_row_header: false,
           children: [
-            row(table.header, true),
+            ...(header ? [row(table.header, true)] : []),
             ...bodyRows
-              .slice(start, start + MAX_TABLE_ROWS - 1)
+              .slice(start, start + perTable)
               .map((cells) => row(cells, false)),
           ],
         }),
@@ -382,16 +389,12 @@ export function buildNotionPage(
           ? inlineBlocks(item.text, "heading_3")
           : inlineBlocks(item.text, "paragraph", { bold: true });
       case "paragraph":
-        return inlineBlocks(item.text, "paragraph");
+        // Notion has no small text: small print is gray.
+        return inlineBlocks(item.text, "paragraph", item.small ? { color: "gray" } : {});
       case "blockquote":
         return inlineBlocks(item.text, "quote");
       case "list":
-        return item.items.flatMap((entry) =>
-          inlineBlocks(
-            entry,
-            item.ordered ? "numbered_list_item" : "bulleted_list_item",
-          ),
-        );
+        return listBlocks(item);
       case "table":
         return tableBlocks(item);
       case "code":
@@ -407,8 +410,44 @@ export function buildNotionPage(
    * request and 100 in a list, so tables inside it are flattened to
    * lines and the list is cut at 100.
    */
+  /*
+   * A list, each nested item inside the item above it. A block and
+   * its children are the two levels Notion takes in one request, so
+   * items nested deeper join the first level of nesting.
+   */
+  function listBlocks(list: Extract<Block, { type: "list" }>): NotionBlock[] {
+    const out: NotionBlock[] = [];
+
+    list.items.forEach((entry, index) => {
+      const { level, ordered } = list.nesting?.[index] ?? {
+        level: 0,
+        ordered: list.ordered,
+      };
+      const blocks = inlineBlocks(
+        entry,
+        ordered ? "numbered_list_item" : "bulleted_list_item",
+      );
+      const parent = out[out.length - 1];
+
+      if (level > 0 && parent && /_list_item$/.test(parent.type)) {
+        const content = parent[parent.type] as { children?: NotionBlock[] };
+
+        content.children = [...(content.children ?? []), ...blocks].slice(0, MAX_CHILDREN);
+      } else {
+        out.push(...blocks);
+      }
+    });
+
+    return out;
+  }
+
   function thinkingToggle(thinking: Block[]): NotionBlock {
     const children = thinking.flatMap((item): NotionBlock[] => {
+      // Already a level down: its lists stay flat.
+      if (item.type === "list") {
+        return listBlocks({ ...item, nesting: undefined });
+      }
+
       if (item.type === "table") {
         return [item.header, ...item.rows].flatMap((cells) =>
           inlineBlocks(cells.join(" | "), "paragraph"),

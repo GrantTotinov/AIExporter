@@ -25,7 +25,12 @@
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
 import { highlightCode, type TokenKind } from "./code-highlight.ts";
-import { parseInline, type Block, type InlineRun } from "./markdown-parse.ts";
+import {
+  parseInline,
+  tableHasHeader,
+  type Block,
+  type InlineRun,
+} from "./markdown-parse.ts";
 import type { RenderedMath } from "./math-render.ts";
 import type { MathSpan } from "./math.ts";
 import { OMML_NAMESPACE, mathMlToOmml } from "./omml.ts";
@@ -441,13 +446,13 @@ class DocxWriter {
     );
   }
 
-  /* A new numbered list, counting from 1 */
-  orderedList(): number {
+  /* A new numbered list - nested `level` deep - counting from 1 */
+  orderedList(level = 0): number {
     const id = this.nextNumbering++;
 
     this.numbering.push(
       `<w:num w:numId="${id}"><w:abstractNumId w:val="1"/>` +
-        '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>',
+        `<w:lvlOverride w:ilvl="${level}"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`,
     );
 
     return id;
@@ -533,6 +538,14 @@ function runProperties(style: RunStyle, text: string): string {
 function textRun(text: string, style: RunStyle = {}): string {
   if (text === "") {
     return "";
+  }
+
+  // The spaces around right-to-left words stay out of their <w:rtl/>
+  // run: Word would draw them on the run's far side ("مرحبًا(Marhaban)").
+  const [, before, words, after] = /^(\s*)([\s\S]*?)(\s*)$/.exec(text) ?? [];
+
+  if (hasRtl(text) && (before || after)) {
+    return textRun(before, style) + textRun(words, style) + textRun(after, style);
   }
 
   const properties = runProperties(style, text);
@@ -708,13 +721,14 @@ export async function buildDocxBlob(
    * Inline Markdown with hard line breaks ("\n", see joinLines). A
    * display formula is lifted into a centered paragraph of its own.
    */
+  /* `rtl`: the direction a table cell gets from its table */
   function inlineParagraphs(
     text: string,
-    options: { style?: string; extra?: string; base?: RunStyle } = {},
+    options: { style?: string; extra?: string; base?: RunStyle; rtl?: boolean } = {},
   ): string[] {
     const out: string[] = [];
     let current: string[] = [];
-    const rtl = isRtlParagraph(text);
+    const rtl = options.rtl ?? isRtlParagraph(text);
 
     const flush = (): void => {
       if (current.length > 0) {
@@ -779,6 +793,11 @@ export async function buildDocxBlob(
   function table(block: Extract<Block, { type: "table" }>): string {
     const columns = Math.max(1, block.header.length);
     const columnWidth = Math.floor(CONTENT_WIDTH / columns);
+    // Cells read in the table's direction, as on the chat page (see
+    // renderTable in pdf-export.ts).
+    const rtl = isRtlParagraph(
+      (tableHasHeader(block.header) ? block.header : (block.rows[0] ?? [])).join(" "),
+    );
     const cell = (text: string, header: boolean): string =>
       `<w:tc><w:tcPr><w:tcW w:w="${columnWidth}" w:type="dxa"/>` +
       (header ? '<w:shd w:val="clear" w:color="auto" w:fill="F2F4F7"/>' : "") +
@@ -786,6 +805,7 @@ export async function buildDocxBlob(
       inlineParagraphs(text, {
         style: "TableText",
         base: header ? { bold: true } : {},
+        rtl,
       }).join("") +
       "</w:tc>";
     const row = (cells: string[], header: boolean): string =>
@@ -800,7 +820,7 @@ export async function buildDocxBlob(
       `<w:tblW w:w="${columnWidth * columns}" w:type="dxa"/>` +
       '<w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>' +
       `<w:tblGrid>${`<w:gridCol w:w="${columnWidth}"/>`.repeat(columns)}</w:tblGrid>` +
-      row(block.header, true) +
+      (tableHasHeader(block.header) ? row(block.header, true) : "") +
       block.rows.map((cells) => row(cells, false)).join("") +
       // Word needs a paragraph between two tables, and after the
       // last one in a cell or document.
@@ -816,18 +836,40 @@ export async function buildDocxBlob(
           style: `Heading${Math.min(block.level + 1, 4)}`,
         });
       case "paragraph":
-        return inlineParagraphs(block.text);
+        // Small print is small and gray.
+        return inlineParagraphs(
+          block.text,
+          block.small ? { base: { color: "656D76", size: 19 } } : {},
+        );
       case "blockquote":
         return inlineParagraphs(block.text, { style: "Quote" });
       case "list": {
-        const numId = block.ordered ? writer.orderedList() : 1;
+        // The numbered list open at each depth; a nested one ends with
+        // the item it's in.
+        const numbered: (number | undefined)[] = [];
 
-        return block.items.flatMap((item) =>
-          inlineParagraphs(item, {
+        return block.items.flatMap((item, index) => {
+          const nesting = block.nesting?.[index] ?? {
+            level: 0,
+            ordered: block.ordered,
+          };
+          const level = Math.min(nesting.level, MAX_LIST_LEVEL);
+
+          numbered.length = Math.min(numbered.length, level + 1);
+
+          if (!nesting.ordered) {
+            numbered[level] = undefined;
+          } else {
+            numbered[level] ??= writer.orderedList(level);
+          }
+
+          return inlineParagraphs(item, {
             style: "ListParagraph",
-            extra: `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr>`,
-          }),
-        );
+            extra: `<w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="${
+              nesting.ordered ? numbered[level] : 1
+            }"/></w:numPr>`,
+          });
+        });
       }
       case "table":
         return [table(block)];
@@ -1062,24 +1104,39 @@ const SETTINGS_XML =
   '<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat>' +
   "</w:settings>";
 
+/* Nested list items go up to this deep (Word's nine levels) */
+const MAX_LIST_LEVEL = 8;
+
+/*
+ * Bullets and numbers for every depth of nesting, each a step further
+ * in: a bullet per depth (\u2022, \u25e6, \u25aa, then round again) and a number
+ * counting its own list.
+ */
 function buildNumberingXml(nums: string[]): string {
-  const level = (format: string, text: string, font?: string): string =>
-    '<w:lvl w:ilvl="0"><w:start w:val="1"/>' +
-    `<w:numFmt w:val="${format}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/>` +
-    '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
-    (font
-      ? `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:hint="default"/></w:rPr>`
-      : "") +
-    "</w:lvl>";
+  const levels = (format: "bullet" | "decimal"): string =>
+    Array.from({ length: MAX_LIST_LEVEL + 1 }, (_, depth) => {
+      const text =
+        format === "bullet" ? ["\u2022", "\u25e6", "\u25aa"][depth % 3] : `%${depth + 1}.`;
+
+      return (
+        `<w:lvl w:ilvl="${depth}"><w:start w:val="1"/>` +
+        `<w:numFmt w:val="${format}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/>` +
+        `<w:pPr><w:ind w:left="${720 * (depth + 1)}" w:hanging="360"/></w:pPr>` +
+        (format === "bullet"
+          ? '<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:hint="default"/></w:rPr>'
+          : "") +
+        "</w:lvl>"
+      );
+    }).join("");
 
   return (
     XML_HEADER +
     '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-    '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>' +
-    level("bullet", "\u2022", "Calibri") +
+    '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' +
+    levels("bullet") +
     "</w:abstractNum>" +
-    '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>' +
-    level("decimal", "%1.") +
+    '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>' +
+    levels("decimal") +
     "</w:abstractNum>" +
     nums.join("") +
     "</w:numbering>"

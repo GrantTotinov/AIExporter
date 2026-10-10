@@ -225,3 +225,102 @@ describe("chatGptThinking", () => {
     expect(chatGptThinking(loose.get("a")!, loose, () => null)).toBe("Hmm.");
   });
 });
+
+describe("<Cite> components", () => {
+  const results = {
+    search_result_groups: [
+      {
+        entries: [
+          { url: "https://a.example/", title: "A", ref_id: { turn_index: 7, ref_type: "search", ref_index: 0 } },
+          { url: "https://b.example/", title: "B", ref_id: { turn_index: 7, ref_type: "search", ref_index: 1 } },
+        ],
+      },
+    ],
+  };
+
+  it("cites the search results its refs name, from the reply's turn", () => {
+    const sources = new ReplySources();
+    const text = convertChatGptCitations(
+      'Rome. <Cite refs={["turn7search1","turn7search0"]}/> Paris. <Cite refs={["turn7search0"]}/>',
+      {},
+      sources,
+      [results],
+    );
+
+    expect(text).toBe(`Rome.${note(1, 2)} Paris.${note(2)}`);
+    expect(sources.list).toEqual([
+      { title: "B", url: "https://b.example/" },
+      { title: "A", url: "https://a.example/" },
+    ]);
+  });
+
+  it("reads refs from cited items and references too", () => {
+    const sources = new ReplySources();
+    const metadata = {
+      content_references: [
+        { matched_text: cite("turn2search4"), items: [{ url: "https://c.example/", title: "C" }] },
+        { items: [{ url: "https://d.example/", title: "D", refs: ["turn2search5"] }] },
+      ],
+    };
+
+    expect(
+      convertChatGptCitations('X <Cite refs={["turn2search4"]}/> Y <Cite refs={["turn2search5"]}/>', metadata, sources),
+    ).toBe(`X${note(1)} Y${note(2)}`);
+  });
+
+  it("drops a ref nothing describes, and a <Cite> left with none", () => {
+    const sources = new ReplySources();
+
+    expect(
+      convertChatGptCitations(
+        'One. <Cite refs={["turn7search0","turn9search9"]}/> Two. <Cite refs={["turn9search9"]}/>',
+        {},
+        sources,
+        [results],
+      ),
+    ).toBe(`One.${note(1)} Two.`);
+    expect(sources.list).toHaveLength(1);
+  });
+
+  it("leaves a <Cite> in code alone", () => {
+    const text = [
+      'Write `<Cite refs={["turn7search0"]}/>` like this:',
+      "",
+      "```jsx",
+      '<Cite refs={["turn7search0"]}/>',
+      "```",
+      "",
+      '<CodeBlock language="jsx">',
+      '<Cite refs={["turn7search1"]}/>',
+      "</CodeBlock>",
+    ].join("\n");
+    const sources = new ReplySources();
+
+    expect(convertChatGptCitations(text, {}, sources, [results])).toBe(text);
+    expect(sources.list).toEqual([]);
+  });
+});
+
+describe("UI widget references", () => {
+  it("leaves the text a code block widget quotes, and any text a reference with nothing to cite quotes", () => {
+    const block = "```text\nTotal: ¥255,000 ($1,700.00)\n```";
+    const sources = new ReplySources();
+    const metadata = {
+      content_references: [
+        {
+          type: "client_defined_widget",
+          category: "code_block",
+          matched_text: block,
+          data: { content: "Total: ¥255,000 ($1,700.00)", language: "text" },
+          refs: [],
+          alt: null,
+        },
+        { type: "unknown_kind", matched_text: "Both scripts", refs: [] },
+      ],
+    };
+    const text = `## Expected output\n\n${block}\n\nBoth scripts agree.`;
+
+    expect(convertChatGptCitations(text, metadata, sources)).toBe(text);
+    expect(sources.list).toEqual([]);
+  });
+});

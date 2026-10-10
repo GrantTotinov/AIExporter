@@ -23,7 +23,7 @@ import {
   applyContentSettings,
   type Message,
 } from "./export-builders.ts";
-import { parseBlocks } from "./markdown-parse.ts";
+import { parseBlocks, tableHasHeader } from "./markdown-parse.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
 import { bracketNotes, sourceLabel, stripNotes } from "./source-notes.ts";
 import { createZipBlob } from "./zip.ts";
@@ -230,7 +230,8 @@ export function buildWorkbookSheets(
         continue;
       }
 
-      const cells = [block.header, ...block.rows].map((row) =>
+      const header = tableHasHeader(block.header) ? [block.header] : [];
+      const cells = [...header, ...block.rows].map((row) =>
         row.map((cell): Cell => {
           const text = stripMarkdown(cell.replace(/<br\s*\/?>/gi, "\n"));
 

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { shapeArabicText } from "../src/arabic-shaping";
-import { OBJECT_CHAR, isRtlParagraph, toVisual } from "../src/bidi";
+import {
+  OBJECT_CHAR,
+  bidiLevels,
+  isRtlParagraph,
+  lineLevels,
+  mirrorChar,
+  paragraphLevels,
+  toVisual,
+  visualOrder,
+} from "../src/bidi";
 
 const codes = (text: string) =>
   Array.from(text).map((char) => char.codePointAt(0));
@@ -83,5 +92,38 @@ describe("shapeArabicText", () => {
 
   it("leaves other text alone", () => {
     expect(shapeArabicText("abc שלום 123")).toBe("abc שלום 123");
+  });
+});
+
+describe("bracket pairs (N0)", () => {
+  const visual = (chars: string[], levels: number[]) =>
+    visualOrder(chars, levels)
+      .map((index) => mirrorChar(chars[index], levels[index]))
+      .join("");
+
+  it("keeps Latin in brackets after Latin together in right-to-left text", () => {
+    // Without N0 the closing bracket took the paragraph's direction.
+    expect(toVisual("abc (def)", true)).toBe("abc (def)");
+  });
+
+  it("gives a pair the paragraph's direction when its text has some", () => {
+    expect(toVisual("abc (שלום) def", false)).toBe("abc (םולש) def");
+    expect(toVisual("שלום (abc) עולם", true)).toBe("םלוע (abc) םולש");
+  });
+
+  it("resolves a pair that a line break splits on the whole paragraph", () => {
+    const chars = Array.from("abc (def ghi)");
+    const levels = paragraphLevels(chars, true);
+    const line = chars.slice(9);
+
+    expect(visual(line, lineLevels(line, levels.slice(9), true))).toBe("ghi)");
+    // Line by line, its closing bracket faced the wrong way.
+    expect(visual(line, bidiLevels(line, true))).toBe("(ghi");
+  });
+
+  it("sends trailing spaces to the paragraph's level, line by line", () => {
+    const chars = Array.from("abc ");
+
+    expect(lineLevels(chars, [2, 2, 2, 2], true)).toEqual([2, 2, 2, 1]);
   });
 });

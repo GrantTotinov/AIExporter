@@ -187,10 +187,24 @@ export function markdownFootnoteDefinitions(
     .join("\n");
 }
 
-/* "[1]", "[1][3]" - for text that's read as it is */
+/*
+ * A fenced code block, or else a line of small print - a ChatGPT
+ * note, "<small>...</small>" (see chatgpt-components.ts).
+ */
+const CODE_OR_SMALL_PRINT_RE =
+  /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[`~]*[ \t]*$|^<small>(.*)<\/small>[ \t]*$/gm;
+
+/*
+ * "[1]", "[1][3]" - for text that's read as it is, where small print
+ * is just its text too.
+ */
 export function bracketNotes(content: string, sources: MessageSource[]): string {
   return replaceNotes(content, sources.length, (numbers) =>
     numbers.map((number) => `[${number}]`).join(""),
+  ).replace(
+    CODE_OR_SMALL_PRINT_RE,
+    (match, fence: string | undefined, small: string | undefined) =>
+      fence === undefined ? (small ?? match) : match,
   );
 }
 

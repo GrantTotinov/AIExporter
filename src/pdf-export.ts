@@ -41,6 +41,7 @@ import {
   parseBlocks,
   parseInline,
   preprocessRawContent,
+  tableHasHeader,
   type Block,
   type InlineRun,
   type InlineStyle,
@@ -78,7 +79,9 @@ import {
   hasArabic,
   hasRtl,
   isRtlParagraph,
+  lineLevels,
   mirrorChar,
+  paragraphLevels,
   toVisual,
   visualOrder,
 } from "./bidi.ts";
@@ -522,6 +525,116 @@ function messageSnippet(markdown: string, maxLength = 60): string {
     : text;
 }
 
+/* No table column is narrower (unless there are too many) or wider */
+const MIN_COLUMN_MM = 12;
+const MAX_COLUMN_SHARE = 0.7;
+
+function sum(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+/*
+ * A table's column widths, sized by their content as a browser does:
+ * each column's narrowest width (its longest word) and widest (its
+ * longest line, unwrapped). A column that fits in an even share of
+ * the room gets all it asks for - short columns stay narrow - and
+ * the rest share what's left by how much text they hold, none below
+ * its longest word or MIN_COLUMN_MM, none past MAX_COLUMN_SHARE of
+ * the table. A table that fits on one line keeps the full width,
+ * the room to spare shared out by the same measure.
+ */
+export function tableColumnWidths(
+  minWidths: number[],
+  maxWidths: number[],
+  total: number,
+): number[] {
+  const count = minWidths.length;
+
+  if (count <= 1) {
+    return count === 1 ? [total] : [];
+  }
+
+  const floor = Math.min(MIN_COLUMN_MM, total / count);
+  const cap = total * MAX_COLUMN_SHARE;
+  const low = minWidths.map((width) => Math.min(Math.max(width, floor), cap));
+  const high = maxWidths.map((width, index) =>
+    Math.min(Math.max(width, low[index]), cap),
+  );
+
+  if (sum(low) >= total) {
+    return low.map((width) => (width * total) / sum(low));
+  }
+
+  if (sum(high) <= total) {
+    const widths = [...high];
+    let open = widths.map((_, index) => index);
+
+    // The room to spare by each column's share, none past the cap
+    for (let room = total - sum(widths); room > 1e-6 && open.length > 0; ) {
+      const weight = sum(open.map((index) => high[index]));
+      const spare = room;
+
+      for (const index of open) {
+        const added = Math.min((spare * high[index]) / weight, cap - widths[index]);
+
+        widths[index] += added;
+        room -= added;
+      }
+
+      open = open.filter((index) => widths[index] < cap - 1e-6);
+    }
+
+    return widths;
+  }
+
+  const widths = [...low];
+  let flexible = widths.map((_, index) => index);
+  let room = total;
+
+  // Columns that fit in an even share get their widest
+  for (let fitted = true; fitted && flexible.length > 0; ) {
+    const share = room / flexible.length;
+    const fits = flexible.filter((index) => high[index] <= share);
+
+    fitted = fits.length > 0;
+
+    for (const index of fits) {
+      widths[index] = high[index];
+      room -= high[index];
+    }
+
+    flexible = flexible.filter((index) => !fits.includes(index));
+  }
+
+  // The rest by their text, none below its narrowest
+  while (flexible.length > 0) {
+    const weight = sum(flexible.map((index) => high[index]));
+    const squeezed = flexible.filter(
+      (index) => (room * high[index]) / weight < low[index],
+    );
+
+    if (squeezed.length === 0) {
+      for (const index of flexible) {
+        widths[index] = (room * high[index]) / weight;
+      }
+
+      break;
+    }
+
+    for (const index of squeezed) {
+      widths[index] = low[index];
+      room -= low[index];
+    }
+
+    flexible = flexible.filter((index) => !squeezed.includes(index));
+  }
+
+  // Short columns can leave too little for the others' longest words.
+  const used = sum(widths);
+
+  return used > total ? widths.map((width) => (width * total) / used) : widths;
+}
+
 function expandTabs(line: string, tabSize = 4): string {
   let out = "";
 
@@ -911,6 +1024,17 @@ export async function buildPdfBlob(
     fallback?: string;
     /* Glyphs HarfBuzz placed (see text-shaping.ts) */
     shaped?: { loaded: LoadedFallback; text: ShapedText; scale: number; size: number };
+    /*
+     * The bidi level of each of its characters, resolved on its
+     * whole paragraph (see wrapWords) - one for a formula or shaped
+     * word, which reorders as one character.
+     */
+    levels?: number[];
+  }
+
+  /* What a word is to the bidi algorithm: its text, or one object */
+  function bidiText(word: Word): string {
+    return word.math || word.shaped ? OBJECT_CHAR : word.text;
   }
 
   function isSpace(word: Word): boolean {
@@ -1226,7 +1350,8 @@ export async function buildPdfBlob(
    * formula moves as one left-to-right unit. A right-to-left line
    * is also pushed against the right margin by a blank spacer.
    * Lines are wrapped in reading order first, so a line holds the
-   * same words either way.
+   * same words either way, and the words' levels were resolved on
+   * the whole paragraph (see wrapWords).
    */
   function visualLine(
     line: Word[],
@@ -1234,9 +1359,7 @@ export async function buildPdfBlob(
     maxWidth: number,
     fontSize: number,
   ): Word[] {
-    const plain = line.map((word) =>
-      word.math || word.shaped ? OBJECT_CHAR : word.text,
-    );
+    const plain = line.map(bidiText);
 
     if (
       line.length === 0 ||
@@ -1248,15 +1371,19 @@ export async function buildPdfBlob(
 
     const chars: string[] = [];
     const owners: number[] = [];
+    const resolved: number[] = [];
 
     plain.forEach((text, index) => {
-      for (const char of text) {
+      Array.from(text).forEach((char, offset) => {
         chars.push(char);
         owners.push(index);
-      }
+        resolved.push(line[index].levels?.[offset] ?? -1);
+      });
     });
 
-    const levels = bidiLevels(chars, rtl);
+    const levels = resolved.includes(-1)
+      ? bidiLevels(chars, rtl)
+      : lineLevels(chars, resolved, rtl);
     const order = visualOrder(chars, levels);
     const visual: Word[] = [];
 
@@ -1308,6 +1435,7 @@ export async function buildPdfBlob(
 
     const chunks: Word[] = [];
     let remaining = word.text;
+    let offset = 0;
 
     while (remaining.length > 0) {
       let end = 1;
@@ -1320,25 +1448,55 @@ export async function buildPdfBlob(
       }
 
       const chunkText = remaining.slice(0, end);
+      const length = Array.from(chunkText).length;
+
       chunks.push({
         text: chunkText,
         run: word.run,
         width: doc.getTextWidth(chunkText),
+        ...(word.levels ? { levels: word.levels.slice(offset, offset + length) } : {}),
       });
       remaining = remaining.slice(end);
+      offset += length;
     }
 
     return chunks;
   }
 
+  /*
+   * `direction` is the paragraph's direction when its container sets
+   * it (a table cell, see renderTable); otherwise its first letter's.
+   */
   function wrapWords(
     words: Word[],
     maxWidth: number,
     fontSize: number,
+    direction?: "ltr" | "rtl",
   ): Word[][] {
     const lines: Word[][] = [];
     let current: Word[] = [];
     let currentWidth = 0;
+    const paragraph = words.map(bidiText).join("");
+    const rtl = direction
+      ? direction === "rtl"
+      : isRtlParagraph(
+          words.map((word) => (word.math ? OBJECT_CHAR : word.text)).join(""),
+        );
+
+    // Bidi levels are resolved on the whole paragraph, before it's
+    // broken into lines: a bracket pair a line break splits is
+    // still a pair (see bidi.ts).
+    if (rtl || hasRtl(paragraph)) {
+      const levels = paragraphLevels(Array.from(paragraph), rtl);
+      let offset = 0;
+
+      for (const word of words) {
+        const length = Array.from(bidiText(word)).length;
+
+        word.levels = levels.slice(offset, offset + length);
+        offset += length;
+      }
+    }
 
     function dropTrailingSpace(): void {
       while (current.length && isSpace(current[current.length - 1])) {
@@ -1422,10 +1580,6 @@ export async function buildPdfBlob(
     if (current.length > 0 || lines.length === 0) {
       lines.push(current);
     }
-
-    const rtl = isRtlParagraph(
-      words.map((word) => (word.math ? OBJECT_CHAR : word.text)).join(""),
-    );
 
     return lines.map((line) => visualLine(line, rtl, maxWidth, fontSize));
   }
@@ -1737,10 +1891,12 @@ export async function buildPdfBlob(
     text: string,
     style: InlineStyle,
     indent: number,
+    fontSize = bodyFontSize,
+    lineHeight = bodyLineHeight,
   ): void {
     for (const segment of text.split("\n")) {
       if (segment.trim() === "") {
-        y += bodyLineHeight * 0.5;
+        y += lineHeight * 0.5;
         continue;
       }
 
@@ -1749,8 +1905,8 @@ export async function buildPdfBlob(
 
       renderInlineParagraph(
         parseInline(segment, style),
-        bodyFontSize,
-        bodyLineHeight,
+        fontSize,
+        lineHeight,
         blockLeft + (rtl ? 0 : indent),
         blockWidth - indent,
       );
@@ -1759,25 +1915,123 @@ export async function buildPdfBlob(
     y += bodyLineHeight * 0.3;
   }
 
-  function renderParagraph(text: string): void {
-    renderSegments(text, {}, 0);
+  /* Text drawn in `color` - a quote, small print */
+  function inColor(color: Rgb, draw: () => void): void {
+    const saved = textColor;
+
+    textColor = color;
+
+    try {
+      draw();
+    } finally {
+      textColor = saved;
+    }
   }
 
+  const smallFontSize = Math.max(7, bodyFontSize - 1.5);
+  const smallLineHeight = mm(smallFontSize) * 1.35;
+
+  function renderParagraph(block: Extract<Block, { type: "paragraph" }>): void {
+    if (block.small) {
+      // Small print: smaller and gray
+      inColor(MUTED_COLOR, () =>
+        renderSegments(block.text, {}, 0, smallFontSize, smallLineHeight),
+      );
+    } else {
+      renderSegments(block.text, {}, 0);
+    }
+  }
+
+  /*
+   * A line down the side of what was drawn from (startPage, startY)
+   * to the current `y` - on the left, or on the right of right-to-
+   * left text - page by page, since it can run over a page break.
+   */
+  function drawSideBar(
+    startPage: number,
+    startY: number,
+    endY: number,
+    x: number,
+    width: number,
+  ): void {
+    const endPage = doc.getNumberOfPages();
+    const lineWidth = doc.getLineWidth();
+
+    doc.setDrawColor(208, 215, 222);
+    doc.setLineWidth(width);
+
+    for (let page = startPage; page <= endPage; page++) {
+      doc.setPage(page);
+
+      const top = page === startPage ? startY : pdf.marginTop - bodyLineHeight * 0.8;
+      const bottom = page === endPage ? endY : contentBottom;
+
+      if (bottom > top) {
+        doc.line(x, top, x, bottom);
+      }
+    }
+
+    doc.setLineWidth(lineWidth);
+  }
+
+  /*
+   * A quote as the HTML export shows it: gray, set in from a bar
+   * down its side.
+   */
   function renderBlockquote(text: string): void {
-    renderSegments(text, { italic: true }, 5);
+    const indent = 5;
+    const rtl = isRtlParagraph(text);
+
+    ensureSpace(bodyLineHeight);
+
+    const startPage = doc.getNumberOfPages();
+    const startY = y - bodyLineHeight * 0.8;
+
+    inColor(MUTED_COLOR, () => renderSegments(text, {}, indent));
+    drawSideBar(
+      startPage,
+      startY,
+      y - bodyLineHeight * 0.9,
+      rtl ? blockLeft + blockWidth - 1 : blockLeft + 1,
+      1,
+    );
   }
 
+  /* A bullet for each depth of nesting, then round again */
+  const BULLETS = ["•", "◦", "▪"];
+
+  /*
+   * A nested item is set in one step further than the item above it,
+   * with the next bullet; a nested numbered list counts from 1.
+   */
   function renderList(block: Extract<Block, { type: "list" }>): void {
     const indent = 6;
+    const counters: { ordered: boolean; count: number }[] = [];
 
     block.items.forEach((itemText, index) => {
+      const { level, ordered } = block.nesting?.[index] ?? {
+        level: 0,
+        ordered: block.ordered,
+      };
+
+      counters.length = Math.min(counters.length, level + 1);
+
+      if (counters[level]?.ordered !== ordered) {
+        counters[level] = { ordered, count: 0 };
+      }
+
+      const count = ++counters[level].count;
+      const inset = level * indent;
       // A right-to-left item has its marker on the right ("1." reads
       // ".1" there, as in a browser).
       const rtl = isRtlParagraph(itemText);
-      const prefix = visualPlain(block.ordered ? `${index + 1}.` : "•", rtl);
+      const prefix = visualPlain(
+        ordered ? `${count}.` : BULLETS[level % BULLETS.length],
+        rtl,
+      );
       const lines = wrapWords(
         tokenizeRuns(parseInline(itemText), bodyFontSize),
-        blockWidth - indent,
+        blockWidth - inset - indent,
         bodyFontSize,
       );
       // The marker sits on the first line's baseline, which a tall
@@ -1791,13 +2045,13 @@ export async function buildPdfBlob(
       doc.text(
         prefix,
         rtl
-          ? blockLeft + blockWidth - doc.getTextWidth(prefix)
-          : blockLeft,
+          ? blockLeft + blockWidth - inset - doc.getTextWidth(prefix)
+          : blockLeft + inset,
         y + above,
       );
       drawWrappedLines(
         lines,
-        blockLeft + (rtl ? 0 : indent),
+        blockLeft + (rtl ? 0 : inset + indent),
         bodyFontSize,
         bodyLineHeight,
         true,
@@ -2039,11 +2293,56 @@ export async function buildPdfBlob(
     const cellPaddingY = 1.6;
     const cellFontSize = Math.max(6, bodyFontSize - 1);
     const cellLineHeight = mm(cellFontSize) * 1.3;
-    const colWidth = blockWidth / colCount;
+    // A ChatGPT summary card's rows come without a header (see
+    // tableHasHeader).
+    const withHeader = tableHasHeader(block.header);
     // A table whose header reads right to left has its first column
-    // on the right, as the chat page shows it.
-    const rtlTable = isRtlParagraph(block.header.join(" "));
-    const innerWidth = colWidth - cellPaddingX * 2;
+    // on the right, as the chat page shows it - and its cells read in
+    // the table's direction, as on the page, so a cell with Arabic and
+    // its transliteration in an English table keeps "بكم هذا؟ (Bikam
+    // hādhā?)" in that order.
+    const rtlTable = isRtlParagraph(
+      (withHeader ? block.header : (block.rows[0] ?? [])).join(" "),
+    );
+    const cellDirection = rtlTable ? "rtl" : "ltr";
+
+    /*
+     * Each column as wide as its content wants (see
+     * tableColumnWidths): its longest word and its longest line, the
+     * header included.
+     */
+    const minWidths = new Array<number>(colCount).fill(0);
+    const maxWidths = new Array<number>(colCount).fill(0);
+
+    for (const cells of [...(withHeader ? [block.header] : []), ...block.rows]) {
+      for (let col = 0; col < colCount; col++) {
+        for (const subLine of (cells[col] ?? "").split(/<br\s*\/?>/gi)) {
+          const words = tokenizeRuns(parseInline(subLine), cellFontSize);
+
+          minWidths[col] = Math.max(
+            minWidths[col],
+            ...words.filter((word) => !isSpace(word)).map((word) => word.width),
+          );
+          maxWidths[col] = Math.max(
+            maxWidths[col],
+            sum(words.map((word) => word.width)),
+          );
+        }
+      }
+    }
+
+    const colWidths = tableColumnWidths(
+      minWidths.map((width) => width + cellPaddingX * 2),
+      maxWidths.map((width) => width + cellPaddingX * 2),
+      blockWidth,
+    );
+    // Where each column starts; the first is on the right in a
+    // right-to-left table.
+    const colLefts = colWidths.map((_, col) =>
+      rtlTable
+        ? blockLeft + blockWidth - sum(colWidths.slice(0, col + 1))
+        : blockLeft + sum(colWidths.slice(0, col)),
+    );
 
     interface RowLayout {
       cells: string[];
@@ -2060,7 +2359,7 @@ export async function buildPdfBlob(
         { length: colCount },
         (_, col) => rawCells[col] ?? "",
       );
-      const lines = cells.map((cell) => {
+      const lines = cells.map((cell, col) => {
         // Diff/changeset tables often carry literal "<br>" tags
         // (GitHub renders these as line breaks in its own HTML
         // table cells) - turn each into a real forced break
@@ -2069,7 +2368,14 @@ export async function buildPdfBlob(
 
         for (const subLine of cell.split(/<br\s*\/?>/gi)) {
           const words = tokenizeRuns(parseInline(subLine), cellFontSize);
-          cellLines.push(...wrapWords(words, innerWidth, cellFontSize));
+          cellLines.push(
+            ...wrapWords(
+              words,
+              colWidths[col] - cellPaddingX * 2,
+              cellFontSize,
+              cellDirection,
+            ),
+          );
         }
 
         return cellLines;
@@ -2148,7 +2454,7 @@ export async function buildPdfBlob(
       const pageBefore = doc.getNumberOfPages();
       ensureSpace(row.height);
 
-      if (!isHeader && doc.getNumberOfPages() !== pageBefore) {
+      if (withHeader && !isHeader && doc.getNumberOfPages() !== pageBefore) {
         drawRow(headerRow, true);
       }
 
@@ -2162,9 +2468,8 @@ export async function buildPdfBlob(
       doc.setDrawColor(200);
 
       for (let col = 0; col < colCount; col++) {
-        const cellX =
-          blockLeft + (rtlTable ? colCount - 1 - col : col) * colWidth;
-        doc.rect(cellX, rowTop, colWidth, row.height);
+        const cellX = colLefts[col];
+        doc.rect(cellX, rowTop, colWidths[col], row.height);
 
         y = rowTop + cellPaddingY + cellLineHeight * 0.78;
         drawWrappedLines(
@@ -2181,13 +2486,16 @@ export async function buildPdfBlob(
 
     // Keep the header with the first body row, so a page never
     // ends on a lone header row.
-    const firstRowsHeight = headerRow.height + (bodyRows[0]?.height ?? 0);
+    const firstRowsHeight =
+      (withHeader ? headerRow.height : 0) + (bodyRows[0]?.height ?? 0);
 
     if (firstRowsHeight <= pageUsableHeight) {
       ensureSpace(firstRowsHeight);
     }
 
-    drawRow(headerRow, true);
+    if (withHeader) {
+      drawRow(headerRow, true);
+    }
 
     for (const row of bodyRows) {
       drawRow(row, false);
@@ -2205,7 +2513,7 @@ export async function buildPdfBlob(
         renderHeading(block);
         break;
       case "paragraph":
-        renderParagraph(block.text);
+        renderParagraph(block);
         break;
       case "code":
         renderCodeBlock(block.code, block.lang);
@@ -2270,25 +2578,7 @@ export async function buildPdfBlob(
       textColor = TEXT_COLOR;
     }
 
-    const endPage = doc.getNumberOfPages();
-    const endY = y - bodyLineHeight * 0.9;
-    const lineWidth = doc.getLineWidth();
-
-    doc.setDrawColor(208, 215, 222);
-    doc.setLineWidth(0.6);
-
-    for (let page = startPage; page <= endPage; page++) {
-      doc.setPage(page);
-
-      const top = page === startPage ? startY : pdf.marginTop - bodyLineHeight * 0.8;
-      const bottom = page === endPage ? endY : contentBottom;
-
-      if (bottom > top) {
-        doc.line(pdf.marginLeft + 1, top, pdf.marginLeft + 1, bottom);
-      }
-    }
-
-    doc.setLineWidth(lineWidth);
+    drawSideBar(startPage, startY, y - bodyLineHeight * 0.9, pdf.marginLeft + 1, 0.6);
     y += bodyLineHeight * 0.4;
   }
 

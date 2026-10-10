@@ -13,9 +13,10 @@
  * (`matched_text`) cites: its `items`, with title and link. A
  * "sources_footnote" reference is the list ChatGPT shows under
  * the answer. Older browsing replies used "【11†source】" markers
- * with metadata.citations instead. Each marker becomes a note
- * (see reply-sources.ts); any marker left over is removed, so no
- * "citeturn0search3" ends up in a Markdown or text file.
+ * with metadata.citations instead, and newer ones write a
+ * <Cite refs={[...]}/> component (see citeHits). Each marker becomes
+ * a note (see reply-sources.ts); any marker left over is removed, so
+ * no "citeturn0search3" ends up in a Markdown or text file.
  *
  * Thinking. A reasoning model's thoughts are messages of their
  * own between the question and the answer ("thoughts", with a
@@ -64,6 +65,9 @@ const PUA_HIGHLIGHT_RE = new RegExp(`[${PUA_HIGHLIGHT}]`, "g");
 
 /* "【11†source】", "【3†L45-L52】" - the older browsing citations */
 const LEGACY_MARKER_RE = /【(\d+)†[^】]{0,200}】/g;
+
+/* A citation marker of any kind: Private Use Area, 【n†…】 or <Cite/> */
+const MARKER_RE = new RegExp(`${PUA_OPEN}|【|<Cite\\b`);
 
 /*
  * The sources one reference cites: its items and the sites that
@@ -160,6 +164,153 @@ function overlaps(hits: MarkerHit[], start: number, end: number): boolean {
 }
 
 /*
+ * ---------------------------------------------------------
+ * <Cite refs={[...]}/>
+ * ---------------------------------------------------------
+ *
+ * Newer replies write a citation as a UI component in the text,
+ * naming the search results it cites by ref id:
+ *
+ *   <Cite refs={["turn501132search2","turn501132search0"]}/>
+ *
+ * "turn501132search2" is result 2 of the search made in turn
+ * 501132. The search results - in the reply's metadata, or a tool
+ * message's in its turn - carry the same three parts as a ref_id
+ * ({ turn_index, ref_type, ref_index }), and a cited item lists them
+ * as its refs. A ref nothing describes is dropped.
+ */
+const REF_NAME_RE = /^turn\d+[a-z_]+\d+$/i;
+const REF_NAMES_RE = /turn\d+[a-z_]+\d+/gi;
+const CITE_TAG_RE = /[ \t]*<Cite\b[^<>]*>/g;
+
+/* Code shows a tag as it is: fenced blocks, <CodeBlock> bodies and `spans` */
+const CODE_RE =
+  /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[`~]*[ \t]*$|(?![\s\S]))|<CodeBlock\b[\s\S]*?(?:<\/CodeBlock>|(?![\s\S]))|(`+)(?!`)[\s\S]*?(?<!`)\2(?!`)/gm;
+
+function refName(value: unknown): string {
+  if (typeof value === "string") {
+    return REF_NAME_RE.test(value) ? value.toLowerCase() : "";
+  }
+
+  if (
+    isRecord(value) &&
+    Number.isInteger(value.turn_index) &&
+    typeof value.ref_type === "string" &&
+    /^[a-z_]+$/i.test(value.ref_type) &&
+    Number.isInteger(value.ref_index)
+  ) {
+    return `turn${value.turn_index}${value.ref_type}${value.ref_index}`.toLowerCase();
+  }
+
+  return "";
+}
+
+type CitedResult = { url: string; title: string };
+
+/*
+ * Every search result the turn's messages describe, by its ref
+ * name: a result with a link and a ref_id, an item with a link and
+ * refs, or a reference whose marker names as many refs as it has
+ * items.
+ */
+function citedResults(metadata: unknown[]): Map<string, CitedResult> {
+  const found = new Map<string, CitedResult>();
+  let budget = 100_000;
+
+  const add = (name: string, item: Record<string, unknown>): void => {
+    const url = stringValue(item.url);
+
+    if (name && url && !found.has(name)) {
+      found.set(name, {
+        url,
+        title: stringValue(item.title) || stringValue(item.attribution),
+      });
+    }
+  };
+
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 12 || budget-- <= 0) {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+
+    if (!isRecord(value)) {
+      return;
+    }
+
+    add(refName(value.ref_id), value);
+
+    for (const ref of Array.isArray(value.refs) ? value.refs : []) {
+      add(refName(ref), value);
+    }
+
+    const names = stringValue(value.matched_text).match(REF_NAMES_RE) ?? [];
+    const items = records(value.items);
+
+    if (names.length > 0 && names.length === items.length) {
+      names.forEach((name, index) => add(name.toLowerCase(), items[index]));
+    }
+
+    for (const child of Object.values(value)) {
+      visit(child, depth + 1);
+    }
+  };
+
+  metadata.forEach((item) => visit(item, 0));
+
+  return found;
+}
+
+/* The <Cite> tags outside code, each a note for the results it names */
+function citeHits(
+  text: string,
+  metadata: unknown[],
+  sources: ReplySources,
+): MarkerHit[] {
+  if (!text.includes("<Cite")) {
+    return [];
+  }
+
+  const code = [...text.matchAll(CODE_RE)].map((match) => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }));
+  let results: Map<string, CitedResult> | undefined;
+  const hits: MarkerHit[] = [];
+
+  for (const match of text.matchAll(CITE_TAG_RE)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+
+    if (code.some((range) => start < range.end && range.start < end)) {
+      continue;
+    }
+
+    hits.push({
+      start,
+      end,
+      replace: () => {
+        results ??= citedResults(metadata);
+
+        return sources.note(
+          (match[0].match(REF_NAMES_RE) ?? []).map((name) => {
+            const result = results?.get(name.toLowerCase());
+
+            return result ? sources.add(result.url, result.title) : null;
+          }),
+        );
+      },
+    });
+  }
+
+  return hits;
+}
+
+/*
  * The older "【n†...】" markers: metadata.citations gives each one's
  * position (start_ix/end_ix) and source; a marker whose position
  * doesn't line up is matched by its number instead, and one that
@@ -229,12 +380,15 @@ function legacyHits(
 /*
  * The reply's text with its citations as notes, its sources added
  * to `sources` - in the order the reply cites them, then the rest
- * of ChatGPT's own source list.
+ * of ChatGPT's own source list. `turnMetadata` is the metadata of
+ * the other messages in the reply's turn (its tool calls), where a
+ * <Cite>'s search results can be.
  */
 export function convertChatGptCitations(
   text: string,
   metadata: unknown,
   sources: ReplySources,
+  turnMetadata: unknown[] = [],
 ): string {
   const meta = isRecord(metadata) ? metadata : {};
   const references = records(meta.content_references);
@@ -243,12 +397,16 @@ export function convertChatGptCitations(
   /*
    * Longest markers are found first: a marker citing several
    * results ("...turn0search1...turn0search4") contains the text
-   * of one citing only the first.
+   * of one citing only the first. A UI widget's reference
+   * ("client_defined_widget": a code block, a draft) quotes the
+   * reply's own text - an "Expected output" block was deleted as a
+   * citation that cited nothing.
    */
   const inline = references
     .filter(
       (reference) =>
         reference.type !== "sources_footnote" &&
+        reference.type !== "client_defined_widget" &&
         stringValue(reference.matched_text).trim() !== "",
     )
     .sort(
@@ -258,6 +416,9 @@ export function convertChatGptCitations(
 
   for (const reference of inline) {
     const marker = stringValue(reference.matched_text);
+    // What only marks a citation - nothing of the reply's own text -
+    // may go when it cites nothing.
+    const isMarker = MARKER_RE.test(marker);
 
     // Image search results are a picture carousel in ChatGPT.
     const replace =
@@ -268,7 +429,9 @@ export function convertChatGptCitations(
               referenceSources(reference).map((source) =>
                 sources.add(source.url, source.title),
               ),
-            ) || altText(reference);
+            ) ||
+            altText(reference) ||
+            (isMarker ? "" : marker);
 
     for (let from = 0; ; ) {
       const start = text.indexOf(marker, from);
@@ -289,6 +452,9 @@ export function convertChatGptCitations(
 
   hits.push(
     ...legacyHits(text, meta, sources).filter(
+      (hit) => !overlaps(hits, hit.start, hit.end),
+    ),
+    ...citeHits(text, [meta, ...turnMetadata], sources).filter(
       (hit) => !overlaps(hits, hit.start, hit.end),
     ),
   );
@@ -374,6 +540,49 @@ function thinkingPieces(message: ChatGptMessageLike): string[] {
   const title = stringValue(message.metadata?.reasoning_title).trim();
 
   return title ? [`*${title}*`] : [];
+}
+
+/*
+ * The other messages of a reply's turn - its tool calls and what
+ * they returned - oldest first: up from the reply to the question,
+ * or, on a page without parent links, those of its
+ * turn_exchange_id.
+ */
+export function chatGptTurn(
+  reply: ChatGptMessageLike,
+  byId: Map<string, ChatGptMessageLike>,
+  parentOf: (message: ChatGptMessageLike) => string | null,
+): ChatGptMessageLike[] {
+  const turn: ChatGptMessageLike[] = [];
+  const visited = new Set<string>();
+
+  for (let id = parentOf(reply); id && !visited.has(id) && visited.size < 500; ) {
+    visited.add(id);
+
+    const message = byId.get(id);
+
+    if (
+      !message ||
+      (message.author?.role === "user" &&
+        message.metadata?.is_visually_hidden_from_conversation !== true)
+    ) {
+      break;
+    }
+
+    turn.unshift(message);
+    id = parentOf(message);
+  }
+
+  const exchange = stringValue(reply.metadata?.turn_exchange_id);
+
+  return turn.length === 0 && exchange
+    ? [...byId.values()].filter(
+        (message) =>
+          message !== reply &&
+          message.author?.role !== "user" &&
+          stringValue(message.metadata?.turn_exchange_id) === exchange,
+      )
+    : turn;
 }
 
 /*

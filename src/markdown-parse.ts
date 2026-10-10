@@ -343,17 +343,37 @@ export function parseInline(raw: string, style: InlineStyle = {}): InlineRun[] {
  * BLOCK PARSING
  * ---------------------------------------------------------
  */
+/*
+ * `small`: small print - a "<small>...</small>" paragraph (a ChatGPT
+ * note, see chatgpt-components.ts) - set smaller and gray.
+ * A list's `nesting` says, item by item, how deep it's nested (0 for
+ * the outer list) and whether its own list is numbered; it's only
+ * there when some item is nested.
+ */
 export type Block =
   | { type: "heading"; level: number; text: string }
-  | { type: "paragraph"; text: string }
+  | { type: "paragraph"; text: string; small?: boolean }
   | { type: "code"; code: string; lang?: string }
-  | { type: "list"; ordered: boolean; items: string[] }
+  | {
+      type: "list";
+      ordered: boolean;
+      items: string[];
+      nesting?: { level: number; ordered: boolean }[];
+    }
   | { type: "table"; header: string[]; rows: string[][] }
   | { type: "blockquote"; text: string }
   | { type: "hr" };
 
 export function isTableSeparatorLine(line: string): boolean {
   return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line);
+}
+
+/*
+ * A table whose header cells are all empty ("| | |") has no header
+ * row - a ChatGPT summary card's label | value rows, say.
+ */
+export function tableHasHeader(header: string[]): boolean {
+  return header.some((cell) => cell.trim() !== "");
 }
 
 function splitTableRow(line: string): string[] {
@@ -485,6 +505,9 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
     if (listItemMatch) {
       const ordered = /^\d+\.$/.test(listItemMatch[2]);
       const items: string[] = [];
+      const nesting: { level: number; ordered: boolean }[] = [];
+      // The indentation of each list the current item is inside
+      const indents: number[] = [];
 
       while (i < lines.length) {
         const itemMatch = lines[i].match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
@@ -503,11 +526,30 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
           break;
         }
 
+        const indent = itemMatch[1].replace(/\t/g, "    ").length;
+
+        while (indents.length > 0 && indent < indents[indents.length - 1]) {
+          indents.pop();
+        }
+
+        if (indents.length === 0 || indent > indents[indents.length - 1]) {
+          indents.push(indent);
+        }
+
+        nesting.push({
+          level: indents.length - 1,
+          ordered: /^\d+\.$/.test(itemMatch[2]),
+        });
         items.push(itemMatch[3]);
         i++;
       }
 
-      blocks.push({ type: "list", ordered, items });
+      blocks.push({
+        type: "list",
+        ordered,
+        items,
+        ...(nesting.some((item) => item.level > 0) ? { nesting } : {}),
+      });
       continue;
     }
 
@@ -531,7 +573,14 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
       i++;
     }
 
-    blocks.push({ type: "paragraph", text: joinLines(paraLines, hardBreaks) });
+    const text = joinLines(paraLines, hardBreaks);
+    const small = /^\s*<small>([\s\S]*)<\/small>\s*$/.exec(text);
+
+    blocks.push(
+      small
+        ? { type: "paragraph", text: small[1], small: true }
+        : { type: "paragraph", text },
+    );
   }
 
   return blocks;

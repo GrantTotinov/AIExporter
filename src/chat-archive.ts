@@ -25,6 +25,7 @@
  * inflated with the browser's DecompressionStream.
  */
 import type { Message } from "./export-builders.ts";
+import { convertChatGptComponents } from "./chatgpt-components.ts";
 
 export type ArchiveSource = "chatgpt" | "claude";
 
@@ -340,6 +341,13 @@ function chatGptConversation(item: Record<string, unknown>): ArchivedConversatio
 
   if (!id || messages.length === 0) {
     return null;
+  }
+
+  // Its UI components (<CodeBlock>, <Cite/>...) as Markdown
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      message.content = convertChatGptComponents(message.content);
+    }
   }
 
   return finish({

@@ -29,6 +29,7 @@ import {
   type ChatSite,
 } from "./chat-sites.ts";
 import { buildClipboardContent } from "./clipboard-export.ts";
+import { convertChatGptReplies } from "./chatgpt-components.ts";
 import type { ExportImageFile, Message } from "./export-builders.ts";
 import { loadSettings, type Settings } from "./settings.ts";
 import {
@@ -238,9 +239,10 @@ function isValidBinaryExportContent(value: unknown): value is string {
     value.length > 0 &&
     value.length <= MAX_BINARY_EXPORT_CONTENT_LENGTH &&
     value.length % 4 === 0 &&
-    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-      value,
-    )
+    // Not /^(?:[A-Za-z0-9+/]{4})*...$/: repeating a group a million
+    // times overflows the regex engine's stack ("Maximum call stack
+    // size exceeded" on a long chat's picture).
+    /^[A-Za-z0-9+/]*={0,2}$/.test(value)
   );
 }
 
@@ -725,7 +727,10 @@ async function copyChatWithShortcut(
       throw new Error(response?.error ?? t("popup.error.loadConversationFailed"));
     }
 
-    const messages = ((response.data?.messages ?? []) as Message[])
+    const messages = convertChatGptReplies(
+      (response.data?.messages ?? []) as Message[],
+      getChatSite(tab.url),
+    )
       .slice()
       .sort((a, b) => a.order - b.order);
 
@@ -1655,7 +1660,7 @@ async function loadBackupFiles(
       return await buildBackupFiles(
         site,
         conversation,
-        [...data.messages].sort((a, b) => a.order - b.order),
+        [...convertChatGptReplies(data.messages, site)].sort((a, b) => a.order - b.order),
         data.images ?? [],
         format,
         settings,

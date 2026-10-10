@@ -19,6 +19,7 @@ import { stripMarkdown } from "./markdown-strip.ts";
 import { highlightCode, resolveLanguage } from "./code-highlight.ts";
 import {
   parseInline,
+  tableHasHeader,
   type Block,
   type InlineRun,
   type InlineStyle,
@@ -45,6 +46,7 @@ import {
   type MessageSource,
 } from "./source-notes.ts";
 import { isoTime, messageTime } from "./message-details.ts";
+import { isRtlParagraph } from "./bidi.ts";
 
 /* Links that may be followed from the page: no javascript: or data: */
 const SAFE_LINK_RE = /^(?:https?:|mailto:)/i;
@@ -146,6 +148,7 @@ li { margin: 4px 0; }
 a { color: var(--link); }
 hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 blockquote { padding: 2px 16px; border-inline-start: 4px solid var(--border); color: var(--muted); }
+p.small { color: var(--muted); font-size: 14px; }
 code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: .9em; }
 :not(pre) > code { padding: .15em .35em; border-radius: 6px; background: var(--soft); }
 .code { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--code-bg); overflow: hidden; }
@@ -311,6 +314,7 @@ const CLIPBOARD_STYLES: Record<string, string> = {
     "padding:4px 10px;border-bottom:1px solid #d0d7de;color:#656d76;font:600 12px Consolas,Menlo,monospace",
   "math-source": "font-family:Consolas,Menlo,monospace",
   note: "font-size:0.75em",
+  small: "color:#656d76;font-size:0.85em",
   sources: "font-size:0.9em",
   "sources-title": "margin:0;color:#656d76;font-weight:700",
   "source-host": "color:#656d76",
@@ -348,8 +352,8 @@ function withInlineStyles(html: string): string {
       `<pre style="margin:0;padding:8px 10px;white-space:pre-wrap"><code style="${MONOSPACE};font-size:13px">`,
     )
     .replace(/<code>/g, `<code style="${MONOSPACE};background:#f6f8fa">`)
-    .replace(/<table>/g, '<table style="border-collapse:collapse">')
-    .replace(/<(th|td) dir="auto">/g, '<$1 dir="auto" style="border:1px solid #d0d7de;padding:4px 8px">');
+    .replace(/<table( dir="(?:ltr|rtl)")>/g, '<table$1 style="border-collapse:collapse">')
+    .replace(/<(th|td)>/g, '<$1 style="border:1px solid #d0d7de;padding:4px 8px">');
 }
 
 export function buildClipboardHtml(
@@ -587,37 +591,87 @@ function renderBlock(block: Block, inline: InlineRenderer): string {
       return `<h${level} dir="auto">${inline(block.text)}</h${level}>`;
     }
     case "paragraph":
-      return `<p dir="auto">${inline(block.text)}</p>`;
+      return block.small
+        ? `<p class="small" dir="auto">${inline(block.text)}</p>`
+        : `<p dir="auto">${inline(block.text)}</p>`;
     case "blockquote":
       return `<blockquote dir="auto"><p>${inline(block.text)}</p></blockquote>`;
-    case "list": {
-      const tag = block.ordered ? "ol" : "ul";
-      const items = block.items
-        .map((item) => `<li dir="auto">${inline(item)}</li>`)
-        .join("");
-
-      return `<${tag}>${items}</${tag}>`;
-    }
+    case "list":
+      return renderList(block, inline);
     case "table": {
-      const head = block.header
-        .map((cell) => `<th dir="auto">${inline(cell)}</th>`)
-        .join("");
+      // The table reads in its header's direction, and so do its
+      // cells, as on the chat page (see renderTable in pdf-export.ts).
+      const withHeader = tableHasHeader(block.header);
+      const dir = isRtlParagraph(
+        (withHeader ? block.header : (block.rows[0] ?? [])).join(" "),
+      )
+        ? "rtl"
+        : "ltr";
+      const head = withHeader
+        ? `<thead><tr>${block.header
+            .map((cell) => `<th>${inline(cell)}</th>`)
+            .join("")}</tr></thead>`
+        : "";
       const rows = block.rows
         .map(
           (row) =>
             `<tr>${block.header
-              .map((_, column) => `<td dir="auto">${inline(row[column] ?? "")}</td>`)
+              .map((_, column) => `<td>${inline(row[column] ?? "")}</td>`)
               .join("")}</tr>`,
         )
         .join("\n");
 
-      return `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>\n${rows}\n</tbody></table></div>`;
+      return `<div class="table-wrap"><table dir="${dir}">${head}<tbody>\n${rows}\n</tbody></table></div>`;
     }
     case "code":
       return renderCode(block.code, block.lang);
     case "hr":
       return "<hr>";
   }
+}
+
+/*
+ * A list with its nested items in lists of their own, each inside
+ * the item above it.
+ */
+function renderList(
+  block: Extract<Block, { type: "list" }>,
+  inline: InlineRenderer,
+): string {
+  const open: string[] = [];
+  let html = "";
+
+  block.items.forEach((item, index) => {
+    const { level, ordered } = block.nesting?.[index] ?? {
+      level: 0,
+      ordered: block.ordered,
+    };
+    const tag = ordered ? "ol" : "ul";
+
+    while (
+      open.length > level + 1 ||
+      (open.length === level + 1 && open[level] !== tag)
+    ) {
+      html += `</li></${open.pop()}>`;
+    }
+
+    if (open.length === level + 1) {
+      html += "</li>";
+    }
+
+    while (open.length < level + 1) {
+      open.push(tag);
+      html += `<${tag}>`;
+    }
+
+    html += `<li dir="auto">${inline(item)}`;
+  });
+
+  while (open.length > 0) {
+    html += `</li></${open.pop()}>`;
+  }
+
+  return html;
 }
 
 function renderCode(code: string, lang?: string): string {

@@ -23,6 +23,7 @@ import {
   type Message,
 } from "./export-builders.ts";
 import { buildHandoffPrompt } from "./handoff.ts";
+import { convertChatGptReplies } from "./chatgpt-components.ts";
 import { buildCitations, type Citations } from "./citation.ts";
 import {
   CHAT_SITES,
@@ -896,7 +897,7 @@ async function loadConversationMessages(
       messages: Message[];
       images: ExportImageFile[];
     };
-    const messages = loadResult.messages;
+    const messages = convertChatGptReplies(loadResult.messages, site);
     const images = loadResult.images ?? [];
 
     devLog(`AI Exporter: received ${messages.length} messages`);

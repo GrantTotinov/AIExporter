@@ -63,9 +63,14 @@ import {
 import {
   chatGptModel,
   chatGptThinking,
+  chatGptTurn,
   convertChatGptCitations,
 } from "./chatgpt-reply.ts";
-import { messageMetadata, timeFromSeconds } from "./message-metadata.ts";
+import {
+  messageMetadata,
+  timeFromIso,
+  timeFromSeconds,
+} from "./message-metadata.ts";
 import {
   buildDeepSeekHistoryPath,
   buildDeepSeekListPath,
@@ -819,8 +824,67 @@ function getTurnExchangeId(message: ApiMessage): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/*
+ * When a message was sent, in seconds: ChatGPT's own number, or an
+ * ISO 8601 date (see message-metadata.ts).
+ */
+function getApiMessageSeconds(message: ApiMessage): number | undefined {
+  const value: unknown = message.create_time;
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  const time = timeFromIso(value);
+
+  return time === undefined ? undefined : time / 1000;
+}
+
 function getApiMessageTime(message: ApiMessage): number {
-  return message.create_time ?? Number.MAX_SAFE_INTEGER;
+  return getApiMessageSeconds(message) ?? Number.MAX_SAFE_INTEGER;
+}
+
+/*
+ * A picture ChatGPT made: image generation answers with a tool
+ * message holding the picture (multimodal_text with an
+ * image_asset_pointer), filled in when the generation - which runs
+ * on its own, after the turn - is done, and often no reply text at
+ * all.
+ */
+function isImageToolMessage(message: ApiMessage): boolean {
+  return (
+    message.author?.role === "tool" &&
+    !message.metadata?.is_visually_hidden_from_conversation &&
+    getApiMessageImageParts(message).length > 0
+  );
+}
+
+/*
+ * The branch on screen: current_node, its parent, and so on up to
+ * where the conversation starts - tool messages included - oldest
+ * first. Only messages the pages hold are followed, so it stops
+ * short (at current_node) when they carry no parent links.
+ */
+function activeBranch(
+  rawById: Map<string, ApiMessage>,
+  currentNode: string | null,
+): ApiMessage[] {
+  const branch: ApiMessage[] = [];
+  const seen = new Set<string>();
+
+  for (let id = currentNode; id && !seen.has(id); ) {
+    const message = rawById.get(id);
+
+    if (!message) {
+      break;
+    }
+
+    seen.add(id);
+    branch.push(message);
+    id = getApiMessageParentId(message);
+  }
+
+  return branch.reverse();
 }
 
 function resolveActiveMessages(
@@ -829,41 +893,63 @@ function resolveActiveMessages(
   currentNode: string | null,
   downloadImagesLocally: boolean,
 ): ApiMessage[] {
+  const shown = (message: ApiMessage): boolean =>
+    isExportableApiMessage(message, downloadImagesLocally) ||
+    (downloadImagesLocally && isImageToolMessage(message));
+  const branch = activeBranch(rawById, currentNode).filter(shown);
+
+  if (branch.some((message) => message.author?.role === "user")) {
+    return branch;
+  }
+
   const exportable = Array.from(collected.values());
   const turnGroups = new Map<
     string,
-    { user?: ApiMessage; assistant?: ApiMessage }
+    { user?: ApiMessage; assistant?: ApiMessage; pictures: ApiMessage[] }
   >();
 
-  for (const message of exportable) {
+  for (const message of [...exportable, ...rawById.values()]) {
     const turnId = getTurnExchangeId(message);
 
     if (!turnId) {
       continue;
     }
 
-    const group = turnGroups.get(turnId) ?? {};
+    const group = turnGroups.get(turnId) ?? { pictures: [] };
 
-    if (message.author?.role === "user") {
+    if (collected.has(message.id ?? "") && message.author?.role === "user") {
       group.user = message;
-    } else if (message.author?.role === "assistant") {
+    } else if (collected.has(message.id ?? "") && message.author?.role === "assistant") {
       group.assistant = message;
+    } else if (
+      downloadImagesLocally &&
+      isImageToolMessage(message) &&
+      !group.pictures.includes(message)
+    ) {
+      group.pictures.push(message);
     }
 
     turnGroups.set(turnId, group);
   }
 
-  const completeTurns = Array.from(turnGroups.values()).filter(
-    (turn): turn is { user: ApiMessage; assistant: ApiMessage } =>
-      Boolean(turn.user && turn.assistant),
+  // A turn whose answer is only a picture - or none yet - still has
+  // its question.
+  const groupedTurns = Array.from(turnGroups.values()).filter(
+    (turn): turn is { user: ApiMessage; assistant?: ApiMessage; pictures: ApiMessage[] } =>
+      Boolean(turn.user),
   );
 
-  if (completeTurns.length > 0) {
-    completeTurns.sort(
-      (a, b) => getApiMessageTime(a.assistant) - getApiMessageTime(b.assistant),
-    );
+  if (groupedTurns.some((turn) => turn.assistant)) {
+    const turnTime = (turn: (typeof groupedTurns)[number]) =>
+      getApiMessageTime(turn.assistant ?? turn.pictures[0] ?? turn.user);
 
-    return completeTurns.flatMap(({ user, assistant }) => [user, assistant]);
+    groupedTurns.sort((a, b) => turnTime(a) - turnTime(b));
+
+    return groupedTurns.flatMap(({ user, assistant, pictures }) => [
+      user,
+      ...(assistant ? [assistant] : []),
+      ...pictures.sort((a, b) => getApiMessageTime(a) - getApiMessageTime(b)),
+    ]);
   }
 
   const users = exportable
@@ -1617,9 +1703,9 @@ function fetchImageFile(
         downloaded.sizeBytes <= 0 ||
         downloaded.sizeBytes > 8 * 1024 * 1024 ||
         downloaded.base64.length !== Math.ceil(downloaded.sizeBytes / 3) * 4 ||
-        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-          downloaded.base64,
-        )
+        // A repeated group would overflow the regex engine's stack on
+        // a picture of a few megabytes (see background.ts).
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(downloaded.base64)
       ) {
         finishError(new Error("ChatGPT returned an invalid image file."));
 
@@ -1952,13 +2038,14 @@ async function loadEntireConversation(
 
       if (
         !id ||
-        (role !== "user" && role !== "assistant") ||
+        (role !== "user" && role !== "assistant" && role !== "tool") ||
         !extracted.content
       ) {
         return null;
       }
 
-      const time = timeFromSeconds(message.create_time);
+      const seconds = getApiMessageSeconds(message);
+      const time = seconds === undefined ? undefined : timeFromSeconds(seconds);
 
       if (role === "user") {
         return {
@@ -1971,13 +2058,34 @@ async function loadEntireConversation(
         };
       }
 
-      // Citations become notes; the thinking comes from the
-      // reasoning messages before the reply.
+      // A picture ChatGPT made is part of the reply, by the model that
+      // called the image tool.
+      if (role === "tool") {
+        const model = [message, ...chatGptTurn(message, rawById, getApiMessageParentId).reverse()]
+          .map((step) => chatGptModel(step.metadata))
+          .find(Boolean);
+
+        return {
+          id,
+          role: "assistant",
+          content: extracted.content,
+          order,
+          imagePaths: extracted.imagePaths,
+          ...messageMetadata(time, model),
+        };
+      }
+
+      // Citations become notes - the search results a <Cite> names
+      // can be in the metadata of the turn's tool calls - and the
+      // thinking comes from the reasoning messages before the reply.
       const sources = new ReplySources();
       const content = convertChatGptCitations(
         extracted.content,
         message.metadata,
         sources,
+        chatGptTurn(message, rawById, getApiMessageParentId).map(
+          (step) => step.metadata,
+        ),
       );
       const thinking = chatGptThinking(message, rawById, getApiMessageParentId);
 
@@ -1993,9 +2101,30 @@ async function loadEntireConversation(
     }),
   );
 
-  const result = convertedMessages
-    .filter((message): message is Message => message !== null)
-    .map((message, order) => ({ ...message, order }));
+  // A reply and the picture made for it are one message.
+  const result: Message[] = [];
+
+  for (const message of convertedMessages) {
+    const last = result[result.length - 1];
+
+    if (!message) {
+      continue;
+    }
+
+    if (
+      last?.role === "assistant" &&
+      message.role === "assistant" &&
+      !message.sources &&
+      !message.thinking
+    ) {
+      last.content = `${last.content}\n\n${message.content}`;
+      last.imagePaths = [...(last.imagePaths ?? []), ...(message.imagePaths ?? [])];
+      last.model ??= message.model;
+      continue;
+    }
+
+    result.push({ ...message, order: result.length });
+  }
   const settledImages = await Promise.allSettled(imageFileCache.values());
   const images = settledImages.flatMap((item) =>
     item.status === "fulfilled" ? [item.value] : [],

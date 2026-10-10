@@ -10,16 +10,59 @@
  * arbitrary user-supplied Markdown, so the syntax space
  * we need to handle is limited and predictable.
  */
+/* Stands in for a code block while the rest is stripped */
+const HELD = String.fromCharCode(0);
+const HELD_RE = new RegExp(`${HELD}(\\d+)${HELD}`, "g");
+
+/* "| a | b |" -> ["a", "b"] */
+function tableCells(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
 export function stripMarkdown(markdown: string): string {
-  let text = markdown;
+  const code: string[] = [];
 
   /*
    * Fenced code blocks: drop the ``` fences and any
-   * language tag, keep the code content as-is.
+   * language tag, keep the code content as-is - held aside
+   * meanwhile, so nothing below touches the code (a template
+   * literal's backticks, a "**kwargs").
    */
-  text = text.replace(/```[^\n]*\n([\s\S]*?)```/g, (_match, code: string) =>
-    code.replace(/\n$/, ""),
+  let text = markdown.replace(
+    /^[ \t]*(`{3,}|~{3,})[^\n]*\n([\s\S]*?)^[ \t]*\1[`~]*[ \t]*$/gm,
+    (_match, _fence: string, body: string) => {
+      code.push(body.replace(/\n$/, ""));
+      return `${HELD}${code.length - 1}${HELD}`;
+    },
   );
+
+  /*
+   * A table without a header row - a ChatGPT summary card's
+   * "| label | value |" rows (see chatgpt-components.ts) - reads
+   * "label: value", a line each.
+   */
+  text = text.replace(
+    /^\|[ \t]*\|[ \t]*\|[ \t]*\n\|[ \t]*:?-+:?[ \t]*\|[ \t]*:?-+:?[ \t]*\|[ \t]*\n((?:\|.*\|[ \t]*(?:\n|$))+)/gm,
+    (_match, rows: string) =>
+      rows
+        .trimEnd()
+        .split("\n")
+        .map((row) => {
+          const [label = "", value = ""] = tableCells(row);
+
+          return value ? `${label.replace(/:$/, "")}: ${value}` : label;
+        })
+        .join("\n") + "\n",
+  );
+
+  /*
+   * Small print (a "<small>" paragraph): its text.
+   */
+  text = text.replace(/<small>([\s\S]*?)<\/small>/g, "$1");
 
   /*
    * Inline code.
@@ -80,9 +123,16 @@ export function stripMarkdown(markdown: string): string {
   text = text.replace(/^---+$/gm, "----------");
 
   /*
+   * A hard line break's trailing spaces.
+   */
+  text = text.replace(/[ \t]+$/gm, "");
+
+  /*
    * Collapse 3+ blank lines down to at most one.
    */
   text = text.replace(/\n{3,}/g, "\n\n");
 
-  return text.trim();
+  return text
+    .replace(HELD_RE, (_match, index: string) => code[Number(index)])
+    .trim();
 }

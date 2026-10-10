@@ -156,3 +156,19 @@ describe("plain text", () => {
     expect(sourceLabel({ title: "", url: "" })).toBe("Source");
   });
 });
+
+describe("bracketNotes and small print", () => {
+  it("writes a ChatGPT note's text without its <small> tags, but not in code", () => {
+    const content = [
+      "<small>Planning note: depart from Osaka.</small>",
+      "",
+      "```html",
+      "<small>Tax included</small>",
+      "```",
+    ].join("\n");
+
+    expect(bracketNotes(content, [])).toBe(
+      ["Planning note: depart from Osaka.", "", "```html", "<small>Tax included</small>", "```"].join("\n"),
+    );
+  });
+});

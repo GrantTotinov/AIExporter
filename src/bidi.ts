@@ -8,13 +8,17 @@
  * glyph, so text has to be put into visual order before it's
  * drawn - the job a browser's bidi engine does for the chat page.
  *
- * This is the Unicode Bidirectional Algorithm (UAX #9) for one
- * line of plain text: weak types (W1-W7), neutrals (N1-N2),
- * implicit levels (I1-I2), trailing whitespace (L1), reordering
- * (L2) and mirrored brackets (L4), with combining marks kept after
- * their base letter (L3) so harakat and niqqud land on the right
- * glyph. Explicit embeddings and isolates (RLE, LRI...), which chat
- * replies don't use, are treated as neutrals.
+ * This is the Unicode Bidirectional Algorithm (UAX #9) for plain
+ * text: weak types (W1-W7), bracket pairs (N0), neutrals (N1-N2)
+ * and implicit levels (I1-I2) for a whole paragraph
+ * (paragraphLevels), then for each of its lines trailing whitespace
+ * (L1, lineLevels), reordering (L2) and mirrored brackets (L4), with
+ * combining marks kept after their base letter (L3) so harakat and
+ * niqqud land on the right glyph. Levels are resolved before the
+ * paragraph is broken into lines, as the algorithm says: a bracket
+ * pair a line break splits still counts as a pair. Explicit
+ * embeddings and isolates (RLE, LRI...), which chat replies don't
+ * use, are treated as neutrals.
  */
 
 export type BidiClass =
@@ -128,13 +132,68 @@ export function isRtlParagraph(text: string): boolean {
 }
 
 /*
- * Resolves the embedding level of every character (code point) of
- * one line.
+ * Paired brackets (Bidi_Paired_Bracket), an opening one then its
+ * closing one. U+2329/U+232A are the same brackets as U+3008/U+3009.
  */
-export function bidiLevels(chars: string[], rtl: boolean): number[] {
-  const base = rtl ? 1 : 0;
+const BRACKET_PAIRS =
+  "()[]{}༺༻༼༽᚛᚜⁅⁆⁽⁾₍₎⌈⌉⌊⌋❨❩❪❫❬❭❮❯❰❱❲❳❴❵⟅⟆⟦⟧⟨⟩⟪⟫⟬⟭⟮⟯⦃⦄⦅⦆⦇⦈⦉⦊⦋⦌⦍⦎⦏⦐⦑⦒⦓⦔⦕⦖⦗⦘⧘⧙⧚⧛⧼⧽⸢⸣⸤⸥⸦⸧⸨⸩〈〉《》「」『』【】〔〕〖〗〘〙〚〛﹙﹚﹛﹜﹝﹞（）［］｛｝｟｠｢｣";
+const CLOSING_BRACKET = new Map<string, string>();
+const CLOSING_BRACKETS = new Set<string>();
+
+for (let i = 0; i < BRACKET_PAIRS.length; i += 2) {
+  CLOSING_BRACKET.set(BRACKET_PAIRS[i], BRACKET_PAIRS[i + 1]);
+  CLOSING_BRACKETS.add(BRACKET_PAIRS[i + 1]);
+}
+
+function canonicalBracket(char: string): string {
+  return char === "\u{2329}" ? "\u{3008}" : char === "\u{232A}" ? "\u{3009}" : char;
+}
+
+/*
+ * BD16: the bracket pairs, by the positions of their opening and
+ * closing brackets, in the order they open. Only brackets still
+ * neutral (ON) count.
+ */
+function bracketPairs(chars: string[], types: BidiClass[]): [number, number][] {
+  const pairs: [number, number][] = [];
+  const open: { closing: string; index: number }[] = [];
+
+  for (let i = 0; i < chars.length; i++) {
+    if (types[i] !== "ON") {
+      continue;
+    }
+
+    const char = canonicalBracket(chars[i]);
+    const closing = CLOSING_BRACKET.get(char);
+
+    if (closing !== undefined) {
+      // Past 63 open brackets, the rest of the text isn't searched.
+      if (open.length === 63) {
+        break;
+      }
+
+      open.push({ closing, index: i });
+    } else if (CLOSING_BRACKETS.has(char)) {
+      const match = open.findLastIndex((bracket) => bracket.closing === char);
+
+      if (match >= 0) {
+        pairs.push([open[match].index, i]);
+        open.length = match;
+      }
+    }
+  }
+
+  return pairs.sort((a, b) => a[0] - b[0]);
+}
+
+/*
+ * Resolves the embedding level of every character (code point) of
+ * a paragraph, before it's broken into lines (rules W1-I2).
+ */
+export function paragraphLevels(chars: string[], rtl: boolean): number[] {
   const sos: BidiClass = rtl ? "R" : "L";
-  const types = chars.map(bidiClass);
+  const original = chars.map(bidiClass);
+  const types = [...original];
 
   // W1: a mark takes the type of what it's attached to.
   types.forEach((type, i) => {
@@ -209,11 +268,52 @@ export function bidiLevels(chars: string[], rtl: boolean): number[] {
     }
   });
 
-  // N1/N2: neutrals between two runs of one direction take it;
-  // otherwise the paragraph's. Numbers count as R here.
+  // Numbers count as R from here on.
   const strength = (type: BidiClass | undefined): "L" | "R" | null =>
     type === "L" ? "L" : type === "R" || type === "EN" || type === "AN" ? "R" : null;
 
+  /*
+   * N0: a bracket pair takes the paragraph's direction when the text
+   * inside it has some; else the other direction when the text
+   * inside and the text before it both have that; else the
+   * paragraph's. With no strong text inside, it's left to N1/N2.
+   * Marks after a bracket go with it.
+   */
+  for (const [open, close] of bracketPairs(chars, types)) {
+    let inside: "L" | "R" | null = null;
+
+    for (let i = open + 1; i < close && inside !== sos; i++) {
+      inside = strength(types[i]) ?? inside;
+    }
+
+    if (inside === null) {
+      continue;
+    }
+
+    let before: "L" | "R" = sos === "R" ? "R" : "L";
+
+    for (let i = open - 1; i >= 0; i--) {
+      const type = strength(types[i]);
+
+      if (type) {
+        before = type;
+        break;
+      }
+    }
+
+    const resolved = inside === sos || before !== inside ? sos : inside;
+
+    for (const bracket of [open, close]) {
+      types[bracket] = resolved;
+
+      for (let i = bracket + 1; i < chars.length && original[i] === "NSM"; i++) {
+        types[i] = resolved;
+      }
+    }
+  }
+
+  // N1/N2: neutrals between two runs of one direction take it;
+  // otherwise the paragraph's.
   for (let i = 0; i < types.length; i++) {
     if (strength(types[i]) !== null) {
       continue;
@@ -233,20 +333,33 @@ export function bidiLevels(chars: string[], rtl: boolean): number[] {
   }
 
   // I1/I2
-  const levels = types.map((type) => {
-    if (base === 0) {
+  return types.map((type) => {
+    if (!rtl) {
       return type === "R" ? 1 : type === "AN" || type === "EN" ? 2 : 0;
     }
 
     return type === "L" || type === "EN" || type === "AN" ? 2 : 1;
   });
+}
 
-  // L1: whitespace at the end of the line goes back to the base level.
+/*
+ * L1: one line of a paragraph, its levels from paragraphLevels -
+ * whitespace at the end of the line goes back to the paragraph's
+ * level.
+ */
+export function lineLevels(chars: string[], levels: number[], rtl: boolean): number[] {
+  const line = [...levels];
+
   for (let i = chars.length - 1; i >= 0 && /\s/.test(chars[i]); i--) {
-    levels[i] = base;
+    line[i] = rtl ? 1 : 0;
   }
 
-  return levels;
+  return line;
+}
+
+/* The levels of a paragraph that's one line */
+export function bidiLevels(chars: string[], rtl: boolean): number[] {
+  return lineLevels(chars, paragraphLevels(chars, rtl), rtl);
 }
 
 /*

@@ -370,6 +370,28 @@ describe("background.ts download flow (Chrome + Firefox parity)", () => {
       expect(downloadsDownload).not.toHaveBeenCalled();
     });
 
+    it("accepts a file of tens of megabytes", async () => {
+      // A long chat's picture: a regex repeating a group per four
+      // characters overflowed the stack on this.
+      const response = await dispatchMessage(
+        validDownloadStartMessage({
+          filename: "conversation.png",
+          mimeType: "image/png",
+          content: "QUJD".repeat(5_000_000),
+        }),
+      );
+
+      expect(response.success).toBe(true);
+    });
+
+    it("rejects padding anywhere but the end", async () => {
+      const response = await dispatchMessage(
+        validDownloadStartMessage({ content: "QU=I" }),
+      );
+
+      expect(response.success).toBe(false);
+    });
+
     it("rejects a non-boolean saveAs", async () => {
       const response = await dispatchMessage(
         validDownloadStartMessage({ saveAs: "true" }),

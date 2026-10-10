@@ -32,6 +32,7 @@ import {
   type ChatSite,
 } from "./chat-sites.ts";
 import { createZipBlob, decodeBase64, type ZipEntry } from "./zip.ts";
+import { convertChatGptReplies } from "./chatgpt-components.ts";
 import {
   EXPORT_FORMATS,
   buildContentForFormat,
@@ -717,7 +718,9 @@ async function loadConversation(
   }
 
   return {
-    messages: [...data.messages].sort((a, b) => a.order - b.order),
+    messages: [...convertChatGptReplies(data.messages, site)].sort(
+      (a, b) => a.order - b.order,
+    ),
     images: data.images ?? [],
   };
 }

@@ -7,7 +7,9 @@ import {
   parseInline,
   preprocessRawContent,
   readCmapCoverage,
+  tableColumnWidths,
 } from "../src/pdf-export";
+import { tableHasHeader } from "../src/markdown-parse";
 
 const cp = (...codes: number[]) => String.fromCodePoint(...codes);
 
@@ -294,5 +296,91 @@ describe("parseInline", () => {
     expect(parseInline("***both***")).toEqual([
       { text: "both", bold: true, italic: true },
     ]);
+  });
+});
+
+describe("parseBlocks: nested lists, small print, tables without a header", () => {
+  it("records how deep each list item is nested, and its list's kind", () => {
+    const [list] = parseBlocks(
+      "- **Within cities**\n  - Suica card\n  - Maps\n- **Between cities**\n  1. Shinkansen\n     - Reserve seats\n- Luggage",
+    );
+
+    expect(list).toEqual({
+      type: "list",
+      ordered: false,
+      items: ["**Within cities**", "Suica card", "Maps", "**Between cities**", "Shinkansen", "Reserve seats", "Luggage"],
+      nesting: [
+        { level: 0, ordered: false },
+        { level: 1, ordered: false },
+        { level: 1, ordered: false },
+        { level: 0, ordered: false },
+        { level: 1, ordered: true },
+        { level: 2, ordered: false },
+        { level: 0, ordered: false },
+      ],
+    });
+  });
+
+  it("leaves a flat list as it was", () => {
+    expect(parseBlocks("1. One\n2. Two")).toEqual([
+      { type: "list", ordered: true, items: ["One", "Two"] },
+    ]);
+  });
+
+  it("makes a <small> paragraph small print", () => {
+    expect(parseBlocks("<small>Planning note: depart from Osaka.</small>\n\nNext.")).toEqual([
+      { type: "paragraph", text: "Planning note: depart from Osaka.", small: true },
+      { type: "paragraph", text: "Next." },
+    ]);
+  });
+
+  it("knows a table whose header cells are all empty has no header", () => {
+    const [table] = parseBlocks("| | |\n|---|---|\n| Total | **¥255,000** |");
+
+    expect(table).toMatchObject({ type: "table", header: ["", ""], rows: [["Total", "**¥255,000**"]] });
+    expect(tableHasHeader((table as { header: string[] }).header)).toBe(false);
+    expect(tableHasHeader(["Days", ""])).toBe(true);
+  });
+});
+
+describe("tableColumnWidths", () => {
+  const sum = (widths: number[]) => widths.reduce((total, width) => total + width, 0);
+
+  it("keeps short columns narrow and gives long text the rest", () => {
+    // Days | City | Highlights, 180 mm wide
+    const widths = tableColumnWidths([14, 18, 26], [17, 37, 420], 180);
+
+    expect(widths[0]).toBeCloseTo(17);
+    expect(widths[1]).toBeCloseTo(37);
+    expect(widths[2]).toBeCloseTo(126);
+    expect(sum(widths)).toBeCloseTo(180);
+  });
+
+  it("caps a column at 70% and gives the others what's left", () => {
+    const widths = tableColumnWidths([12, 12], [20, 400], 100);
+
+    expect(widths[1]).toBeCloseTo(70);
+    expect(widths[0]).toBeCloseTo(30);
+  });
+
+  it("shares the room by content when no column fits, none below its longest word", () => {
+    const widths = tableColumnWidths([30, 20, 20, 20], [60, 70, 80, 90], 180);
+
+    expect(sum(widths)).toBeCloseTo(180);
+    widths.forEach((width, index) => expect(width).toBeGreaterThanOrEqual([30, 20, 20, 20][index] - 1e-9));
+    expect(widths[3]).toBeGreaterThan(widths[1]);
+  });
+
+  it("stretches a table that fits on one line to the full width", () => {
+    const widths = tableColumnWidths([10, 10], [40, 20], 180);
+
+    expect(sum(widths)).toBeCloseTo(180);
+    expect(widths[0]).toBeCloseTo(120);
+  });
+
+  it("squeezes columns whose longest words don't fit, keeping their proportions", () => {
+    const widths = tableColumnWidths([100, 100, 100], [200, 200, 200], 150);
+
+    expect(widths).toEqual([50, 50, 50]);
   });
 });
