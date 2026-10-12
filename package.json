@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "build:chrome": "npm run build && node -e \"require('fs').copyFileSync('manifest.chrome.json', 'dist/manifest.json')\"",
     "build:firefox": "npm run build && node -e \"require('fs').copyFileSync('manifest.firefox.json', 'dist/manifest.json')\"",
+    "build:edge": "npm run build && node -e \"const fs = require('fs'); const manifest = JSON.parse(fs.readFileSync('manifest.chrome.json', 'utf8')); manifest.name = '__MSG_extNameShort__'; fs.writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2))\"",
     "archive": "node scripts/archive.mjs"
   },
   "devDependencies": {

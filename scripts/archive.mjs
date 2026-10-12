@@ -2,14 +2,15 @@
  * npm run archive
  *
  * Zips the built extension in dist/ for upload to the Chrome Web
- * Store or Firefox Add-ons - run `npm run build:chrome` or
- * `npm run build:firefox` first. The zip is named after the
+ * Store, Firefox Add-ons or Edge Add-ons - run
+ * `npm run build:chrome`, `npm run build:firefox` or
+ * `npm run build:edge` first. The zip is named after the
  * version and browser in the built manifest, e.g.
  * AIExporter-2.3.0-chrome.zip, so a Chrome build can't be uploaded
- * to Firefox by mistake (or vice versa).
+ * to Firefox or Edge by mistake (or vice versa).
  *
  * Plain Node with no dependencies, so it works the same on every
- * OS. Both stores need manifest.json at the root of the zip and
+ * OS. All three stores need manifest.json at the root of the zip and
  * forward slashes in its paths, which is what this writes.
  *
  * It won't zip a build that breaks the stores' rules for
@@ -29,13 +30,25 @@ const manifestPath = join(dist, "manifest.json");
 
 if (!existsSync(manifestPath)) {
   console.error(
-    "dist/manifest.json not found. Run `npm run build:chrome` or `npm run build:firefox` first.",
+    "dist/manifest.json not found. Run `npm run build:chrome`, `npm run build:firefox` or `npm run build:edge` first.",
   );
   process.exit(1);
 }
 
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-const browser = manifest.browser_specific_settings?.gecko ? "firefox" : "chrome";
+
+/*
+ * An Edge build is the Chrome manifest with Firefox's short
+ * name, because Edge Add-ons also refuses a name over 45
+ * characters. The name is the only difference, so it's what
+ * tells the two apart - and an Edge build uploaded to the Chrome
+ * Web Store would quietly shorten the Chrome listing's name.
+ */
+const browser = manifest.browser_specific_settings?.gecko
+  ? "firefox"
+  : manifest.name === "__MSG_extNameShort__"
+    ? "edge"
+    : "chrome";
 
 /*
  * Firefox only hands an update to installs with the same add-on
