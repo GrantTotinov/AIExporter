@@ -285,4 +285,22 @@ describe("checkDist", () => {
       "manifest.json: background names background.js, which isn't in the build",
     ]);
   });
+
+  it("flags a content script that imports a shared chunk", () => {
+    directory = mkdtempSync(join(tmpdir(), "aiexporter-store-rules-"));
+    writeFileSync(join(directory, "content.js"), 'import{a as e}from"./assets/shared-x1.js";e()');
+    writeFileSync(join(directory, "ok.js"), 'let e=1;import("./lazy.js").then(()=>e)');
+
+    const manifest = (js: string) => ({
+      manifest_version: 3,
+      name: "AI Exporter",
+      version: "2.3.0",
+      content_scripts: [{ matches: ["https://claude.ai/*"], js: [js] }],
+    });
+
+    expect(checkDist(directory, [{ label: "m", manifest: manifest("content.js") }])).toEqual([
+      expect.stringMatching(/^m: content script content\.js has an import or export/),
+    ]);
+    expect(checkDist(directory, [{ label: "m", manifest: manifest("ok.js") }])).toEqual([]);
+  });
 });

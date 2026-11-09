@@ -26,7 +26,6 @@
  */
 import type { Message } from "./export-builders.ts";
 import { convertChatGptComponents } from "./chatgpt-components.ts";
-import { claudePastedText } from "./claude-conversation.ts";
 
 export type ArchiveSource = "chatgpt" | "claude";
 
@@ -229,6 +228,26 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/*
+ * Text pasted into a Claude message, as the code block the live
+ * export makes of it (claudePastedText in claude-conversation.ts).
+ * A copy, not an import: a module this page shares with content.ts
+ * becomes a chunk content.js can't load (see MINIMAL LOCAL
+ * TRANSLATIONS in content.ts).
+ */
+function claudePastedText(attachment: Record<string, unknown>): string {
+  const content = text(attachment.file_name).trim()
+    ? ""
+    : text(attachment.extracted_content).replace(/^\n+|\s+$/g, "");
+  const longestInnerFence = Math.max(
+    0,
+    ...Array.from(content.matchAll(/^[ \t]*(`{3,})/gm), (match) => match[1].length),
+  );
+  const fence = "`".repeat(Math.max(3, longestInnerFence + 1));
+
+  return content ? `**Pasted text**\n\n${fence}\n${content}\n${fence}` : "";
 }
 
 function seconds(value: unknown): number | null {

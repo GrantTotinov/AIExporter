@@ -484,9 +484,10 @@ function codeBlock(content: string, language = ""): string {
  * with no file name (shown as "PASTED" on claude.ai). It's part
  * of what the person wrote, so it's kept in full - as a code
  * block, since it's usually code or a log, and a code block keeps
- * its lines as they were. Anything else gives "".
+ * its lines as they were. Anything else gives "". chat-archive.ts
+ * keeps a copy, since content.js can't share a module with it.
  */
-export function claudePastedText(attachment: Record<string, unknown>): string {
+function claudePastedText(attachment: Record<string, unknown>): string {
   const content = stringValue(attachment.file_name)?.trim()
     ? ""
     : (stringValue(attachment.extracted_content) ?? "").replace(

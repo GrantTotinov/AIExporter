@@ -420,6 +420,14 @@ export function findManifestProblems(manifest, hasFile, locales = {}) {
  * "where: what", or an empty list.
  */
 
+/*
+ * Content scripts run as classic scripts, not modules: a static
+ * `import` of a chunk Rollup split off is a syntax error that
+ * stops the whole script. Dynamic import() isn't matched.
+ */
+const MODULE_SYNTAX_RE =
+  /(?:^|[;}\n])\s*(?:import\s*(?:[\w$*{][^;]*?from\s*)?["']|export\s*\{)/;
+
 function listFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -452,6 +460,16 @@ export function checkDist(distDirectory, manifests) {
   const locales = readLocales(join(distDirectory, "_locales"));
 
   for (const { label, manifest } of manifests) {
+    for (const path of manifest.content_scripts?.flatMap((script) => script.js ?? []) ?? []) {
+      const file = join(distDirectory, path.replace(/^\//, ""));
+
+      if (existsSync(file) && MODULE_SYNTAX_RE.test(readFileSync(file, "utf8"))) {
+        problems.push(
+          `${label}: content script ${path} has an import or export, which a content script can't run (a module it shares with another page - see MINIMAL LOCAL TRANSLATIONS in src/content.ts)`,
+        );
+      }
+    }
+
     problems.push(
       ...findManifestProblems(
         manifest,
