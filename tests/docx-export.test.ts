@@ -146,6 +146,19 @@ describe("Word export", () => {
     );
   });
 
+  it("keeps counting a broken-up list, and names a code block's language", async () => {
+    const blob = await buildDocxBlob(
+      [{ id: "1", role: "assistant", order: 0, content: "1. a\n   ```zig\n   const x = 1;\n   ```\n2. b" }],
+      [],
+      DEFAULT_SETTINGS,
+      { tabTitle: "x", tabUrl: undefined },
+    );
+    const files = await unzip(blob);
+
+    expect(files.get("word/numbering.xml")).toContain('<w:startOverride w:val="2"/>');
+    expect(files.get("word/document.xml")).toMatch(/<w:t[^>]*>zig<\/w:t>/);
+  });
+
   it("leaves out characters XML doesn't allow", async () => {
     const blob = await buildDocxBlob(
       [{ id: "1", role: "user", order: 0, content: "bell\u0007 here" }],

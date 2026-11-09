@@ -16,7 +16,7 @@
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
 import { stripMarkdown } from "./markdown-strip.ts";
-import { highlightCode, resolveLanguage } from "./code-highlight.ts";
+import { highlightCode, languageLabel } from "./code-highlight.ts";
 import {
   parseInline,
   tableHasHeader,
@@ -661,7 +661,7 @@ function renderList(
 
     while (open.length < level + 1) {
       open.push(tag);
-      html += `<${tag}>`;
+      html += index === 0 && block.start ? `<${tag} start="${block.start}">` : `<${tag}>`;
     }
 
     html += `<li dir="auto">${inline(item)}`;
@@ -684,8 +684,7 @@ function renderCode(code: string, lang?: string): string {
       )
       .join(""),
   );
-  const label =
-    resolveLanguage(lang) ?? lang?.trim().split(/[\s{},]/).find(Boolean);
+  const label = languageLabel(lang);
 
   return (
     '<div class="code" dir="ltr">' +

@@ -24,7 +24,7 @@
  */
 import type { Settings } from "./settings.ts";
 import { CHAT_SITE_NAMES, getChatSite } from "./chat-sites.ts";
-import { highlightCode, type TokenKind } from "./code-highlight.ts";
+import { highlightCode, languageLabel, type TokenKind } from "./code-highlight.ts";
 import {
   parseInline,
   tableHasHeader,
@@ -446,13 +446,13 @@ class DocxWriter {
     );
   }
 
-  /* A new numbered list - nested `level` deep - counting from 1 */
-  orderedList(level = 0): number {
+  /* A new numbered list - nested `level` deep - counting from `start` */
+  orderedList(level = 0, start = 1): number {
     const id = this.nextNumbering++;
 
     this.numbering.push(
       `<w:num w:numId="${id}"><w:abstractNumId w:val="1"/>` +
-        `<w:lvlOverride w:ilvl="${level}"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`,
+        `<w:lvlOverride w:ilvl="${level}"><w:startOverride w:val="${start}"/></w:lvlOverride></w:num>`,
     );
 
     return id;
@@ -764,8 +764,12 @@ export async function buildDocxBlob(
 
   function codeBlock(code: string, lang?: string): string[] {
     const lines = highlightCode(code, lang);
-
-    const all = lines.length > 0 ? lines : [[]];
+    const label = languageLabel(lang);
+    // The language's name first, as on the chat page
+    const all = [
+      ...(label ? [[{ text: label, kind: "comment" as const }]] : []),
+      ...(lines.length > 0 ? lines : [[]]),
+    ];
 
     // One paragraph per line; Word draws the shared border once
     // around them all. Space is kept above the first and below the
@@ -860,7 +864,10 @@ export async function buildDocxBlob(
           if (!nesting.ordered) {
             numbered[level] = undefined;
           } else {
-            numbered[level] ??= writer.orderedList(level);
+            numbered[level] ??= writer.orderedList(
+              level,
+              index === 0 ? block.start : undefined,
+            );
           }
 
           return inlineParagraphs(item, {
@@ -906,7 +913,7 @@ export async function buildDocxBlob(
           block.items.forEach((item, index) => {
             out.push(
               ...inlineParagraphs(
-                `${block.ordered ? `${index + 1}.` : "•"} ${item}`,
+                `${block.ordered ? `${(block.start ?? 1) + index}.` : "•"} ${item}`,
                 { style: "Thinking" },
               ),
             );

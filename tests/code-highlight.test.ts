@@ -21,7 +21,10 @@ describe("resolveLanguage", () => {
   it("maps aliases and ignores fence attributes", () => {
     expect(resolveLanguage("ts")).toBe("javascript");
     expect(resolveLanguage('python title="app.py"')).toBe("python");
-    expect(resolveLanguage("{r}")).toBeUndefined();
+    expect(resolveLanguage("{r}")).toBe("r");
+    expect(resolveLanguage("objective-c")).toBe("objectivec");
+    expect(resolveLanguage("F#")).toBe("ocaml");
+    expect(resolveLanguage("Dockerfile")).toBe("dockerfile");
     expect(resolveLanguage("Shell")).toBe("bash");
     expect(resolveLanguage("language-yml")).toBe("yaml");
     expect(resolveLanguage("brainfuck")).toBeUndefined();
@@ -37,6 +40,12 @@ describe("guessLanguage", () => {
     expect(guessLanguage("SELECT * FROM users;")).toBe("sql");
     expect(guessLanguage("<div class=\"a\">hi</div>")).toBe("html");
     expect(guessLanguage('const std = @import("std");')).toBe("zig");
+    expect(guessLanguage("<?php\necho 'hi';")).toBe("php");
+    expect(guessLanguage("using System;\nclass A {}")).toBe("csharp");
+    expect(guessLanguage("import SwiftUI\nlet x = 1")).toBe("swift");
+    expect(guessLanguage("fun main() {\n    val x = 1\n}")).toBe("kotlin");
+    expect(guessLanguage("FROM node:20\nRUN npm ci")).toBe("dockerfile");
+    expect(guessLanguage("\\documentclass{article}")).toBe("latex");
   });
 
   it("leaves terminal output and prose plain", () => {
@@ -164,6 +173,48 @@ describe("highlightCode", () => {
     expect(kindOf(lines, "u32")).toBe("type");
     expect(kindOf(lines, "Point")).toBe("type");
     expect(kindOf(lines, "// sum")).toBe("comment");
+  });
+
+  it.each([
+    ["dart", "final name = 'x'; // c", "final", "keyword"],
+    ["scala", "case class A(x: Int)", "case", "keyword"],
+    ["r", "x <- function(a) NULL # c", "NULL", "literal"],
+    ["haskell", "main = do -- c", "-- c", "comment"],
+    ["elixir", "defmodule A do", "defmodule", "keyword"],
+    ["erlang", "foo() -> ok. % c", "% c", "comment"],
+    ["julia", "#= c =#\nfunction f(x::Int64)", "#= c =#", "comment"],
+    ["perl", "my $x = undef;", "$x", "variable"],
+    ["matlab", "%{\nc\n%}\nx = pi;", "pi", "literal"],
+    ["fsharp", "let f x = x (* c *)", "(* c *)", "comment"],
+    ["clojure", "(defn add-one [x] (inc x)) ; c", "defn", "keyword"],
+    ["solidity", "uint256 public total;", "uint256", "type"],
+    ["graphql", "query Get($id: ID!) { a }", "$id", "variable"],
+    ["dockerfile", "FROM node AS build", "AS", "keyword"],
+    ["makefile", "build: main.o", "build", "property"],
+    ["nasm", "_start:\n  mov eax, 1 ; c", "eax", "type"],
+    ["terraform", 'resource "aws_s3_bucket" "b" {}', "resource", "keyword"],
+    ["vb", "Dim x As Integer ' c", "' c", "comment"],
+    ["objc", "@interface Foo : NSObject", "@interface", "meta"],
+    ["fortran", "PROGRAM hello ! c", "PROGRAM", "keyword"],
+    ["delphi", "begin { c } end;", "{ c }", "comment"],
+    ["latex", "\\section{A} 50\\% % c", "\\section", "keyword"],
+    ["rust", "#[derive(Debug)]\nstruct A;", "#[derive(Debug)]", "meta"],
+    ["css", "@media (max-width: 1px) {}", "@media", "meta"],
+  ] as const)("highlights %s", (lang, code, text, kind) => {
+    expect(kindOf(highlightCode(code, lang), text)).toBe(kind);
+  });
+
+  it("keeps LaTeX's \\% out of comments", () => {
+    expect(kinds(highlightCode("50\\% done % note", "latex"))).toEqual([
+      "50:number",
+      "\\% done:plain",
+      "% note:comment",
+    ]);
+  });
+
+  it("colors a triple-quoted text block as one string", () => {
+    const lines = highlightCode('String s = """\n  a "quoted" b\n""";', "java");
+    expect(kindOf(lines, 'a "quoted" b')).toBe("string");
   });
 
   it("leaves unknown languages plain", () => {

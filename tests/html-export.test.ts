@@ -61,6 +61,8 @@ describe("HTML export", () => {
     expect(page.body.textContent).toContain("<script>alert(1)</script>");
     expect(page.querySelector("h3")?.textContent).toBe("Answer");
     expect(page.querySelector(".tok-keyword")?.textContent).toBe("const");
+    // The language as the fence names it, not the highlighter's
+    expect(page.querySelector(".code-lang")?.textContent).toBe("ts");
     expect(page.querySelector(".tok-comment")?.textContent).toBe("// one");
     expect(page.querySelectorAll("table td")).toHaveLength(2);
     expect(page.querySelector("img")?.getAttribute("src")).toBe(
@@ -84,6 +86,20 @@ describe("HTML export", () => {
 
     expect(page.querySelector(".role")).toBeNull();
     expect(page.title).toBe("ChatGPT");
+  });
+
+  it("keeps counting a list that blank lines broke up", async () => {
+    const html = await buildHtmlDocument(
+      [{ id: "1", role: "assistant", order: 0, content: "1. a\n\n2. b" }],
+      [],
+      DEFAULT_SETTINGS,
+      { tabTitle: "x", tabUrl: undefined },
+    );
+    const page = new DOMParser().parseFromString(html, "text/html");
+
+    expect(
+      [...page.querySelectorAll("ol")].map((list) => list.getAttribute("start")),
+    ).toEqual([null, "2"]);
   });
 });
 

@@ -66,6 +66,8 @@ interface LanguageRules {
   hexColors?: boolean;
   // Identifiers may contain "-" (CSS, shell flags, YAML keys).
   dashedIdentifiers?: boolean;
+  // `\section` commands, and `\%` escapes that aren't comments (LaTeX).
+  backslashCommands?: boolean;
 }
 
 const words = (list: string): Set<string> => new Set(list.split(/\s+/));
@@ -128,6 +130,8 @@ const LANGUAGES: Record<string, LanguageRules> = {
   },
   java: {
     ...C_STYLE,
+    // Text blocks
+    tripleQuotes: true,
     keywords: words(
       "abstract assert break case catch class continue default do else " +
         "enum extends final finally for if implements import instanceof " +
@@ -144,6 +148,7 @@ const LANGUAGES: Record<string, LanguageRules> = {
   },
   kotlin: {
     ...C_STYLE,
+    tripleQuotes: true,
     keywords: words(
       "fun val var class object interface if else when for while do " +
         "return break continue import package is in as try catch finally " +
@@ -156,6 +161,9 @@ const LANGUAGES: Record<string, LanguageRules> = {
   },
   csharp: {
     ...C_STYLE,
+    // Raw string literals; #region, #if
+    tripleQuotes: true,
+    preprocessor: true,
     keywords: words(
       "abstract as base break case catch checked class const continue " +
         "default delegate do else enum event explicit extern finally fixed " +
@@ -214,6 +222,8 @@ const LANGUAGES: Record<string, LanguageRules> = {
     // A lone ' is a lifetime ('a) or char literal; only " strings
     // are scanned so lifetimes don't swallow the rest of the line.
     quotes: ['"'],
+    // #[derive(Debug)] attributes
+    preprocessor: true,
     keywords: words(
       "as async await break const continue crate dyn else enum extern fn " +
         "for if impl in let loop match mod move mut pub ref return self Self " +
@@ -250,6 +260,7 @@ const LANGUAGES: Record<string, LanguageRules> = {
   },
   swift: {
     ...C_STYLE,
+    tripleQuotes: true,
     keywords: words(
       "class struct enum protocol extension func var let if else guard for " +
         "in while repeat switch case default break continue return import " +
@@ -353,6 +364,8 @@ const LANGUAGES: Record<string, LanguageRules> = {
     keys: "bare",
     hexColors: true,
     dashedIdentifiers: true,
+    // @media, @import
+    annotations: true,
   },
   lua: {
     lineComments: ["--"],
@@ -363,6 +376,333 @@ const LANGUAGES: Record<string, LanguageRules> = {
         "repeat return then until while",
     ),
     literals: words("true false nil"),
+  },
+  dart: {
+    ...C_STYLE,
+    tripleQuotes: true,
+    keywords: words(
+      "abstract as assert async await base break case catch class const " +
+        "continue covariant default deferred do dynamic else enum export " +
+        "extends extension external factory final finally for get hide if " +
+        "implements import in interface is late library mixin new on " +
+        "operator part required rethrow return sealed set show static super " +
+        "switch sync this throw try typedef var when while with yield",
+    ),
+    literals: words("true false null"),
+    builtinTypes: words(
+      "int double num bool void String List Map Set Future Stream Object Never",
+    ),
+    capitalizedTypes: true,
+    annotations: true,
+  },
+  scala: {
+    ...C_STYLE,
+    tripleQuotes: true,
+    keywords: words(
+      "abstract case catch class def do else end enum export extends " +
+        "extension final finally for given if implicit import lazy match new " +
+        "object override package private protected return sealed super then " +
+        "this throw trait try type using val var while with yield",
+    ),
+    literals: words("true false null"),
+    builtinTypes: words(
+      "Int Long Short Byte Char Float Double Boolean Unit String Any AnyRef " +
+        "Nothing",
+    ),
+    capitalizedTypes: true,
+    annotations: true,
+  },
+  r: {
+    ...HASH_STYLE,
+    keywords: words(
+      "if else repeat while function for in next break return library require",
+    ),
+    literals: words(
+      "TRUE FALSE NULL NA NaN Inf NA_integer_ NA_real_ NA_character_",
+    ),
+  },
+  haskell: {
+    lineComments: ["--"],
+    blockComments: [["{-", "-}"]],
+    // ' is also part of names (x'), so only " strings.
+    quotes: ['"'],
+    keywords: words(
+      "as case class data default deriving do else family forall foreign " +
+        "hiding if import in infix infixl infixr instance let module newtype " +
+        "of qualified then type where",
+    ),
+    literals: words("True False Nothing Just Left Right otherwise"),
+    builtinTypes: words(
+      "Int Integer Float Double Char String Bool IO Maybe Either",
+    ),
+    capitalizedTypes: true,
+  },
+  elixir: {
+    ...HASH_STYLE,
+    tripleQuotes: true,
+    keywords: words(
+      "def defp defmodule defmacro defmacrop defstruct defprotocol defimpl " +
+        "defdelegate defguard do end fn if else unless case cond with for " +
+        "when in and or not try catch rescue after raise receive quote " +
+        "unquote import require alias use",
+    ),
+    literals: words("true false nil"),
+    capitalizedTypes: true,
+    // @moduledoc, @spec
+    annotations: true,
+  },
+  erlang: {
+    lineComments: ["%"],
+    blockComments: [],
+    quotes: ['"', "'"],
+    keywords: words(
+      "after and andalso band begin bnot bor bsl bsr bxor case catch cond " +
+        "div end fun if let not of or orelse receive rem try when xor module " +
+        "export import record define include spec type",
+    ),
+    literals: words("true false undefined ok error"),
+  },
+  julia: {
+    lineComments: ["#"],
+    blockComments: [["#=", "=#"]],
+    // ' is also transpose (A'), so only " strings.
+    quotes: ['"'],
+    tripleQuotes: true,
+    keywords: words(
+      "abstract baremodule begin break catch const continue do else elseif " +
+        "end export finally for function global if import in isa let local " +
+        "macro module mutable primitive quote return struct try type using " +
+        "where while",
+    ),
+    literals: words("true false nothing missing NaN Inf"),
+    builtinTypes: words(
+      "Int Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 Float32 " +
+        "Float64 Bool Char String Vector Matrix Array Any Nothing Dict Tuple " +
+        "Symbol",
+    ),
+    capitalizedTypes: true,
+    // @time, @show macros
+    annotations: true,
+  },
+  perl: {
+    ...HASH_STYLE,
+    keywords: words(
+      "my our local sub if elsif else unless while until for foreach do last " +
+        "next redo return use no package require print printf say die warn " +
+        "eval and or not eq ne lt gt le ge cmp qw",
+    ),
+    literals: words("undef"),
+    dollarVariables: true,
+  },
+  matlab: {
+    lineComments: ["%"],
+    blockComments: [["%{", "%}"]],
+    quotes: ['"', "'"],
+    keywords: words(
+      "break case catch classdef continue else elseif end for function " +
+        "global if otherwise parfor persistent return spmd switch try while " +
+        "properties methods events",
+    ),
+    literals: words("true false pi inf Inf NaN nan eps"),
+  },
+  // OCaml and F#
+  ocaml: {
+    lineComments: ["//"],
+    blockComments: [["(*", "*)"]],
+    quotes: ['"'],
+    keywords: words(
+      "abstract and as assert async begin class constraint do done downto " +
+        "else end exception external for fun function functor if in include " +
+        "inherit initializer lazy let match member method module mutable " +
+        "namespace new nonrec object of open or override private rec sig " +
+        "struct then to try type use val virtual when while with yield",
+    ),
+    literals: words("true false None Some Ok Error"),
+    builtinTypes: words(
+      "int float bool char string unit list array option int64 int32 byte " +
+        "decimal",
+    ),
+    capitalizedTypes: true,
+  },
+  // Lisp, Scheme, Clojure
+  lisp: {
+    lineComments: [";"],
+    blockComments: [["#|", "|#"]],
+    quotes: ['"'],
+    keywords: words(
+      "def defn defn- defmacro defun defvar defparameter defonce defrecord " +
+        "defprotocol define define-syntax lambda fn let letrec loop recur if " +
+        "when unless cond case do progn begin and or not ns require import " +
+        "use setq quote",
+    ),
+    literals: words("true false nil"),
+    dashedIdentifiers: true,
+  },
+  solidity: {
+    ...C_STYLE,
+    keywords: words(
+      "pragma solidity contract interface library function modifier event " +
+        "emit struct enum mapping public private internal external view pure " +
+        "payable returns return if else for while do break continue new " +
+        "delete using import is constructor fallback receive memory storage " +
+        "calldata require revert assert override virtual abstract immutable " +
+        "constant unchecked try catch error",
+    ),
+    literals: words(
+      "true false wei gwei ether seconds minutes hours days weeks",
+    ),
+    builtinTypes: words(
+      "address bool string bytes byte int uint int8 int16 int32 int64 " +
+        "int128 int256 uint8 uint16 uint32 uint64 uint128 uint256 bytes4 " +
+        "bytes32",
+    ),
+    capitalizedTypes: true,
+  },
+  graphql: {
+    ...HASH_STYLE,
+    quotes: ['"'],
+    tripleQuotes: true,
+    keywords: words(
+      "query mutation subscription fragment on type interface union enum " +
+        "input scalar schema extend implements directive",
+    ),
+    literals: words("true false null"),
+    builtinTypes: words("Int Float String Boolean ID"),
+    capitalizedTypes: true,
+    dollarVariables: true,
+    annotations: true,
+  },
+  dockerfile: {
+    ...HASH_STYLE,
+    keywords: words(
+      "FROM AS RUN CMD LABEL MAINTAINER EXPOSE ENV ADD COPY ENTRYPOINT " +
+        "VOLUME USER WORKDIR ARG ONBUILD STOPSIGNAL HEALTHCHECK SHELL",
+    ),
+    literals: new Set(),
+    dollarVariables: true,
+    dashedIdentifiers: true,
+  },
+  makefile: {
+    ...HASH_STYLE,
+    keywords: words(
+      "ifeq ifneq ifdef ifndef else endif include define endef export override",
+    ),
+    literals: new Set(),
+    // `build:` targets
+    keys: "bare",
+    dollarVariables: true,
+    dashedIdentifiers: true,
+  },
+  asm: {
+    lineComments: [";", "//"],
+    blockComments: [["/*", "*/"]],
+    quotes: ['"', "'"],
+    keywords: words(
+      "mov movzx movsx lea push pop call ret jmp je jne jz jnz jg jge jl jle " +
+        "ja jae jb jbe cmp test add sub mul imul div idiv inc dec and or xor " +
+        "not neg shl shr sal sar nop int syscall loop ldr str ldp stp b bl bx " +
+        "cbz cbnz section global extern db dw dd dq resb resw resd resq equ " +
+        "times",
+    ),
+    literals: new Set(),
+    builtinTypes: words(
+      "eax ebx ecx edx esi edi esp ebp rax rbx rcx rdx rsi rdi rsp rbp r8 " +
+        "r9 r10 r11 r12 r13 r14 r15 al ah bl bh cl ch dl dh ax bx cx dx sp lr " +
+        "pc byte word dword qword ptr",
+    ),
+    caseInsensitive: true,
+    // `_start:` labels
+    keys: "bare",
+  },
+  // Terraform
+  hcl: {
+    lineComments: ["#", "//"],
+    blockComments: [["/*", "*/"]],
+    quotes: ['"'],
+    keywords: words(
+      "resource data variable output locals module provider terraform for " +
+        "in if else endif endfor dynamic content",
+    ),
+    literals: words("true false null"),
+    builtinTypes: words("string number bool list map set object tuple any"),
+  },
+  // Visual Basic, VBA, VBScript
+  vb: {
+    lineComments: ["'"],
+    blockComments: [],
+    quotes: ['"'],
+    keywords: words(
+      "AddressOf And AndAlso As ByRef ByVal Call Case Catch Class Const " +
+        "Continue Declare Dim Do Each Else ElseIf End Enum Exit Finally For " +
+        "Friend Function Get GoTo Handles If Implements Imports In Inherits " +
+        "Interface Is IsNot Loop Me Mod Module MyBase Namespace New Next Not " +
+        "Of On Option Optional Or OrElse Overrides Private Property Protected " +
+        "Public ReDim Return Select Set Shared Static Step Structure Sub Then " +
+        "Throw To Try Using When While With Xor Async Await",
+    ),
+    literals: words("True False Nothing"),
+    builtinTypes: words(
+      "Boolean Byte Char Date Decimal Double Integer Long Object Short " +
+        "Single String Variant",
+    ),
+    caseInsensitive: true,
+  },
+  objectivec: {
+    ...C_STYLE,
+    keywords: words(`${C_KEYWORDS} self super`),
+    literals: words("YES NO nil NULL true false"),
+    builtinTypes: words(
+      `${C_TYPES} id BOOL NSInteger NSUInteger CGFloat instancetype`,
+    ),
+    capitalizedTypes: true,
+    preprocessor: true,
+    // @interface, @property, @end
+    annotations: true,
+  },
+  fortran: {
+    lineComments: ["!"],
+    blockComments: [],
+    quotes: ['"', "'"],
+    keywords: words(
+      "program end module use implicit none integer real double precision " +
+        "complex logical character parameter dimension allocatable intent " +
+        "in out inout subroutine function call return if then else elseif " +
+        "endif do enddo while select case contains print write read stop " +
+        "allocate deallocate type interface",
+    ),
+    literals: new Set(),
+    caseInsensitive: true,
+  },
+  // Pascal, Delphi
+  pascal: {
+    lineComments: ["//"],
+    blockComments: [
+      ["{", "}"],
+      ["(*", "*)"],
+    ],
+    quotes: ["'"],
+    keywords: words(
+      "and array as begin case class const constructor destructor div do " +
+        "downto else end except exit file finally for function goto if " +
+        "implementation in inherited interface is label mod not object of " +
+        "or packed private procedure program property protected public " +
+        "published raise record repeat set shl shr then to try type unit " +
+        "until uses var while with xor",
+    ),
+    literals: words("true false nil"),
+    builtinTypes: words(
+      "integer real boolean char byte word longint cardinal double single " +
+        "extended string",
+    ),
+    caseInsensitive: true,
+  },
+  latex: {
+    lineComments: ["%"],
+    blockComments: [],
+    quotes: [],
+    keywords: new Set(),
+    literals: new Set(),
+    backslashCommands: true,
   },
 };
 
@@ -420,6 +760,66 @@ const ALIASES: Record<string, string> = {
   vue: "html",
   svelte: "html",
   patch: "diff",
+  cu: "cpp",
+  cuda: "cpp",
+  arduino: "cpp",
+  ino: "cpp",
+  glsl: "c",
+  hlsl: "c",
+  groovy: "java",
+  gradle: "java",
+  scala3: "scala",
+  sc: "scala",
+  hs: "haskell",
+  elm: "haskell",
+  purescript: "haskell",
+  ex: "elixir",
+  exs: "elixir",
+  erl: "erlang",
+  jl: "julia",
+  pl: "perl",
+  pm: "perl",
+  octave: "matlab",
+  ml: "ocaml",
+  fs: "ocaml",
+  fsharp: "ocaml",
+  "f#": "ocaml",
+  clojure: "lisp",
+  clj: "lisp",
+  cljs: "lisp",
+  edn: "lisp",
+  scheme: "lisp",
+  scm: "lisp",
+  racket: "lisp",
+  rkt: "lisp",
+  elisp: "lisp",
+  "emacs-lisp": "lisp",
+  "common-lisp": "lisp",
+  sol: "solidity",
+  gql: "graphql",
+  docker: "dockerfile",
+  containerfile: "dockerfile",
+  make: "makefile",
+  mk: "makefile",
+  assembly: "asm",
+  nasm: "asm",
+  masm: "asm",
+  x86asm: "asm",
+  armasm: "asm",
+  terraform: "hcl",
+  tf: "hcl",
+  vba: "vb",
+  vbnet: "vb",
+  "vb.net": "vb",
+  vbscript: "vb",
+  objc: "objectivec",
+  "objective-c": "objectivec",
+  "obj-c": "objectivec",
+  f90: "fortran",
+  f95: "fortran",
+  delphi: "pascal",
+  pas: "pascal",
+  tex: "latex",
 };
 
 /*
@@ -428,12 +828,7 @@ const ALIASES: Record<string, string> = {
  * this highlighter knows.
  */
 export function resolveLanguage(info: string | undefined): string | undefined {
-  const name = info
-    ?.trim()
-    .split(/[\s{},]/)
-    .find(Boolean)
-    ?.replace(/^language-/, "")
-    .toLowerCase();
+  const name = languageLabel(info)?.toLowerCase();
 
   if (!name) {
     return undefined;
@@ -444,6 +839,18 @@ export function resolveLanguage(info: string | undefined): string | undefined {
   return resolved in LANGUAGES || resolved === "html" || resolved === "diff"
     ? resolved
     : undefined;
+}
+
+/*
+ * The language as the fence names it (```ts gives "ts"), shown
+ * above the code block like on the chat page.
+ */
+export function languageLabel(info: string | undefined): string | undefined {
+  return info
+    ?.trim()
+    .split(/[\s{},]/)
+    .find(Boolean)
+    ?.replace(/^language-/, "");
 }
 
 /*
@@ -468,12 +875,21 @@ export function guessLanguage(code: string): string | undefined {
     return "diff";
   }
 
+  if (/^<\?php\b/.test(text)) {
+    return "php";
+  }
+
   if (/^<(!DOCTYPE|html|\?xml|[a-z][\w-]*[\s>])/i.test(text)) {
     return "html";
   }
 
   if (/^#include\s*[<"]/m.test(text)) {
     return /\b(std::|class |template\s*<|namespace )/.test(text) ? "cpp" : "c";
+  }
+
+  // Before Python, whose `import x` it looks like
+  if (/^import (SwiftUI|UIKit|Foundation)$/m.test(text)) {
+    return "swift";
   }
 
   if (
@@ -486,6 +902,22 @@ export function guessLanguage(code: string): string | undefined {
   // Before JavaScript: `const std = @import("std");` looks like JS.
   if (/@import\("/.test(text)) {
     return "zig";
+  }
+
+  if (/^FROM \S+/m.test(text) && /^(RUN|COPY|CMD|ENTRYPOINT|WORKDIR) /m.test(text)) {
+    return "dockerfile";
+  }
+
+  if (/\\(documentclass|begin\{\w+\})/.test(text)) {
+    return "latex";
+  }
+
+  if (/^\s*using System\b/m.test(text)) {
+    return "csharp";
+  }
+
+  if (/^\s*fun \w+\(/m.test(text) && /\b(val|var) \w+/.test(text)) {
+    return "kotlin";
   }
 
   if (
@@ -730,6 +1162,13 @@ function tokenizeWithRules(code: string, rules: LanguageRules): CodeToken[] {
         i += word.length;
         continue;
       }
+    }
+
+    if (rules.backslashCommands && char === "\\") {
+      const match = /^\\(?:[A-Za-z@]+\*?|[^\n])?/.exec(code.slice(i)) as RegExpExecArray;
+      sink.push(match[0], /^\\[A-Za-z@]/.test(match[0]) ? "keyword" : "plain");
+      i += match[0].length;
+      continue;
     }
 
     if (rules.annotations && char === "@" && identStart.test(code[i + 1] ?? "")) {

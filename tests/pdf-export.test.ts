@@ -107,6 +107,14 @@ describe("preprocessRawContent", () => {
 });
 
 describe("fenceUserContent", () => {
+  it("leaves a ~~~ fence alone", () => {
+    const markdown = ["~~~", "* a1b2c3d Add tests", "|/|", "~~~", "Why?"].join(
+      "\n",
+    );
+
+    expect(fenceUserContent(markdown)).toBe(markdown);
+  });
+
   it("leaves a longer fence holding ``` fences of its own alone", () => {
     const markdown = [
       "````",
@@ -266,6 +274,30 @@ describe("parseBlocks", () => {
   it("still closes a ``` fence at the next ``` line", () => {
     expect(parseBlocks("```js\nlet a = 1;\n```\nafter")).toEqual([
       { type: "code", code: "let a = 1;", lang: "js" },
+      { type: "paragraph", text: "after" },
+    ]);
+  });
+
+  it("keeps counting a list that blank lines broke up", () => {
+    expect(parseBlocks("1. First\n\n2. Second")).toEqual([
+      { type: "list", ordered: true, items: ["First"] },
+      { type: "list", ordered: true, start: 2, items: ["Second"] },
+    ]);
+  });
+
+  it("makes a code block under a list item a block of its own", () => {
+    expect(
+      parseBlocks("1. Install:\n   ```bash\n   npm i\n     --save\n   ```\n2. Run it"),
+    ).toEqual([
+      { type: "list", ordered: true, items: ["Install:"] },
+      { type: "code", code: "npm i\n  --save", lang: "bash" },
+      { type: "list", ordered: true, start: 2, items: ["Run it"] },
+    ]);
+  });
+
+  it("reads ~~~ fences, which only ~~~ closes", () => {
+    expect(parseBlocks("~~~python\nx = '```'\n```\n~~~\nafter")).toEqual([
+      { type: "code", code: "x = '```'\n```", lang: "python" },
       { type: "paragraph", text: "after" },
     ]);
   });

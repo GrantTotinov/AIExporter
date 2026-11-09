@@ -114,6 +114,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   dockerfile: "docker",
   tex: "latex",
   objc: "objective-c",
+  objectivec: "objective-c",
   vb: "visual basic",
   svg: "xml",
   htm: "html",

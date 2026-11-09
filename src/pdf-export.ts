@@ -72,7 +72,7 @@ import {
 } from "./script-fonts.ts";
 import type { ShapedText, Shaper } from "./text-shaping.ts";
 import { shapeArabicText } from "./arabic-shaping.ts";
-import { highlightCode, type TokenKind } from "./code-highlight.ts";
+import { highlightCode, languageLabel, type TokenKind } from "./code-highlight.ts";
 import {
   OBJECT_CHAR,
   bidiLevels,
@@ -2017,7 +2017,7 @@ export async function buildPdfBlob(
       counters.length = Math.min(counters.length, level + 1);
 
       if (counters[level]?.ordered !== ordered) {
-        counters[level] = { ordered, count: 0 };
+        counters[level] = { ordered, count: index === 0 ? (block.start ?? 1) - 1 : 0 };
       }
 
       const count = ++counters[level].count;
@@ -2195,6 +2195,18 @@ export async function buildPdfBlob(
       }
 
       doc.setTextColor(...CODE_TEXT_COLOR);
+    }
+
+    // The language's name in a header row, kept with the first line
+    const label = languageLabel(lang);
+
+    if (label) {
+      ensureSpace(codeLineHeight * 2);
+      doc.setFillColor(232, 232, 232);
+      doc.rect(blockLeft, y - codeLineHeight * 0.72, blockWidth, codeLineHeight, "F");
+      doc.setTextColor(...CODE_TOKEN_COLORS.comment);
+      doc.text(fit(label, MONO_FONT, "normal"), blockLeft + 2, y);
+      y += codeLineHeight;
     }
 
     const expandedCode = code.split("\n").map((line) => expandTabs(line));

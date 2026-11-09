@@ -167,8 +167,10 @@ const WRITING_BLOCK_RE = /:::writing\{[^}]*\}[ \t]*\n([\s\S]*?)\n:::/g;
 const LINK_WITH_TITLE_RE =
   /(!?)\[((?:[^[\]\n]|\n(?![ \t]*\n)){1,500})\]\(\s*<?((?:[^()\s<>]|\([^()\s]*\))+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
 
-// Only a fence at least as long closes it (as in parseBlocks).
-const FENCED_CODE_RE = /^[ \t]*(`{3,})(?!`)[^\n]*\n[\s\S]*?^[ \t]*\1`*[ \t]*$/gm;
+// Only a fence of the same character, at least as long, closes it
+// (as in parseBlocks).
+const FENCED_CODE_RE =
+  /^[ \t]*((`|~)\2{2,})(?!\2)[^\n]*\n[\s\S]*?^[ \t]*\1\2*[ \t]*$/gm;
 
 function mapOutsideFences(
   markdown: string,
@@ -363,6 +365,9 @@ export type Block =
   | {
       type: "list";
       ordered: boolean;
+      // The first number, when not 1: a list that a code block or a
+      // blank line broke off ("2. Run it") goes on counting.
+      start?: number;
       items: string[];
       nesting?: { level: number; ordered: boolean }[];
     }
@@ -422,19 +427,24 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
       continue;
     }
 
-    const fenceMatch = line.match(/^\s*(`{3,})/);
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
 
     if (fenceMatch) {
-      // Only a fence at least as long closes it, so a ```` block
-      // can hold ``` fences of its own.
+      // Only a fence of the same character, at least as long, closes
+      // it, so a ```` block can hold ``` fences of its own.
       const closingFence = new RegExp(
-        `^\\s*\`{${fenceMatch[1].length},}\\s*$`,
+        `^\\s*${fenceMatch[1][0]}{${fenceMatch[1].length},}\\s*$`,
+      );
+      // A fence indented under a list item has its code indented as
+      // much; that indentation isn't part of the code.
+      const fenceIndent = new RegExp(
+        `^[ \\t]{0,${line.length - line.trimStart().length}}`,
       );
       const codeLines: string[] = [];
       i++;
 
       while (i < lines.length && !closingFence.test(lines[i])) {
-        codeLines.push(lines[i]);
+        codeLines.push(lines[i].replace(fenceIndent, ""));
         i++;
       }
 
@@ -519,9 +529,12 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
         const itemMatch = lines[i].match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
 
         if (!itemMatch) {
+          // An indented code block under an item is a block of its
+          // own, not more of the item's text.
           if (
             lines[i].trim() !== "" &&
             /^\s+/.test(lines[i]) &&
+            !/^\s*(```|~~~)/.test(lines[i]) &&
             items.length > 0
           ) {
             items[items.length - 1] += ` ${lines[i].trim()}`;
@@ -550,9 +563,12 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
         i++;
       }
 
+      const start = ordered ? Number.parseInt(listItemMatch[2], 10) : 1;
+
       blocks.push({
         type: "list",
         ordered,
+        ...(start > 1 ? { start } : {}),
         items,
         ...(nesting.some((item) => item.level > 0) ? { nesting } : {}),
       });
@@ -564,7 +580,7 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
     while (
       i < lines.length &&
       lines[i].trim() !== "" &&
-      !/^\s*```/.test(lines[i]) &&
+      !/^\s*(```|~~~)/.test(lines[i]) &&
       !/^#{1,6}\s+/.test(lines[i]) &&
       !/^\s*>\s?/.test(lines[i]) &&
       !/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
@@ -603,6 +619,8 @@ export function parseBlocks(markdown: string, hardBreaks = false): Block[] {
  */
 function joinLines(lines: string[], hardBreaks: boolean): string {
   return lines
+    // Leading spaces (a paragraph under a list item) aren't text
+    .map((line) => line.trimStart())
     .map((line, index) => {
       if (index === lines.length - 1) {
         return line.replace(/ {2,}$/, "");
@@ -679,7 +697,7 @@ function isCodeLine(line: string): boolean {
 }
 
 function classifyParagraph(lines: string[]): ParagraphKind {
-  if (lines.some((line) => /^\s*```/.test(line))) {
+  if (lines.some((line) => /^\s*(```|~~~)/.test(line))) {
     return "prose";
   }
 
