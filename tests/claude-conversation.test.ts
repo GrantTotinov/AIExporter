@@ -456,6 +456,28 @@ describe("convertClaudeMessages", () => {
     ]);
   });
 
+  it("keeps pasted text in full, as a code block", () => {
+    const question = message("human", [text("Why?")], {
+      attachments: [
+        {
+          file_name: "",
+          file_type: "txt",
+          extracted_content: "\nconst a = 1;\n```\nnot a fence end\n```\n\n",
+        },
+        { file_name: "book.pdf", extracted_content: "Chapter 1..." },
+      ],
+    });
+
+    expect(convertClaudeMessages([question])[0].parts).toEqual([
+      {
+        kind: "text",
+        text: "**Pasted text**\n\n````\nconst a = 1;\n```\nnot a fence end\n```\n````",
+      },
+      { kind: "text", text: "[Attachment: book.pdf]" },
+      { kind: "text", text: "Why?" },
+    ]);
+  });
+
   it("reads files from files_v2, falling back to files, never both", () => {
     const image = {
       file_kind: "image",

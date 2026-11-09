@@ -36,6 +36,7 @@ describe("guessLanguage", () => {
     expect(guessLanguage("#include <stdio.h>\nint main() {}")).toBe("c");
     expect(guessLanguage("SELECT * FROM users;")).toBe("sql");
     expect(guessLanguage("<div class=\"a\">hi</div>")).toBe("html");
+    expect(guessLanguage('const std = @import("std");')).toBe("zig");
   });
 
   it("leaves terminal output and prose plain", () => {
@@ -148,6 +149,21 @@ describe("highlightCode", () => {
       "inserted",
       "plain",
     ]);
+  });
+
+  it("highlights Zig", () => {
+    const lines = highlightCode(
+      'const std = @import("std");\npub fn add(a: u32, b: Point) !u32 {\n    return a orelse 0; // sum\n}',
+      "zig",
+    );
+    expect(kindOf(lines, "pub")).toBe("keyword");
+    expect(kindOf(lines, "orelse")).toBe("keyword");
+    expect(kindOf(lines, "@import")).toBe("meta");
+    expect(kindOf(lines, '"std"')).toBe("string");
+    expect(kindOf(lines, "add")).toBe("function");
+    expect(kindOf(lines, "u32")).toBe("type");
+    expect(kindOf(lines, "Point")).toBe("type");
+    expect(kindOf(lines, "// sum")).toBe("comment");
   });
 
   it("leaves unknown languages plain", () => {

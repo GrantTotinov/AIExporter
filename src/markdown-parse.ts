@@ -167,16 +167,22 @@ const WRITING_BLOCK_RE = /:::writing\{[^}]*\}[ \t]*\n([\s\S]*?)\n:::/g;
 const LINK_WITH_TITLE_RE =
   /(!?)\[((?:[^[\]\n]|\n(?![ \t]*\n)){1,500})\]\(\s*<?((?:[^()\s<>]|\([^()\s]*\))+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
 
-const FENCED_CODE_RE = /(^[ \t]*```[^\n]*\n[\s\S]*?^[ \t]*```[ \t]*$)/m;
+// Only a fence at least as long closes it (as in parseBlocks).
+const FENCED_CODE_RE = /^[ \t]*(`{3,})(?!`)[^\n]*\n[\s\S]*?^[ \t]*\1`*[ \t]*$/gm;
 
 function mapOutsideFences(
   markdown: string,
   transform: (text: string) => string,
 ): string {
-  return markdown
-    .split(FENCED_CODE_RE)
-    .map((part, index) => (index % 2 === 1 ? part : transform(part)))
-    .join("");
+  let out = "";
+  let last = 0;
+
+  for (const match of markdown.matchAll(FENCED_CODE_RE)) {
+    out += transform(markdown.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+
+  return out + transform(markdown.slice(last));
 }
 
 /*

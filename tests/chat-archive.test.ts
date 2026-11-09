@@ -150,6 +150,29 @@ describe("a Claude data export", () => {
     ]);
   });
 
+  it("keeps pasted text, before the message", () => {
+    const [chat] = parseConversationsJson(
+      JSON.stringify([
+        {
+          ...CLAUDE_EXPORT[0],
+          chat_messages: [
+            {
+              ...CLAUDE_EXPORT[0].chat_messages[0],
+              attachments: [
+                { file_name: "", file_type: "txt", extracted_content: "flour 500g\n" },
+                { file_name: "recipe.pdf", extracted_content: "a whole book" },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(chat.messages[0].content).toBe(
+      "**Pasted text**\n\n```\nflour 500g\n```\n\nHow do I bake bread?",
+    );
+  });
+
   it("is searched word by word, in titles and messages", () => {
     const chats = parseConversationsJson(JSON.stringify([...CHATGPT_EXPORT, ...CLAUDE_EXPORT]));
 

@@ -67,6 +67,8 @@ export interface ClaudeFile {
 
 export interface ClaudeAttachment {
   file_name?: string;
+  file_type?: string;
+  extracted_content?: string;
 }
 
 export interface ClaudeChatMessage {
@@ -460,6 +462,11 @@ function renderArtifact(artifact: ClaudeArtifact): string {
     ARTIFACT_LANGUAGES[artifact.type] ||
     ""
   ).replace(/[^\w+#.-]/g, "");
+
+  return `${heading}\n\n${codeBlock(content, language)}`;
+}
+
+function codeBlock(content: string, language = ""): string {
   const longestInnerFence = Math.max(
     0,
     ...Array.from(
@@ -469,7 +476,25 @@ function renderArtifact(artifact: ClaudeArtifact): string {
   );
   const fence = "`".repeat(Math.max(3, longestInnerFence + 1));
 
-  return `${heading}\n\n${fence}${language}\n${content}\n${fence}`;
+  return `${fence}${language}\n${content}\n${fence}`;
+}
+
+/*
+ * Long text pasted into the message box becomes an attachment
+ * with no file name (shown as "PASTED" on claude.ai). It's part
+ * of what the person wrote, so it's kept in full - as a code
+ * block, since it's usually code or a log, and a code block keeps
+ * its lines as they were. Anything else gives "".
+ */
+export function claudePastedText(attachment: Record<string, unknown>): string {
+  const content = stringValue(attachment.file_name)?.trim()
+    ? ""
+    : (stringValue(attachment.extracted_content) ?? "").replace(
+        /^\n+|\s+$/g,
+        "",
+      );
+
+  return content ? `**Pasted text**\n\n${codeBlock(content)}` : "";
 }
 
 /*
@@ -732,8 +757,9 @@ function getContentParts(
 /*
  * Uploaded images become image parts, which content.ts
  * downloads when image bundling is on, like ChatGPT uploads.
- * Other files and pasted documents are listed by name: their
- * extracted text can run to whole books, so it isn't inlined.
+ * Pasted text is kept in full (see claudePastedText). Other files
+ * are listed by name: their extracted text can run to whole
+ * books, so it isn't inlined.
  */
 function getFileParts(message: ClaudeChatMessage): ClaudeMessagePart[] {
   const files =
@@ -773,7 +799,10 @@ function getFileParts(message: ClaudeChatMessage): ClaudeMessagePart[] {
       const fileName =
         stringValue(attachment.file_name)?.trim() || "pasted text";
 
-      parts.push({ kind: "text", text: `[Attachment: ${fileName}]` });
+      parts.push({
+        kind: "text",
+        text: claudePastedText(attachment) || `[Attachment: ${fileName}]`,
+      });
     }
   }
 

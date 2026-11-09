@@ -107,6 +107,23 @@ describe("preprocessRawContent", () => {
 });
 
 describe("fenceUserContent", () => {
+  it("leaves a longer fence holding ``` fences of its own alone", () => {
+    const markdown = [
+      "````",
+      "Run it:",
+      "```",
+      "*   3159fb8 (HEAD -> main) Merge branch 'main'",
+      "```",
+      "|\\  ",
+      "| * a1b2c3d Add tests",
+      "|/|",
+      "````",
+      "Why?",
+    ].join("\n");
+
+    expect(fenceUserContent(markdown)).toBe(markdown);
+  });
+
   it("fences a whole git graph, keeping the intro and question outside", () => {
     const graph = [
       "*   3159fb8 (HEAD -> main) Merge branch 'main'",

@@ -226,6 +226,28 @@ const LANGUAGES: Record<string, LanguageRules> = {
     ),
     capitalizedTypes: true,
   },
+  zig: {
+    ...C_STYLE,
+    blockComments: [],
+    keywords: words(
+      "addrspace align allowzero and anyframe anytype asm async await break " +
+        "callconv catch comptime const continue defer else enum errdefer " +
+        "error export extern fn for if inline linksection noalias noinline " +
+        "nosuspend opaque or orelse packed pub resume return struct suspend " +
+        "switch test threadlocal try union unreachable usingnamespace var " +
+        "volatile while",
+    ),
+    literals: words("true false null undefined"),
+    builtinTypes: words(
+      "i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f16 f32 f64 f80 " +
+        "f128 bool void noreturn type anyerror anyopaque comptime_int " +
+        "comptime_float c_char c_short c_ushort c_int c_uint c_long c_ulong " +
+        "c_longlong c_ulonglong",
+    ),
+    capitalizedTypes: true,
+    // Builtins: @import, @as, @Vector...
+    annotations: true,
+  },
   swift: {
     ...C_STYLE,
     keywords: words(
@@ -459,6 +481,11 @@ export function guessLanguage(code: string): string | undefined {
     !/[;{]\s*$/m.test(text)
   ) {
     return "python";
+  }
+
+  // Before JavaScript: `const std = @import("std");` looks like JS.
+  if (/@import\("/.test(text)) {
+    return "zig";
   }
 
   if (

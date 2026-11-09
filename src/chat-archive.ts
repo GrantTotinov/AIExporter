@@ -26,6 +26,7 @@
  */
 import type { Message } from "./export-builders.ts";
 import { convertChatGptComponents } from "./chatgpt-components.ts";
+import { claudePastedText } from "./claude-conversation.ts";
 
 export type ArchiveSource = "chatgpt" | "claude";
 
@@ -374,12 +375,19 @@ function claudeConversation(item: Record<string, unknown>): ArchivedConversation
     }
 
     const parts = (Array.isArray(message.content) ? message.content : []).map(record);
-    const body =
+    const pasted = (Array.isArray(message.attachments) ? message.attachments : [])
+      .map((attachment) => claudePastedText(record(attachment)))
+      .filter(Boolean);
+    const body = [
+      ...pasted,
       parts
         .filter((part) => part.type === "text")
         .map((part) => text(part.text))
         .join("\n\n")
-        .trim() || text(message.text).trim();
+        .trim() || text(message.text).trim(),
+    ]
+      .join("\n\n")
+      .trim();
     const thinking = parts
       .filter((part) => part.type === "thinking")
       .map((part) => text(part.thinking))
