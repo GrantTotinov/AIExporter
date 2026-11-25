@@ -34,8 +34,9 @@ import type { ExportImageFile, Message } from "./export-builders.ts";
 import { loadSettings, type Settings } from "./settings.ts";
 import {
   PAUSE_BETWEEN_CHATS_MS,
-  RETRY_DELAYS_MS,
   needsSaving,
+  retryDelay,
+  retryWhileRateLimited,
   savedChats,
   withSavedChats,
 } from "./bulk-export.ts";
@@ -1610,10 +1611,14 @@ async function listAllConversations(
 
   try {
     do {
-      const page: ConversationListPage = await sendToChatTab(tabId, site, {
-        type: "LIST_CONVERSATIONS_PAGE",
-        cursor,
-      });
+      const page: ConversationListPage = await retryWhileRateLimited(
+        () =>
+          sendToChatTab<ConversationListPage>(tabId, site, {
+            type: "LIST_CONVERSATIONS_PAGE",
+            cursor,
+          }),
+        sleep,
+      );
       let added = 0;
 
       for (const conversation of page.conversations) {
@@ -1666,11 +1671,13 @@ async function loadBackupFiles(
         settings,
       );
     } catch (error) {
-      if (error instanceof TabUnavailableError || attempt >= RETRY_DELAYS_MS.length) {
+      const delay = retryDelay(error, attempt);
+
+      if (error instanceof TabUnavailableError || delay === null) {
         throw error;
       }
 
-      await sleep(RETRY_DELAYS_MS[attempt]);
+      await sleep(delay);
     }
   }
 }

@@ -57,6 +57,7 @@ import {
 } from "./gemini-conversation.ts";
 import {
   parseChatGptConversationList,
+  parseChatGptProjectList,
   type ConversationListPage,
   type ConversationSummary,
 } from "./conversation-list.ts";
@@ -1519,14 +1520,21 @@ function fetchConversationPage(
 }
 
 /*
- * A page of the sidebar's conversation list (see LIST
- * CONVERSATIONS below).
+ * A page of one of ChatGPT's conversation lists (see LIST
+ * CONVERSATIONS below): the sidebar's chats or the archived ones,
+ * by offset, or the projects or a project's chats, by cursor.
  */
-function fetchChatGptListPage(offset: number, limit: number): Promise<unknown> {
+function fetchChatGptList(request: {
+  list: "chats" | "archived" | "projects" | "project";
+  limit: number;
+  offset?: number;
+  cursor?: string | null;
+  projectId?: string;
+}): Promise<unknown> {
   return sendBridgeApiRequest({
     type: "AIExporter_LIST_REQUEST",
-    offset,
-    limit,
+    offset: 0,
+    ...request,
   });
 }
 
@@ -4410,17 +4418,85 @@ chrome.runtime.onMessage.addListener(
  */
 
 const LIST_PAGE_SIZE = 100;
+const PROJECT_LIST_PAGE_SIZE = 50;
 
-async function listChatGptPage(
-  cursor: string | null,
-): Promise<ConversationListPage> {
-  await waitForBridge();
+/*
+ * Where ChatGPT's list has got to. The sidebar's list leaves out
+ * the archived chats and the ones in projects, so they come after
+ * it: the archived chats, then the projects, then each project's
+ * chats.
+ */
+type ChatGptListPosition =
+  | { list: "chats" | "archived"; offset: number }
+  | { list: "projects"; cursor: string | null }
+  | { list: "project"; index: number; cursor: string | null };
 
-  const offset = cursor === null ? 0 : Number(cursor);
+/* The projects being listed, found after the archived chats. */
+let chatGptListProjects: string[] = [];
+
+async function listChatGptStep(position: ChatGptListPosition): Promise<{
+  conversations: Omit<ConversationSummary, "url">[];
+  next: ChatGptListPosition | null;
+}> {
+  if (position.list === "projects") {
+    if (position.cursor === null) {
+      chatGptListProjects = [];
+    }
+
+    const page = parseChatGptProjectList(
+      await fetchChatGptList({
+        list: "projects",
+        cursor: position.cursor,
+        limit: PROJECT_LIST_PAGE_SIZE,
+      }),
+    );
+    // A page with no new project means a cursor that goes nowhere.
+    const found = page.ids.filter((id) => !chatGptListProjects.includes(id));
+
+    chatGptListProjects.push(...found);
+
+    return {
+      conversations: [],
+      next:
+        page.cursor && found.length > 0
+          ? { list: "projects", cursor: page.cursor }
+          : { list: "project", index: 0, cursor: null },
+    };
+  }
+
+  if (position.list === "project") {
+    const projectId = chatGptListProjects[position.index];
+
+    if (!projectId) {
+      return { conversations: [], next: null };
+    }
+
+    const page = parseChatGptConversationList(
+      await fetchChatGptList({
+        list: "project",
+        projectId,
+        cursor: position.cursor,
+        limit: PROJECT_LIST_PAGE_SIZE,
+      }),
+    );
+
+    return {
+      conversations: page.conversations,
+      next:
+        page.cursor && page.conversations.length > 0
+          ? { ...position, cursor: page.cursor }
+          : { list: "project", index: position.index + 1, cursor: null },
+    };
+  }
+
   const page = parseChatGptConversationList(
-    await fetchChatGptListPage(offset, LIST_PAGE_SIZE),
+    await fetchChatGptList({
+      list: position.list,
+      offset: position.offset,
+      limit: LIST_PAGE_SIZE,
+    }),
   );
-  const next = offset + page.conversations.length;
+  const offset = position.offset + page.conversations.length;
   /*
    * ChatGPT may answer with fewer chats than asked for and still
    * have more, so the total decides when it's over; without one,
@@ -4429,15 +4505,44 @@ async function listChatGptPage(
   const done =
     page.conversations.length === 0 ||
     (page.total !== null
-      ? next >= page.total
+      ? offset >= page.total
       : page.conversations.length < LIST_PAGE_SIZE);
 
   return {
-    conversations: page.conversations.map((conversation) => ({
+    conversations: page.conversations,
+    next: !done
+      ? { list: position.list, offset }
+      : position.list === "chats"
+        ? { list: "archived", offset: 0 }
+        : { list: "projects", cursor: null },
+  };
+}
+
+async function listChatGptPage(
+  cursor: string | null,
+): Promise<ConversationListPage> {
+  await waitForBridge();
+
+  let position: ChatGptListPosition | null = cursor
+    ? (JSON.parse(cursor) as ChatGptListPosition)
+    : { list: "chats", offset: 0 };
+  let conversations: Omit<ConversationSummary, "url">[] = [];
+
+  /*
+   * A step without chats - no archived ones, the project list, an
+   * empty project - goes straight on to the next: the pages that
+   * ask for these stop at an empty one.
+   */
+  while (position && conversations.length === 0) {
+    ({ conversations, next: position } = await listChatGptStep(position));
+  }
+
+  return {
+    conversations: conversations.map((conversation) => ({
       ...conversation,
       url: `${window.location.origin}/c/${conversation.id}`,
     })),
-    nextCursor: done ? null : String(next),
+    nextCursor: position ? JSON.stringify(position) : null,
   };
 }
 

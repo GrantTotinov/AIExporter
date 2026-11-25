@@ -476,6 +476,7 @@
   "bulk.progress.title": "Salvando suas conversas…",
   "bulk.progress.count": "{{done}} de {{total}} concluídas",
   "bulk.progress.note": "Mantenha esta aba e a aba do {{site}} abertas até terminar.",
+  "bulk.progress.waiting": "{{site}} está limitando as solicitações. Aguardando um pouco para continuar…",
   "bulk.progress.stop": "Parar e salvar o que já terminou",
   "bulk.result.doneTitle": "Pronto! Conversas salvas: {{count}}",
   "bulk.result.partialTitle": "Conversas salvas: {{saved}} de {{total}}",

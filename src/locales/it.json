@@ -476,6 +476,7 @@
   "bulk.progress.title": "Salvataggio delle chat…",
   "bulk.progress.count": "{{done}} di {{total}} completate",
   "bulk.progress.note": "Tieni aperte questa scheda e la scheda di {{site}} fino alla fine.",
+  "bulk.progress.waiting": "{{site}} sta limitando le richieste. Attendo un momento, poi continuo…",
   "bulk.progress.stop": "Ferma e salva quelle completate",
   "bulk.result.doneTitle": "Fatto! Chat salvate: {{count}}",
   "bulk.result.partialTitle": "Chat salvate: {{saved}} di {{total}}",

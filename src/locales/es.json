@@ -476,6 +476,7 @@
   "bulk.progress.title": "Guardando tus chats…",
   "bulk.progress.count": "{{done}} de {{total}} listos",
   "bulk.progress.note": "Mantén abiertas esta pestaña y la de {{site}} hasta que termine.",
+  "bulk.progress.waiting": "{{site}} está limitando las solicitudes. Esperando un momento para continuar…",
   "bulk.progress.stop": "Detener y guardar lo hecho",
   "bulk.result.doneTitle": "¡Listo! Chats guardados: {{count}}",
   "bulk.result.partialTitle": "Chats guardados: {{saved}} de {{total}}",

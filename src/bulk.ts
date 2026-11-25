@@ -43,8 +43,10 @@ import {
 } from "./export-builders.ts";
 import {
   PAUSE_BETWEEN_CHATS_MS,
-  RETRY_DELAYS_MS,
   SAVED_CHATS_KEY,
+  isRateLimited,
+  retryDelay,
+  retryWhileRateLimited,
   conversationFileBase,
   filterConversations,
   localDate,
@@ -177,6 +179,15 @@ async function applyStoredTheme(): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* A wait the Stop button cuts short: a site's rate limit can take minutes */
+async function sleepUnlessStopped(ms: number): Promise<void> {
+  const end = Date.now() + ms;
+
+  while (!stopRequested && Date.now() < end) {
+    await sleep(Math.min(500, end - Date.now()));
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -546,10 +557,14 @@ async function loadList(): Promise<void> {
     }
 
     for (;;) {
-      const page: ConversationListPage = await sendToTab<ConversationListPage>({
-        type: "LIST_CONVERSATIONS_PAGE",
-        cursor,
-      });
+      const page: ConversationListPage = await retryWhileRateLimited(
+        () =>
+          sendToTab<ConversationListPage>({
+            type: "LIST_CONVERSATIONS_PAGE",
+            cursor,
+          }),
+        sleep,
+      );
 
       if (loadId !== listLoadId) {
         return;
@@ -916,17 +931,27 @@ async function runExport(targets: ConversationSummary[]): Promise<void> {
           tabGone = true;
         }
 
-        if (
-          tabGone ||
-          stopRequested ||
-          attempt >= RETRY_DELAYS_MS.length
-        ) {
+        const delay = retryDelay(error, attempt);
+
+        if (tabGone || stopRequested || delay === null) {
           failed.push({ conversation, error: errorMessage(error) });
           break;
         }
 
         devWarn("AI Exporter: retrying a chat", conversation.id, error);
-        await sleep(RETRY_DELAYS_MS[attempt]);
+
+        if (isRateLimited(error)) {
+          progressCurrent.textContent = t("bulk.progress.waiting", { site: siteName });
+        }
+
+        await sleepUnlessStopped(delay);
+
+        // Stopped while waiting: this chat counts as not started.
+        if (stopRequested) {
+          break;
+        }
+
+        progressCurrent.textContent = titleOf(conversation);
       }
     }
 

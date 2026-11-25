@@ -476,6 +476,7 @@
   "bulk.progress.title": "Sohbetleriniz kaydediliyor…",
   "bulk.progress.count": "{{total}} içinden {{done}} tamamlandı",
   "bulk.progress.note": "Bitene kadar bu sekmeyi ve {{site}} sekmesini açık tutun.",
+  "bulk.progress.waiting": "{{site}} istekleri sınırlıyor. Biraz bekleyip devam ediliyor…",
   "bulk.progress.stop": "Durdur ve bitenleri kaydet",
   "bulk.result.doneTitle": "Tamamlandı! Kaydedilen sohbetler: {{count}}",
   "bulk.result.partialTitle": "Kaydedilen sohbetler: {{total}} içinden {{saved}}",

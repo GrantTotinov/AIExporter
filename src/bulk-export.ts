@@ -40,6 +40,49 @@ export interface ConversationFilter {
 export const PAUSE_BETWEEN_CHATS_MS = 400;
 export const RETRY_DELAYS_MS = [2000, 6000];
 
+/*
+ * A site that answers 429 - or the ChatGPT page bridge's own limit,
+ * "Too many conversation API requests" - wants a longer rest: two
+ * quick retries failed the chat, and every chat after it, until the
+ * limit wore off after ten or fifteen saved.
+ */
+export const RATE_LIMIT_DELAYS_MS = [15_000, 30_000, 60_000, 120_000];
+
+export function isRateLimited(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return /\b429\b|\btoo many\b/i.test(message);
+}
+
+/* How long to wait before trying again after `attempt` failed tries, or null to give up */
+export function retryDelay(error: unknown, attempt: number): number | null {
+  return (isRateLimited(error) ? RATE_LIMIT_DELAYS_MS : RETRY_DELAYS_MS)[attempt] ?? null;
+}
+
+/*
+ * A page of a chat list, asked for again while the site limits
+ * requests: a big account's list, then each ChatGPT project's,
+ * runs into the limit before the first chat is saved.
+ */
+export async function retryWhileRateLimited<T>(
+  request: () => Promise<T>,
+  wait: (ms: number) => Promise<void>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      const delay = isRateLimited(error) ? retryDelay(error, attempt) : null;
+
+      if (delay === null) {
+        throw error;
+      }
+
+      await wait(delay);
+    }
+  }
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const PRESET_DAYS: Partial<Record<DatePreset, number>> = {

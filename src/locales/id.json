@@ -476,6 +476,7 @@
   "bulk.progress.title": "Menyimpan obrolan Anda…",
   "bulk.progress.count": "{{done}} dari {{total}} selesai",
   "bulk.progress.note": "Biarkan tab ini dan tab {{site}} tetap terbuka sampai selesai.",
+  "bulk.progress.waiting": "{{site}} membatasi permintaan. Menunggu sebentar, lalu melanjutkan…",
   "bulk.progress.stop": "Hentikan dan simpan yang sudah selesai",
   "bulk.result.doneTitle": "Selesai! Obrolan tersimpan: {{count}}",
   "bulk.result.partialTitle": "Obrolan tersimpan: {{saved}} dari {{total}}",

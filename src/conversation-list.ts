@@ -53,13 +53,25 @@ export function parseChatGptTime(value: unknown): number | null {
   return null;
 }
 
+/* The `cursor` of a ChatGPT list paged by cursor; null after the last page */
+function chatGptCursor(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return typeof value === "string" && value ? value : null;
+}
+
 /*
  * A page of /backend-api/conversations: { items, total, limit,
  * offset }, each item { id, title, create_time, update_time }.
+ * A project's chats (/backend-api/gizmos/{id}/conversations) come
+ * as { items, cursor } instead.
  */
 export function parseChatGptConversationList(data: unknown): {
   conversations: Omit<ConversationSummary, "url">[];
   total: number | null;
+  cursor: string | null;
 } {
   if (!isRecord(data) || !Array.isArray(data.items)) {
     throw new Error("ChatGPT returned an unexpected conversation list format.");
@@ -87,5 +99,32 @@ export function parseChatGptConversationList(data: unknown): {
   return {
     conversations,
     total: typeof data.total === "number" ? data.total : null,
+    cursor: chatGptCursor(data.cursor),
   };
+}
+
+/*
+ * A page of /backend-api/gizmos/snorlax/sidebar, the person's
+ * projects: { items: [{ gizmo: { gizmo: { id } } }], cursor }.
+ * The id has also been seen one level up, at items[].gizmo.id.
+ */
+export function parseChatGptProjectList(data: unknown): {
+  ids: string[];
+  cursor: string | null;
+} {
+  if (!isRecord(data) || !Array.isArray(data.items)) {
+    throw new Error("ChatGPT returned an unexpected project list format.");
+  }
+
+  const ids = data.items.flatMap((item): string[] => {
+    const outer = isRecord(item) && isRecord(item.gizmo) ? item.gizmo : null;
+    const id = isRecord(outer?.gizmo) ? outer.gizmo.id : outer?.id;
+
+    // The page bridge only asks for ids of this form.
+    return typeof id === "string" && /^g-p-[A-Za-z0-9_-]{1,128}$/.test(id)
+      ? [id]
+      : [];
+  });
+
+  return { ids, cursor: chatGptCursor(data.cursor) };
 }

@@ -476,6 +476,7 @@
   "bulk.progress.title": "Сохраняем чаты…",
   "bulk.progress.count": "Готово {{done}} из {{total}}",
   "bulk.progress.note": "Не закрывайте эту вкладку и вкладку {{site}}, пока всё не будет готово.",
+  "bulk.progress.waiting": "{{site}} ограничивает запросы. Немного подождём и продолжим…",
   "bulk.progress.stop": "Остановить и сохранить готовое",
   "bulk.result.doneTitle": "Готово! Сохранено чатов: {{count}}",
   "bulk.result.partialTitle": "Сохранено чатов: {{saved}} из {{total}}",

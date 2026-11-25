@@ -476,6 +476,7 @@
   "bulk.progress.title": "आपकी चैट सेव हो रही हैं…",
   "bulk.progress.count": "{{total}} में से {{done}} पूरी",
   "bulk.progress.note": "पूरा होने तक यह टैब और {{site}} टैब खुला रखें।",
+  "bulk.progress.waiting": "{{site}} अनुरोधों को सीमित कर रहा है। थोड़ा रुककर आगे बढ़ रहे हैं…",
   "bulk.progress.stop": "रोकें और जो पूरा हुआ उसे सेव करें",
   "bulk.result.doneTitle": "हो गया! सेव की गई चैट: {{count}}",
   "bulk.result.partialTitle": "सेव की गई चैट: {{total}} में से {{saved}}",
