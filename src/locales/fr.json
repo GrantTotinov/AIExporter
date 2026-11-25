@@ -476,6 +476,7 @@
   "bulk.progress.title": "Enregistrement de vos conversations…",
   "bulk.progress.count": "{{done}} sur {{total}} terminées",
   "bulk.progress.note": "Gardez cet onglet et l'onglet {{site}} ouverts jusqu'à la fin.",
+  "bulk.progress.waiting": "{{site}} limite les requêtes. Petite pause avant de continuer…",
   "bulk.progress.stop": "Arrêter et enregistrer ce qui est fait",
   "bulk.result.doneTitle": "Terminé ! Conversations enregistrées : {{count}}",
   "bulk.result.partialTitle": "Conversations enregistrées : {{saved}} sur {{total}}",

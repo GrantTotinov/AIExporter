@@ -170,4 +170,49 @@ describe("page-bridge.ts conversation pages", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("lists the chats, the archived ones, the projects and a project's chats", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ items: [] })));
+
+    const lists = [
+      { list: "chats", offset: 100, limit: 100 },
+      { list: "archived", offset: 0, limit: 100 },
+      { list: "projects", offset: 0, limit: 50, cursor: "abc" },
+      { list: "project", offset: 0, limit: 50, cursor: null, projectId: "g-p-123abc" },
+      { list: "project", offset: 0, limit: 50, cursor: "next", projectId: "g-p-123abc" },
+    ];
+
+    for (const [index, list] of lists.entries()) {
+      sendToBridge({ type: "AIExporter_LIST_REQUEST", requestId: `list-${index}`, ...list });
+      expect(await bridgeReply(`list-${index}`)).toMatchObject({ type: "AIExporter_API_RESPONSE" });
+    }
+
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/backend-api/conversations?offset=100&limit=100&order=updated",
+      "/backend-api/conversations?offset=0&limit=100&order=updated&is_archived=true",
+      "/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=0&limit=50&cursor=abc",
+      "/backend-api/gizmos/g-p-123abc/conversations?cursor=0&limit=50",
+      "/backend-api/gizmos/g-p-123abc/conversations?cursor=next&limit=50",
+    ]);
+    expect(requested(0).headers.get("authorization")).toBe("Bearer page-token");
+  });
+
+  it("ignores a list request it can't build safely", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ items: [] })));
+
+    for (const bad of [
+      { list: "project", offset: 0, limit: 50, projectId: "../../me" },
+      { list: "project", offset: 0, limit: 100, projectId: "g-p-123abc" },
+      { list: "everything", offset: 0, limit: 100 },
+      { offset: 0, limit: 100 },
+    ]) {
+      sendToBridge({ type: "AIExporter_LIST_REQUEST", requestId: "bad", ...bad });
+    }
+
+    sendToBridge({ type: "AIExporter_LIST_REQUEST", requestId: "good", list: "chats", offset: 0, limit: 100 });
+    await bridgeReply("good");
+
+    expect(posted.some((message) => message.requestId === "bad")).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

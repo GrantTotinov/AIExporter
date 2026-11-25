@@ -3,13 +3,18 @@ import {
   conversationFileBase,
   filterConversations,
   filterRange,
+  isRateLimited,
   needsSaving,
+  RATE_LIMIT_DELAYS_MS,
+  retryDelay,
+  retryWhileRateLimited,
   savedChats,
   uniqueName,
   withSavedChats,
 } from "../src/bulk-export";
 import {
   parseChatGptConversationList,
+  parseChatGptProjectList,
   parseChatGptTime,
   type ConversationSummary,
 } from "../src/conversation-list";
@@ -175,8 +180,33 @@ describe("conversation lists", () => {
         { id: "2", title: "", createdAt: 1700000000000, updatedAt: 1700000000000 },
       ],
       total: 2,
+      cursor: null,
     });
     expect(() => parseChatGptConversationList({ detail: "nope" })).toThrow();
+  });
+
+  it("reads a ChatGPT project's chats and the projects, paged by cursor", () => {
+    expect(
+      parseChatGptConversationList({
+        items: [{ id: "p1", title: "AI Planning", create_time: "2026-11-01T00:00:00Z" }],
+        cursor: "next-page",
+      }),
+    ).toMatchObject({ conversations: [{ id: "p1", title: "AI Planning" }], cursor: "next-page" });
+    expect(parseChatGptConversationList({ items: [], cursor: 50 }).cursor).toBe("50");
+
+    expect(
+      parseChatGptProjectList({
+        items: [
+          { gizmo: { gizmo: { id: "g-p-aaa111" }, files: [] } },
+          { gizmo: { id: "g-p-bbb222" } },
+          { gizmo: { gizmo: { id: "g-custom-gpt" } } },
+          { gizmo: null },
+        ],
+        cursor: "more",
+      }),
+    ).toEqual({ ids: ["g-p-aaa111", "g-p-bbb222"], cursor: "more" });
+    expect(parseChatGptProjectList({ items: [], cursor: null })).toEqual({ ids: [], cursor: null });
+    expect(() => parseChatGptProjectList({ detail: "nope" })).toThrow();
   });
 
   it("reads Claude's list", () => {
@@ -230,5 +260,46 @@ describe("conversation lists", () => {
       ],
       nextCursor: "next-page",
     });
+  });
+});
+
+describe("retries", () => {
+  const rateLimited = new Error("ChatGPT API request failed: 429 Too Many Requests");
+
+  it("waits much longer for a site's rate limit than for other failures", () => {
+    expect(isRateLimited(rateLimited)).toBe(true);
+    expect(isRateLimited(new Error("Too many conversation API requests."))).toBe(true);
+    expect(isRateLimited(new Error("Claude API request failed: 429"))).toBe(true);
+    expect(isRateLimited(new Error("ChatGPT API request failed: 500"))).toBe(false);
+
+    expect(retryDelay(new Error("boom"), 0)).toBe(2000);
+    expect(retryDelay(new Error("boom"), 2)).toBeNull();
+    expect(retryDelay(rateLimited, 0)).toBe(RATE_LIMIT_DELAYS_MS[0]);
+    expect(RATE_LIMIT_DELAYS_MS[0]).toBeGreaterThanOrEqual(15_000);
+    expect(retryDelay(rateLimited, RATE_LIMIT_DELAYS_MS.length)).toBeNull();
+  });
+
+  it("asks for a list page again only while the site limits requests", async () => {
+    const waits: number[] = [];
+    const wait = async (ms: number) => {
+      waits.push(ms);
+    };
+    let calls = 0;
+
+    await expect(
+      retryWhileRateLimited(async () => {
+        if (++calls < 3) {
+          throw rateLimited;
+        }
+
+        return "page";
+      }, wait),
+    ).resolves.toBe("page");
+    expect(waits).toEqual(RATE_LIMIT_DELAYS_MS.slice(0, 2));
+
+    await expect(
+      retryWhileRateLimited(() => Promise.reject(new Error("boom")), wait),
+    ).rejects.toThrow("boom");
+    expect(waits).toHaveLength(2);
   });
 });

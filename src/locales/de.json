@@ -476,6 +476,7 @@
   "bulk.progress.title": "Deine Chats werden gespeichert…",
   "bulk.progress.count": "{{done}} von {{total}} fertig",
   "bulk.progress.note": "Lass diesen Tab und den {{site}}-Tab geöffnet, bis alles fertig ist.",
+  "bulk.progress.waiting": "{{site}} begrenzt die Anfragen. Kurz warten, dann geht es weiter…",
   "bulk.progress.stop": "Stoppen und Fertiges speichern",
   "bulk.result.doneTitle": "Fertig! Gespeicherte Chats: {{count}}",
   "bulk.result.partialTitle": "Gespeicherte Chats: {{saved}} von {{total}}",

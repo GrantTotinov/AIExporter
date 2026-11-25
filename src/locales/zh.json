@@ -476,6 +476,7 @@
   "bulk.progress.title": "正在保存对话…",
   "bulk.progress.count": "已完成 {{done}} / {{total}}",
   "bulk.progress.note": "完成前请保持此标签页和 {{site}} 标签页处于打开状态。",
+  "bulk.progress.waiting": "{{site}} 正在限制请求。稍等片刻后继续…",
   "bulk.progress.stop": "停止并保存已完成的部分",
   "bulk.result.doneTitle": "完成！已保存对话：{{count}}",
   "bulk.result.partialTitle": "已保存对话：{{saved}} / {{total}}",

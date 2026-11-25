@@ -476,6 +476,7 @@
   "bulk.progress.title": "チャットを保存しています…",
   "bulk.progress.count": "{{total}} 件中 {{done}} 件完了",
   "bulk.progress.note": "完了するまで、このタブと {{site}} のタブを開いたままにしてください。",
+  "bulk.progress.waiting": "{{site}} がリクエストを制限しています。少し待ってから続けます…",
   "bulk.progress.stop": "停止して完了分を保存",
   "bulk.result.doneTitle": "完了！保存したチャット：{{count}} 件",
   "bulk.result.partialTitle": "保存したチャット：{{total}} 件中 {{saved}} 件",

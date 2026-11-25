@@ -46,6 +46,9 @@
   // The sidebar's conversation list (?offset=..&limit=..).
   const CONVERSATION_LIST_PATH_PATTERN = /^\/backend-api\/conversations\/?$/i;
   const MAX_LIST_PAGE_SIZE = 100;
+  // A project's chats: ChatGPT refuses more than 50 a page.
+  const MAX_PROJECT_PAGE_SIZE = 50;
+  const PROJECT_ID_PATTERN = /^g-p-[A-Za-z0-9_-]{1,128}$/;
   const MAX_LIST_OFFSET = 1_000_000;
   const MAX_CURSOR_LENGTH = 2048;
   const MAX_REQUEST_ID_LENGTH = 100;
@@ -171,15 +174,20 @@
   };
 
   /*
-   * A page of the conversation list, for the bulk export page:
-   * the request the sidebar makes, newest first.
+   * A page of the conversation list, for the bulk export page,
+   * newest first: the sidebar's chats or the archived ones, by
+   * offset; or, by cursor, the projects or one project's chats -
+   * ChatGPT lists a project's chats only under the project.
    */
   type ListRequestMessage = {
     source: "AIExporter";
     type: "AIExporter_LIST_REQUEST";
     requestId: string;
+    list: "chats" | "archived" | "projects" | "project";
     offset: number;
     limit: number;
+    cursor?: string | null;
+    projectId?: string;
   };
 
   type BridgeRequestMessage =
@@ -188,24 +196,58 @@
     | ListRequestMessage;
 
   function isValidListPage(message: Record<string, unknown>): boolean {
-    const { offset, limit } = message;
+    const { list, offset, limit, cursor, projectId } = message;
+    const byCursor = list === "projects" || list === "project";
 
     return (
+      (list === "chats" || list === "archived" || byCursor) &&
       Number.isInteger(offset) &&
       (offset as number) >= 0 &&
       (offset as number) <= MAX_LIST_OFFSET &&
       Number.isInteger(limit) &&
       (limit as number) > 0 &&
-      (limit as number) <= MAX_LIST_PAGE_SIZE
+      (limit as number) <=
+        (byCursor ? MAX_PROJECT_PAGE_SIZE : MAX_LIST_PAGE_SIZE) &&
+      (cursor === undefined || isValidCursor(cursor)) &&
+      (list !== "project" ||
+        (typeof projectId === "string" && PROJECT_ID_PATTERN.test(projectId)))
     );
   }
 
-  function buildConversationListUrl(offset: number, limit: number): string {
+  function buildConversationListUrl(request: ListRequestMessage): string {
+    if (request.list === "projects") {
+      // Without a limit ChatGPT sends only the first five.
+      const params = new URLSearchParams({
+        owned_only: "true",
+        conversations_per_gizmo: "0",
+        limit: String(request.limit),
+      });
+
+      if (request.cursor) {
+        params.set("cursor", request.cursor);
+      }
+
+      return `/backend-api/gizmos/snorlax/sidebar?${params.toString()}`;
+    }
+
+    if (request.list === "project") {
+      const params = new URLSearchParams({
+        cursor: request.cursor ?? "0",
+        limit: String(request.limit),
+      });
+
+      return `/backend-api/gizmos/${request.projectId}/conversations?${params.toString()}`;
+    }
+
     const params = new URLSearchParams({
-      offset: String(offset),
-      limit: String(limit),
+      offset: String(request.offset),
+      limit: String(request.limit),
       order: "updated",
     });
+
+    if (request.list === "archived") {
+      params.set("is_archived", "true");
+    }
 
     return `/backend-api/conversations?${params.toString()}`;
   }
@@ -679,7 +721,7 @@
 
         if (request.type === "AIExporter_LIST_REQUEST") {
           const response = await originalFetch(
-            buildConversationListUrl(request.offset, request.limit),
+            buildConversationListUrl(request),
             { method: "GET", credentials: "include", headers },
           );
 

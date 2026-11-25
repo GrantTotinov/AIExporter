@@ -476,6 +476,7 @@
   "bulk.progress.title": "Saving your chats…",
   "bulk.progress.count": "{{done}} of {{total}} done",
   "bulk.progress.note": "Keep this tab and the {{site}} tab open until it's done.",
+  "bulk.progress.waiting": "{{site}} is limiting requests. Waiting a little, then carrying on…",
   "bulk.progress.stop": "Stop and save what's done",
   "bulk.result.doneTitle": "Done! Chats saved: {{count}}",
   "bulk.result.partialTitle": "Chats saved: {{saved}} of {{total}}",
