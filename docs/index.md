@@ -12,7 +12,7 @@ This Privacy Policy explains what information AIExporter processes, how it is us
 AIExporter processes the following information when you use its features:
 Conversation content from the supported AI chat sites
 
-When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai, gemini.google.com, chat.deepseek.com, grok.com, perplexity.ai, copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com or chat.z.ai. When you use Save many chats, it also reads the list of your conversations on that site (their titles and dates) so that you can choose which ones to save, and then each conversation you choose.
+When you choose to export or copy a conversation, the extension accesses the conversation currently open on chatgpt.com, claude.ai, gemini.google.com, chat.deepseek.com, grok.com, perplexity.ai, copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.kimi.ai, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com or chat.z.ai. When you use Save many chats, it also reads the list of your conversations on that site (their titles and dates) so that you can choose which ones to save, and then each conversation you choose.
 
 AIExporter's content script runs on the pages of these fifteen sites, and on no other website, so that it is ready when you ask for an export. It reads a conversation only when you export, copy or save it, or press AIExporter's "Copy the open chat" keyboard shortcut.
 
@@ -30,7 +30,7 @@ The web pages an answer cites are only written into the export as links; AIExpor
 
 On chat.deepseek.com, DeepSeek's API needs the sign-in token that DeepSeek's website keeps in the page's storage. AIExporter reads it there and sends it only to DeepSeek's own API, as the website itself does; it does not store it.
 
-Some of the other sites work the same way. On copilot.microsoft.com, www.kimi.com and chat.z.ai, AIExporter reads the sign-in token the website keeps in the page's storage; on www.doubao.com and www.qianwen.com, it reads the device identifiers and the request-protection token the website keeps in the page's storage or cookies. Each of these is sent only to that same site's own API (for Qianwen, chat2-api.qianwen.com), as the website itself does, and is never stored by AIExporter.
+Some of the other sites work the same way. On copilot.microsoft.com, www.kimi.com, www.kimi.ai and chat.z.ai, AIExporter reads the sign-in token the website keeps in the page's storage; on www.doubao.com and www.qianwen.com, it reads the device identifiers and the request-protection token the website keeps in the page's storage or cookies. Each of these is sent only to that same site's own API (for Qianwen, chat2-api.qianwen.com), as the website itself does, and is never stored by AIExporter.
 
 On chat.mistral.ai and www.meta.ai, AIExporter does not call any API: it reads the conversation from the page that is open in your tab.
 
@@ -150,7 +150,7 @@ The extension communicates with the following external services when their funct
     Perplexity (perplexity.ai) — to access the currently open conversation using the user's existing authenticated Perplexity session, and, when image bundling is enabled, the servers that host the images attached to the conversation.
     GitHub (github.com and api.github.com) — when the user connects GitHub, explicitly saves an export to GitHub, or turns on automatic backup into a GitHub repository.
     Notion (api.notion.com) — when the user connects Notion, picks a page, or explicitly saves an export to Notion.
-    Microsoft Copilot (copilot.microsoft.com), Kimi (www.kimi.com), Doubao (www.doubao.com), Qwen (chat.qwen.ai), Qianwen (www.qianwen.com and chat2-api.qianwen.com), Tencent Yuanbao (yuanbao.tencent.com) and Z.ai (chat.z.ai) — to access the currently open conversation, or the list of your conversations for Save many chats, using the user's existing session on that site.
+    Microsoft Copilot (copilot.microsoft.com), Kimi (www.kimi.com and www.kimi.ai), Doubao (www.doubao.com), Qwen (chat.qwen.ai), Qianwen (www.qianwen.com and chat2-api.qianwen.com), Tencent Yuanbao (yuanbao.tencent.com) and Z.ai (chat.z.ai) — to access the currently open conversation, or the list of your conversations for Save many chats, using the user's existing session on that site.
     Mistral Le Chat (chat.mistral.ai) and Meta AI (www.meta.ai) — no requests are made; the conversation is read from the open page.
     Chrome Web Store or Firefox Add-ons (addons.mozilla.org) — to check whether a newer version of AIExporter is available. In Chrome, this check goes through the browser's own extension update service. In Firefox, the extension asks the public addons.mozilla.org API for AIExporter's current version, sending only AIExporter's public add-on ID and no cookies. No conversation content or personal data is included in either check.
 
@@ -228,7 +228,7 @@ AIExporter operates on perplexity.ai and uses the authenticated session already 
 AIExporter does not collect or store the user's Perplexity login credentials.
 Other AI chat sites
 
-AIExporter operates on copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com and chat.z.ai and uses the session already established by the user on each website.
+AIExporter operates on copilot.microsoft.com, chat.mistral.ai, www.meta.ai, www.kimi.com, www.kimi.ai, www.doubao.com, chat.qwen.ai, www.qianwen.com, yuanbao.tencent.com and chat.z.ai and uses the session already established by the user on each website.
 
 AIExporter does not collect or store the user's login credentials for any of these sites.
 GitHub
