@@ -58,7 +58,7 @@ export const CHAT_SITES: readonly ChatSite[] = [
 ];
 
 /* The addresses each site's pages live at; the first is its own. */
-const CHAT_SITE_ORIGINS: Record<ChatSite, readonly string[]> = {
+export const CHAT_SITE_ORIGINS: Record<ChatSite, readonly string[]> = {
   chatgpt: ["https://chatgpt.com"],
   claude: ["https://claude.ai"],
   gemini: ["https://gemini.google.com"],
@@ -68,7 +68,7 @@ const CHAT_SITE_ORIGINS: Record<ChatSite, readonly string[]> = {
   copilot: ["https://copilot.microsoft.com"],
   mistral: ["https://chat.mistral.ai"],
   meta: ["https://www.meta.ai"],
-  kimi: ["https://www.kimi.com"],
+  kimi: ["https://www.kimi.com", "https://www.kimi.ai"],
   doubao: ["https://www.doubao.com"],
   qwen: ["https://chat.qwen.ai"],
   qianwen: ["https://www.qianwen.com"],

@@ -3,7 +3,7 @@
  * AI Exporter - kimi-conversation.ts
  * =========================================================
  *
- * Turns a Kimi (www.kimi.com) conversation, as the web app's own
+ * Turns a Kimi (www.kimi.com or www.kimi.ai) conversation, as the web app's own
  * API returns it, into the messages content.ts hands to popup.ts.
  * The API is Connect RPC with JSON bodies:
  *

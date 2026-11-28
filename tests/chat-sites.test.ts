@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_SITES,
+  CHAT_SITE_ORIGINS,
   CHAT_SITE_START_URLS,
   getChatSite,
   isChatConversationUrl,
@@ -58,6 +59,13 @@ describe("getChatSite", () => {
     expect(getChatSite("https://perplexity.ai/search/rice-abc")).toBe(
       "perplexity",
     );
+  });
+
+  it("recognizes Kimi on both of its addresses", () => {
+    expect(getChatSite("https://www.kimi.com/chat/d1k2a3b4c5e6f7g8h9i0")).toBe("kimi");
+    expect(getChatSite("https://www.kimi.ai/chat/d1k2a3b4c5e6f7g8h9i0")).toBe("kimi");
+    expect(getChatSite("https://www.kimi.ai.example.com/chat/1")).toBeNull();
+    expect(getChatSite("http://www.kimi.ai/chat/1")).toBeNull();
   });
 
   it("recognizes the sites' other pages too (the content script decides what's exportable)", () => {
@@ -133,9 +141,20 @@ describe.each([
     for (const pattern of patterns) {
       expect(
         CHAT_SITES.some((site) =>
-          matchesPattern(pattern, CHAT_SITE_START_URLS[site]),
+          CHAT_SITE_ORIGINS[site].some((origin) =>
+            matchesPattern(pattern, `${origin}/`),
+          ),
         ),
         pattern,
+      ).toBe(true);
+    }
+  });
+
+  it("gives it to Kimi on both of its addresses", () => {
+    for (const origin of CHAT_SITE_ORIGINS.kimi) {
+      expect(
+        patterns.some((pattern) => matchesPattern(pattern, `${origin}/`)),
+        origin,
       ).toBe(true);
     }
   });
@@ -313,6 +332,7 @@ describe("isChatConversationUrl", () => {
 
   it.each([
     ["https://www.kimi.com", getKimiConversationId, ["/chat/d1k2a3b4c5e6f7g8h9i0", "/chat/history", "/chat/", "/"]],
+    ["https://www.kimi.ai", getKimiConversationId, ["/chat/d1k2a3b4c5e6f7g8h9i0", "/chat/history", "/chat/", "/"]],
     ["https://www.doubao.com", getDoubaoConversationId, ["/chat/7356014282391", "/chat/local_1", "/chat/", "/"]],
     ["https://chat.qwen.ai", getQwenConversationId, [`/c/${UUID}`, "/c/", "/", "/p/abc"]],
     ["https://chat.z.ai", getQwenConversationId, [`/c/${UUID}`, "/c/", "/"]],

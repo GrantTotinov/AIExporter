@@ -570,6 +570,7 @@ const NEW_SITE_HOSTS: Record<string, NewSite> = {
   "chat.mistral.ai": "mistral",
   "www.meta.ai": "meta",
   "www.kimi.com": "kimi",
+  "www.kimi.ai": "kimi",
   "www.doubao.com": "doubao",
   "chat.qwen.ai": "qwen",
   "www.qianwen.com": "qianwen",
